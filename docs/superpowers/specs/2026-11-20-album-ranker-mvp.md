@@ -156,7 +156,7 @@ Store inputs only. Ratings and artist scores are computed.
 
 ## Acceptance for the whole MVP
 
-1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate, the rank-plus-honorable-mention row (imported as an honorable mention) and any duplicate album matches the user skipped or moved on the review page; the script's summary names all of them.
+1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate, the rank-plus-honorable-mention row (imported as an honorable mention) and any rows the user skipped, and any duplicate album matches the user moved, on the review page. The summary names the merged duplicate, the rank-plus-honorable-mention row and each duplicate album match; the review page lists the skipped rows.
 2. **Elo math.** Unit tests on fixed inputs: two new albums at 1500, A wins: A is 1516, B is 1484. A tie between 1500 and 1500 changes nothing. Replaying the same inputs twice gives the same ratings.
 3. **Seeding.** On a fixture year with no explicit matchups, the replay plays exactly the implied results above (ranked over lower ranked, ranked over honorable mention, nothing else).
 4. **Matchups.** A win or a loss changes both ratings, the artist scores and the decade suggestions that contain them; a tie between equal ratings changes nothing. Undo restores the previous ratings exactly. The screen never serves two albums from the same year, a listed album, or a pair already played while an unplayed pair exists.
@@ -168,7 +168,7 @@ Store inputs only. Ratings and artist scores are computed.
 This ticket may only change itself, so these edits are for the Chief of Staff or the user to apply:
 
 - **#3 scaffold:** shape is one web app with a server and a SQLite file, run on localhost.
-- **#4 data model:** add the `listed` placement; one year entry per album; a matchup table; decade list entries with no candidate flag; manual albums; import review items. Remove the scoring configuration entity. The album year question is settled: the entry's year is the user's.
+- **#4 data model:** add the `listed` placement; one year entry per album; a matchup table; decade list entries with no candidate flag; manual albums; import review items (with `open`, `resolved` and `skipped` statuses, kept after resolution); a nullable source row key on the year entry. Remove the scoring configuration entity. The album year question is settled: the entry's year is the user's.
 - **#5 catalog search:** results are release groups (albums), not editions. Return the original release year.
 - **#6 ranking screen:** add the listed area; show each album's rating instead of rank points; adding an album already on another year asks to move it.
 - **#7 scoring engine:** rewrite as "Build the Elo rating engine and matchup screen". Pure replay of implied and explicit results into ratings, the artist score rule, matchup picking, and the matchup screen with tie, skip and undo. Drop the points, year weight and settings screen, the spreadsheet regression fixture, and the swappable algorithms section.
