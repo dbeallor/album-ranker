@@ -30,7 +30,7 @@ The ticket's description came from a values-only export. The attached workbook s
 | Ranked and flagged honorable mention | 1 (a 2014 row, rank 5); the sheet's formula scores it as an honorable mention |
 | Listed only: no rank, no honorable mention | 81 |
 
-The ticket's "about 674" counted ranked plus honorable mentions and missed the 81 listed-only rows. Its "754" counted rows with any value. Listed-only rows sit mostly in 1960 to 1981. One pair (a 1960 album) is an exact duplicate row, both listed-only.
+The ticket's "about 674" was an estimate of ranked plus honorable mentions (the sheet has 671) and missed the 81 listed-only rows. Its "754" counted rows with any value. Listed-only rows sit mostly in 1960 to 1981. One pair (a 1960 album) is an exact duplicate row, both listed-only.
 
 **Ranks per year.** Only 11 years (2014 to 2024) use all ten ranks. 33 years stop at rank 5, 11 years stop at rank 1 to 3, and 1996 has no ranked album.
 
@@ -56,9 +56,9 @@ The ticket's "about 674" counted ranked plus honorable mentions and missed the 8
    - an unordered honorable mention area,
    - an unordered **listed** area for albums the user heard that year but did not place (the spreadsheet's 81 listed-only rows).
 
-   Each album shows its current rating. Add from search into any area, drag to reorder or move between areas, remove. Keyboard and touch work too. A year with fewer than ten ranked albums shows the empty slots.
+   Each rated album (ranked or honorable mention) shows its current rating; listed albums show none. Add from search into any area, drag to reorder or move between areas, remove. Keyboard and touch work too. A year with fewer than ten ranked albums shows the empty slots.
 3. **Matchup screen (#7).** Two album covers side by side. The user picks one, calls it a tie, or skips. Undo takes back the last answer. Each answer updates the ratings straight away. A counter shows matchups played.
-4. **Artist views (#8).** An overall artist list and a per-decade list (1950s to 2020s, one decade at a time), each with rank, artist, score and album count. Opening an artist shows their albums with cover, year, placement and rating.
+4. **Artist views (#8).** An overall artist list and a per-decade list (1950s to 2020s, one decade at a time), each with rank, artist, score and rated album count. Opening an artist shows their albums with cover, year, placement and rating.
 5. **Decade top 25 (#9).** One hand-ranked list per decade, with a suggestion from the ratings (see below).
 6. **Spreadsheet import (#10).** A one-off import of the Albums sheet with a review step for rows it can't match.
 
@@ -78,7 +78,7 @@ The user chose one algorithm: Elo ratings from head-to-head matchups. There is n
 ### Why it fixes the spreadsheet's problems
 
 - No hand-set weights: the points table, the 0.25 honorable mention value and the 1/4 exponent all go.
-- No year weight, so a #1 in a small year is not capped below a #1 in a big year.
+- No year weight. A #1 in a small year is no longer capped below a #1 in a big year once cross-year matchups have been played (see the known limit below).
 - Matchups across years compare albums from different years directly, which the yearly ranks can't.
 - Gaps between albums come from the user's answers, not from linear points.
 
@@ -94,7 +94,7 @@ The user chose one algorithm: Elo ratings from head-to-head matchups. There is n
 Without seeding, every album sits at 1500 until hundreds of matchups are played. The yearly ranks are already head-to-head answers inside each year, so the replay starts with them:
 
 - Within a year, each ranked album beats every album ranked below it, and every ranked album beats every honorable mention. Honorable mentions don't play each other. Listed albums don't play.
-- These **implied results** are replayed first, year by year in ascending order, higher ranks first. The user's explicit matchup answers are replayed after them, oldest first.
+- These **implied results** are replayed first, year by year in ascending order. Within a year, ranked albums play in rank order (rank 1 first), each against the albums below it in rank order, then against the year's honorable mentions in album id order. The user's explicit matchup answers are replayed after them, ordered by created at, then id. Fixed orders keep the replay deterministic.
 - Implied results are not stored. They are derived from the current year placements on every replay, so editing a year re-seeds it.
 
 **Known limit.** Seeding alone rewards big years: a #1 that beats 40 albums in 2019 ends higher than a #1 that beats no one in 1983. That is the same bias as the year weight, and only cross-year matchups remove it. The matchup screen serves those first (below). Until enough are played, the artist and decade lists still favour big years. The matchup counter tells the user how far along they are.
@@ -103,7 +103,7 @@ Without seeding, every album sits at 1500 until hundreds of matchups are played.
 
 - Only albums from different years. The year ranking already settles pairs within a year.
 - First pick the album with the fewest explicit matchups (random among ties), then the opponent from another year whose rating is closest to it, skipping a pair already played.
-- A skip records nothing and serves the next pair.
+- A skip records nothing. The skipped pair is not served again until the next session (page load), so a skip never returns the same pair straight away.
 - Rough scale: about ten explicit matchups per album is ~3,400 answers in total. A sitting of 50 takes a few minutes.
 
 ### Artist score
@@ -114,7 +114,7 @@ An artist's score is the average rating of their rated albums, counted as if the
 
 **Hand-ranked, as in the sheet.** The 75 existing decade ranks are judgements the user typed, and the import keeps them.
 
-- Any ranked or honorable mention album placed in the decade can go on the list. No candidate flag: the sheet didn't rely on it, so it is not imported.
+- Any ranked or honorable mention album placed in the decade can go on the list. All 75 existing decade ranks are on ranked or honorable mention rows. No candidate flag: the sheet didn't rely on it, so it is not imported.
 - The user adds albums and reorders by drag and drop, up to 25 per decade.
 - A decade with no list shows a suggestion: its top 25 albums by rating. The user can accept it and then reorder. A suggestion is not saved until accepted.
 - The decade is the album's year page decade, not its catalog release year.
@@ -123,11 +123,12 @@ An artist's score is the average rating of their rated albums, counted as if the
 
 - **A script**, run once from the command line with the file path. Review of unmatched rows happens in the app, on a review page the import fills.
 - Reads the Albums sheet's input columns: album, artist, year, rank, honorable mention, decade top 25 rank. Ignores derived columns, `New`, the candidate flag and the pivot sheets.
-- Row mapping: rank → ranked; honorable mention flag → honorable mention (the flag wins over a rank, as in the sheet, and the row goes on the review list); neither → listed.
+- Row mapping: rank → ranked; honorable mention flag → honorable mention (the flag wins over a rank, as in the sheet; the row is imported as an honorable mention and counted under "conflicting placement" in the summary, with no review item, because the placement is settled); neither → listed.
 - Matches each row to a catalog album. Clear matches are accepted; ambiguous or missing ones go to the review page, where the user picks a match or keeps it as a manual album.
 - Exact duplicate rows (same album, same year) merge into one entry and are listed in the summary.
-- Re-running is safe: an entry already imported is not added again.
-- Prints a summary: rows read, matched, sent to review, merged, skipped.
+- Two different rows that match the same album are not imported twice: the first is kept and the rest go to the review page as a conflict (one album, one year).
+- Re-running is safe: an entry is identified by its source row (title, artist, year), and a row already imported is not added again.
+- Prints a summary: rows read, matched, sent to review, merged duplicates, conflicting placements, skipped.
 - Never commit the spreadsheet or rows from it. Test fixtures use made-up rows.
 
 ## Data model outline (for #4)
@@ -137,8 +138,8 @@ Store inputs only. Ratings and artist scores are computed.
 - **Artist**: name, catalog id (nullable).
 - **Album**: title, artist, catalog id (nullable for manual albums), original release year (nullable), cover art URL (nullable).
 - **Year entry**: album, year, placement (`ranked`, `honorable_mention` or `listed`), rank 1 to 10 when ranked. Rules: an album has at most one year entry; ranks are unique within a year; honorable mention and listed entries have no order.
-- **Matchup**: album A, album B, result (`a`, `b` or `tie`), created at. The screen serves only pairs from different years, but a matchup stays valid if the user later moves an album into its opponent's year. Undo deletes the newest row. Deleting an album deletes its matchups.
-- **Decade list entry**: decade, album, position 1 to 25, unique per decade. The album's year entry must fall in that decade.
+- **Matchup**: album A, album B, result (`a`, `b` or `tie`), created at. The screen serves only pairs from different years, but a matchup stays valid if the user later moves an album into its opponent's year. Undo deletes the newest row. Deleting an album deletes its matchups. Removing an album from its year page deletes the album's year entry and keeps the album; an album with no year entry or a `listed` entry has no rating, and the replay skips its matchups (the rows are kept, so placing it again restores them).
+- **Decade list entry**: decade, album, position 1 to 25, unique per decade. The album must have a `ranked` or `honorable_mention` year entry in that decade. If it later moves to another decade, becomes `listed` or loses its year entry, the app removes it from the list and tells the user.
 - **Import review item**: the source row's text (title, artist, year, placement), candidate matches, status. Deleted once resolved.
 
 ## Non-goals
@@ -154,10 +155,10 @@ Store inputs only. Ratings and artist scores are computed.
 
 ## Acceptance for the whole MVP
 
-1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate and the rank-plus-honorable-mention row, both named in the summary.
+1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate, the rank-plus-honorable-mention row (imported as an honorable mention) and any rows the user resolved as conflicts on the review page, all named in the summary.
 2. **Elo math.** Unit tests on fixed inputs: two new albums at 1500, A wins: A is 1516, B is 1484. A tie between 1500 and 1500 changes nothing. Replaying the same inputs twice gives the same ratings.
 3. **Seeding.** On a fixture year with no explicit matchups, the replay plays exactly the implied results above (ranked over lower ranked, ranked over honorable mention, nothing else).
-4. **Matchups.** Answering a matchup changes both ratings and the artist and decade lists that contain them. Undo restores the previous ratings exactly. The screen never serves two albums from the same year, a listed album, or a pair already played while an unplayed pair exists.
+4. **Matchups.** A win or a loss changes both ratings, the artist scores and the decade suggestions that contain them; a tie between equal ratings changes nothing. Undo restores the previous ratings exactly. The screen never serves two albums from the same year, a listed album, or a pair already played while an unplayed pair exists.
 5. **Year edits.** Moving an album from rank 4 to rank 1 survives a reload and changes the ratings in that year on the next replay.
 6. **Artist score.** For an artist with albums rated 1600 and 1700, the score is (1600 + 1700 + 1500) / 3 = 1600.
 
@@ -192,8 +193,8 @@ Surprising first.
 - **Import is a script**, with review in the app.
 - **Per-decade artist lists** (1950s to 2020s) instead of the sheet's paired groups.
 - **Dropped the candidate flag and the `New` flag.**
-- The **honorable mention flag wins** over a rank on the one row that has both, and that row goes to review.
-- **Exact duplicate rows merge** on import.
+- The **honorable mention flag wins** over a rank on the one row that has both; it imports as an honorable mention and is named in the summary.
+- **Exact duplicate rows merge** on import; two different rows matching one album go to review.
 - **A collaboration is one artist.**
 - The catalog's **release group** is the album.
 
