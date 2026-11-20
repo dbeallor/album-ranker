@@ -1,7 +1,8 @@
 # Album ranker MVP: requirements
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-20
+**Shipped:** in PR #13, as specified
 **Ticket:** [ALBUM-2](https://github.com/dbeallor/album-ranker/issues/2), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 
 ## Goal
