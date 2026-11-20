@@ -124,11 +124,11 @@ An artist's score is the average rating of their rated albums, counted as if the
 - **A script**, run once from the command line with the file path. Review of unmatched rows happens in the app, on a review page the import fills.
 - Reads the Albums sheet's input columns: album, artist, year, rank, honorable mention, decade top 25 rank. Ignores derived columns, `New`, the candidate flag and the pivot sheets.
 - Row mapping: rank → ranked; honorable mention flag → honorable mention (the flag wins over a rank, as in the sheet; the row is imported as an honorable mention and counted under "conflicting placement" in the summary, with no review item, because the placement is settled); neither → listed.
-- Matches each row to a catalog album. Clear matches are accepted; ambiguous or missing ones go to the review page, where the user picks a match or keeps it as a manual album.
+- Matches each row to a catalog album. Clear matches are accepted; ambiguous or missing ones go to the review page, where the user picks a match, keeps it as a manual album or skips the row.
 - Exact duplicate rows (same album, same year) merge into one entry and are listed in the summary.
-- Two different rows that match the same album are not imported twice: the first is kept and the rest go to the review page as a conflict (one album, one year).
-- Re-running is safe: an entry is identified by its source row (title, artist, year), and a row already imported is not added again.
-- Prints a summary: rows read, matched, sent to review, merged duplicates, conflicting placements, skipped.
+- Two different rows that match the same album are not imported twice: the first is kept and the rest go to the review page as a duplicate album match (one album, one year), where the user can skip the row or move the album to that row's year.
+- Re-running is safe: each source row is identified by its title, artist and year. A row that already created a year entry, or has a review item (open, resolved or skipped), is not processed again, so a skipped row stays skipped.
+- Prints a summary: rows read, matched, sent to review, merged duplicates, duplicate album matches (each row named), conflicting placements (each row named) and skipped. The summary describes the script run; what the user later resolves on the review page is on the page.
 - Never commit the spreadsheet or rows from it. Test fixtures use made-up rows.
 
 ## Data model outline (for #4)
@@ -140,7 +140,8 @@ Store inputs only. Ratings and artist scores are computed.
 - **Year entry**: album, year, placement (`ranked`, `honorable_mention` or `listed`), rank 1 to 10 when ranked. Rules: an album has at most one year entry; ranks are unique within a year; honorable mention and listed entries have no order.
 - **Matchup**: album A, album B, result (`a`, `b` or `tie`), created at. The screen serves only pairs from different years, but a matchup stays valid if the user later moves an album into its opponent's year. Undo deletes the newest row. Deleting an album deletes its matchups. Removing an album from its year page deletes the album's year entry and keeps the album; an album with no year entry or a `listed` entry has no rating, and the replay skips its matchups (the rows are kept, so placing it again restores them).
 - **Decade list entry**: decade, album, position 1 to 25, unique per decade. The album must have a `ranked` or `honorable_mention` year entry in that decade. If it later moves to another decade, becomes `listed` or loses its year entry, the app removes it from the list and tells the user.
-- **Import review item**: the source row's text (title, artist, year, placement), candidate matches, status. Deleted once resolved.
+- **Import review item**: the source row's text (title, artist, year, placement), candidate matches, status (`open`, `resolved` or `skipped`). Kept after resolution so a re-run does not queue the row again.
+- **Source row key** on the year entry (nullable): the title, artist and year of the sheet row that created it, so a re-run can tell it was imported.
 
 ## Non-goals
 
@@ -155,7 +156,7 @@ Store inputs only. Ratings and artist scores are computed.
 
 ## Acceptance for the whole MVP
 
-1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate, the rank-plus-honorable-mention row (imported as an honorable mention) and any rows the user resolved as conflicts on the review page, all named in the summary.
+1. **Import.** After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate, the rank-plus-honorable-mention row (imported as an honorable mention) and any duplicate album matches the user skipped or moved on the review page; the script's summary names all of them.
 2. **Elo math.** Unit tests on fixed inputs: two new albums at 1500, A wins: A is 1516, B is 1484. A tie between 1500 and 1500 changes nothing. Replaying the same inputs twice gives the same ratings.
 3. **Seeding.** On a fixture year with no explicit matchups, the replay plays exactly the implied results above (ranked over lower ranked, ranked over honorable mention, nothing else).
 4. **Matchups.** A win or a loss changes both ratings, the artist scores and the decade suggestions that contain them; a tie between equal ratings changes nothing. Undo restores the previous ratings exactly. The screen never serves two albums from the same year, a listed album, or a pair already played while an unplayed pair exists.
@@ -173,7 +174,7 @@ This ticket may only change itself, so these edits are for the Chief of Staff or
 - **#7 scoring engine:** rewrite as "Build the Elo rating engine and matchup screen". Pure replay of implied and explicit results into ratings, the artist score rule, matchup picking, and the matchup screen with tie, skip and undo. Drop the points, year weight and settings screen, the spreadsheet regression fixture, and the swappable algorithms section.
 - **#8 artist views:** score is the artist rule above. Drop the acceptance that compares with the sheet's artist summary. Per-decade lists one decade at a time.
 - **#9 decade top 25:** hand-ranked, no candidate flag, suggestion by rating for empty decades.
-- **#10 import:** a command-line script plus an in-app review page; map listed-only rows; merge exact duplicates; the honorable mention flag wins over a rank. Replace the weighted-score acceptance with acceptance 1 above. The row count is 752, not about 674.
+- **#10 import:** a command-line script plus an in-app review page; map listed-only rows; merge exact duplicates; send two rows that match one album to review; store a source row key so re-runs add nothing; the honorable mention flag wins over a rank. Replace the weighted-score acceptance with acceptance 1 above. The row count is 752, not about 674.
 - **New ticket (Backlog):** deploy the app with a password gate.
 
 ## Calls I made
