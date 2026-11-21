@@ -29,6 +29,7 @@ const found: CatalogAlbum = {
   catalogId: "mbid-9",
   title: "Found Album",
   artist: "Found Artist",
+  artistId: null,
   year: 1987,
   coverUrl: "https://coverartarchive.org/release-group/mbid-9/front-250",
 };

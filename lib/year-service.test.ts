@@ -11,6 +11,7 @@ const catalog = (n: number, overrides: Record<string, unknown> = {}) => ({
   catalogId: `mbid-${n}`,
   title: `Catalog ${n}`,
   artist: `Band ${n}`,
+  artistId: `artist-${n}`,
   year: 1987,
   coverUrl: `https://coverartarchive.org/release-group/mbid-${n}/front-250`,
   ...overrides,
@@ -143,7 +144,7 @@ describe("listYears", () => {
 });
 
 describe("addFromCatalog", () => {
-  it("creates the album once, by name for the artist, and reuses it by catalog id", () => {
+  it("creates the album once, with the artist's catalog id, and reuses it by catalog id", () => {
     const db = memoryDb();
     addFromCatalog(db, 1987, catalog(1), "ranked");
     addFromCatalog(db, 1987, catalog(1), "ranked"); // already on this page
@@ -155,7 +156,7 @@ describe("addFromCatalog", () => {
 
     expect(listAlbums(db)).toHaveLength(1);
     expect(result).toMatchObject({ view: { year: 1988, listed: [{ title: "Catalog 1" }] } });
-    expect(findAlbumByCatalogId(db, "mbid-1")!.artist.catalogId).toBeNull();
+    expect(findAlbumByCatalogId(db, "mbid-1")!.artist.catalogId).toBe("artist-1");
   });
 
   it("appends ranked albums at the end", () => {

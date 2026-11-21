@@ -81,7 +81,7 @@ The add panel has a search field and a Search button. Results come from a server
 - "Add to ranked" puts the album at the end of the ranked list. When ranked is full the button is disabled, with the hint "Ranked is full: add to honorable mentions or move one out first."
 - The server action finds the album by catalog id, or creates it from the result (title, artist, release year, cover URL). It then places it in this year.
 - The server checks the result it is given: catalog id, title and artist are non-empty strings of reasonable length, the year is null or a whole number, and the cover URL is null or an `https://coverartarchive.org/` URL. Anything else is refused.
-- The new album's artist is stored by name only (no artist catalog id), because the catalog search result doesn't carry one.
+- The new album's artist is stored with the result's artist catalog id when it has one (see the as-built).
 
 ### Already on a year page
 
@@ -146,7 +146,7 @@ Surprising first.
 - **Honorable mentions and listed albums are shown sorted by artist, then title,** because they store no order. Dragging within those areas doesn't reorder them.
 - **Adding from search puts a ranked album at the end of the list;** the user then drags it into place.
 - **The server re-checks catalog results** it receives from the browser, and only accepts Cover Art Archive cover URLs.
-- **Catalog albums are stored with the artist by name only,** since search results carry no artist catalog id. Two catalog albums by the same artist share one artist row through the existing name match for artists with no catalog id.
+- **Catalog albums are stored with the artist by name only,** since search results carry no artist catalog id (superseded: see the as-built).
 - **A `/years` index page** lists years with entries and has a "Go to year" field. The ticket only says "pick any year".
 - **Previous and next year links** on each year page.
 - **A year outside 1900 to 2100 is a 404,** matching the data model's year range.

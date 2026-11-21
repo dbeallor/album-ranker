@@ -217,7 +217,7 @@ function place(db: DatabaseSync, year: number, albumId: number, area: Area, move
 }
 
 /**
- * Adds a catalog search result to the year. Finds the album by catalog id or creates it (artist by name only).
+ * Adds a catalog search result to the year. Finds the album by catalog id or creates it, with the artist's catalog id when the result has one.
  * When the album is on another year and `move` is not set, stores nothing and returns the conflict.
  */
 export function addFromCatalog(
@@ -239,6 +239,8 @@ export function addFromCatalog(
     if (input.year !== null && input.year !== undefined && !Number.isInteger(input.year)) {
       bad("That album's release year wasn't valid.");
     }
+    const artistId = input.artistId === null || input.artistId === undefined ? null : text(input.artistId, MAX_CATALOG_ID);
+    if (input.artistId !== null && input.artistId !== undefined && artistId === null) bad("That album wasn't valid.");
     if (input.coverUrl !== null && input.coverUrl !== undefined && !isCoverUrl(input.coverUrl)) {
       bad("That album's cover wasn't valid.");
     }
@@ -248,7 +250,7 @@ export function addFromCatalog(
         findAlbumByCatalogId(db, catalogId) ??
         createAlbum(db, {
           title,
-          artist: { name: artist },
+          artist: { name: artist, catalogId: artistId },
           catalogId,
           releaseYear: (input.year as number | null | undefined) ?? null,
           coverUrl: (input.coverUrl as string | null | undefined) ?? null,

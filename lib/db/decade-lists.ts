@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { transaction } from "./transaction";
-import { DataError, type DecadeListEntry } from "./types";
+import { transaction } from "./transaction.ts";
+import { DataError, type DecadeListEntry } from "./types.ts";
 
 type Row = Record<string, unknown>;
 
@@ -95,5 +95,55 @@ export function setDecadeList(db: DatabaseSync, decade: number, albumIds: number
     }
     rewriteDecade(db, decade, albumIds);
     return getDecadeList(db, decade);
+  });
+}
+
+export type DecadeInsertResult =
+  | { status: "inserted"; position: number }
+  | { status: "already_listed"; position: number }
+  | { status: "full" };
+
+/**
+ * Puts the album on its decade's list by the decade rank the import read from the sheet: before the first
+ * entry whose source decade rank is higher, else at the end. Entries with no source decade rank keep their
+ * place. A full list is left unchanged. The album needs a ranked or honorable mention year entry in the decade.
+ */
+export function insertIntoDecadeBySourceRank(
+  db: DatabaseSync,
+  albumId: number,
+  decade: number,
+): DecadeInsertResult {
+  return transaction(db, () => {
+    const entry = db
+      .prepare(
+        `SELECT source_decade_rank FROM year_entries
+         WHERE album_id = ? AND placement IN ('ranked', 'honorable_mention') AND year >= ? AND year < ?`,
+      )
+      .get(albumId, decade, decade + 10);
+    if (!entry) {
+      throw new DataError(
+        "not_eligible_for_decade",
+        `Album ${albumId} needs a ranked or honorable mention entry in the ${decade}s.`,
+      );
+    }
+    const list = getDecadeList(db, decade);
+    const existing = list.find((item) => item.albumId === albumId);
+    if (existing) return { status: "already_listed", position: existing.position };
+    if (list.length >= MAX_DECADE_LIST) return { status: "full" };
+
+    const rank = entry.source_decade_rank as number | null;
+    const sourceRanks = new Map<number, number | null>(
+      db
+        .prepare("SELECT album_id, source_decade_rank FROM year_entries")
+        .all()
+        .map((row) => [row.album_id as number, row.source_decade_rank as number | null]),
+    );
+    const before =
+      rank === null ? -1 : list.findIndex((item) => (sourceRanks.get(item.albumId) ?? -Infinity) > rank);
+    const index = before === -1 ? list.length : before;
+    const ids = list.map((item) => item.albumId);
+    ids.splice(index, 0, albumId);
+    rewriteDecade(db, decade, ids);
+    return { status: "inserted", position: index + 1 };
   });
 }

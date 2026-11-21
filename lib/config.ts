@@ -1,10 +1,12 @@
 export type Config = {
   databasePath: string;
   musicbrainzUserAgent: string;
+  musicbrainzUrl: string;
 };
 
 const DEFAULT_DATABASE_PATH = "./data/album-ranker.db";
 const DEFAULT_MUSICBRAINZ_USER_AGENT = "album-ranker/0.1";
+const DEFAULT_MUSICBRAINZ_URL = "https://musicbrainz.org";
 
 function readSetting(name: string, fallback: string, hint: string): string {
   const raw = process.env[name];
@@ -30,5 +32,10 @@ export function getConfig(): Config {
       DEFAULT_MUSICBRAINZ_USER_AGENT,
       "Set it to a User-Agent string, or unset it to use the default.",
     ),
+    musicbrainzUrl: readSetting(
+      "MUSICBRAINZ_URL",
+      DEFAULT_MUSICBRAINZ_URL,
+      "Set it to a base URL, or unset it to use the default.",
+    ).trim().replace(/\/+$/, ""),
   };
 }

@@ -12,3 +12,4 @@
 - The spec says narrow screens stack the areas. Shipped: ranked is a single column at every width (a wrapping grid made arrow-key movement jump); honorable mentions and listed are a multi-column grid.
 - Not in the spec: card controls are disabled while an add is running, and the add buttons are disabled while a save is pending. Dropping a card on itself saves nothing.
 - A whole-year save from a stale tab (another tab added an album since the page loaded) removes the albums the stale page does not know about. Accepted for a single user on localhost.
+- The spec says catalog albums are stored with the artist by name only, because search results carry no artist id. Search results now carry one (ALBUM-10), so a catalog add stores the artist with that catalog id, matching imported albums, and the server accepts it as an optional string.
