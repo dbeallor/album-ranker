@@ -1,7 +1,7 @@
 import "server-only";
 import type { CatalogAlbum } from "./types";
 
-const SEARCH_URL = "https://musicbrainz.org/ws/2/release-group";
+const SEARCH_PATH = "/ws/2/release-group";
 const COVER_URL = "https://coverartarchive.org/release-group";
 export const MAX_QUERY_LENGTH = 200;
 const RESULT_LIMIT = 25;
@@ -12,13 +12,13 @@ const REQUEST_TIMEOUT_MS = 8000;
 export type CatalogErrorKind = "busy" | "unreachable";
 
 export class CatalogError extends Error {
-  constructor(
-    readonly kind: CatalogErrorKind,
-    detail: string,
-    options?: { cause?: unknown },
-  ) {
+  // Declared as a field, not a constructor parameter property, so Node's type stripping (the import script) can run it.
+  readonly kind: CatalogErrorKind;
+
+  constructor(kind: CatalogErrorKind, detail: string, options?: { cause?: unknown }) {
     super(detail, options);
     this.name = "CatalogError";
+    this.kind = kind;
   }
 }
 
@@ -45,7 +45,7 @@ export function buildQuery(text: string): string {
     .join(" AND ");
 }
 
-type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { name?: unknown } };
+type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { id?: unknown; name?: unknown } };
 
 function joinArtistCredit(credit: unknown): string {
   if (!Array.isArray(credit)) {
@@ -60,6 +60,16 @@ function joinArtistCredit(credit: unknown): string {
     })
     .join("")
     .trim();
+}
+
+function joinArtistIds(credit: unknown): string | null {
+  if (!Array.isArray(credit)) {
+    return null;
+  }
+  const ids = (credit as ArtistCredit[]).flatMap((part) =>
+    typeof part.artist?.id === "string" && part.artist.id !== "" ? [part.artist.id] : [],
+  );
+  return ids.length > 0 ? ids.join("+") : null;
 }
 
 function parseYear(date: unknown): number | null {
@@ -94,6 +104,7 @@ export function mapReleaseGroups(body: unknown): CatalogAlbum[] {
       catalogId: id,
       title,
       artist: joinArtistCredit((group as { "artist-credit"?: unknown })["artist-credit"]),
+      artistId: joinArtistIds((group as { "artist-credit"?: unknown })["artist-credit"]),
       year: parseYear((group as { "first-release-date"?: unknown })["first-release-date"]),
       coverUrl: `${COVER_URL}/${id}/front-250`,
     });
@@ -106,6 +117,7 @@ export type MusicBrainzDeps = {
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   userAgent: () => string;
+  baseUrl: () => string;
 };
 
 function isTimeout(error: unknown): boolean {
@@ -141,7 +153,7 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
 
     let response: Response;
     try {
-      response = await deps.fetch(`${SEARCH_URL}?${params}`, {
+      response = await deps.fetch(`${deps.baseUrl()}${SEARCH_PATH}?${params}`, {
         headers: { "User-Agent": deps.userAgent(), Accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
