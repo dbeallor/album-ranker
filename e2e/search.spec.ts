@@ -36,6 +36,11 @@ test("search for an album", async ({ page, recorded }) => {
   expect(submit).toBeGreaterThan(lastInput);
   expect(submit).toBeLessThan(secondLoad);
 
+  const { source, version, test: title } = recorded.log();
+  expect(version).toBe(2);
+  expect(title).toBe("search page: search for an album");
+  expect(source).toMatchObject({ kind: "playwright", host: "127.0.0.1:3100" });
+
   expect(events.map((event) => event.seq)).toEqual(events.map((_, index) => index));
   const times = events.map((event) => event.t);
   expect(times).toEqual([...times].sort((a, b) => a - b));

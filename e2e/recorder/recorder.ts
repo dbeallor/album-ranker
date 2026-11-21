@@ -1,5 +1,5 @@
-// Browser-only recorder for browser tests. It must not import from the app: the browser
-// test transpiles this file and injects it into each page (see inject.ts).
+// Browser-only recorder for browser tests and `npm run record`. It must not import from the app: the
+// recorder transpiles this file and injects it into each page (see inject.ts).
 
 export type ElementInfo = {
   tag: string;
@@ -22,13 +22,25 @@ export type EventBody = NavigationBody | ClickBody | InputBody | SubmitBody;
 /** What the recorder sends: the event plus the browser clock (ms since the epoch). */
 export type SentEvent = EventBody & { ts: number };
 
-/** One line of the log: `seq` and `t` are added by the test fixture. */
+/** One line of the log: `seq` and `t` are added when the log is built (see log.ts). */
 export type RecordedEvent = EventBody & { seq: number; t: number };
+
+/** Where a log came from. `host` is always known; every other field is left out when it can't be. */
+export type LogSource = {
+  host: string;
+  kind?: "playwright" | "preview" | "dev";
+  preview?: string;
+  branch?: string;
+  worktree?: string;
+  commit?: string;
+};
 
 export type EventLog = {
   format: "album-ranker-events";
-  version: 1;
-  test: string;
+  version: 2;
+  source: LogSource;
+  /** Only for Playwright runs. */
+  test?: string;
   startedAt: string;
   viewport: { width: number; height: number } | null;
   events: RecordedEvent[];
