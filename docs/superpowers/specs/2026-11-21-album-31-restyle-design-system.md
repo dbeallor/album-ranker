@@ -1,7 +1,8 @@
 # Restyle the whole app with one shared design system
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #33, with differences: [as-built](../as-built/2026-11-21-album-31-restyle-design-system.md)
 **Ticket:** [ALBUM-31](https://github.com/dbeallor/album-ranker/issues/31)
 **Follows:** [stack and scaffold](2026-11-20-album-3-stack-scaffold.md), [year ranking screen](2026-11-21-album-6-year-ranking-screen.md), [decade top 25](2026-11-21-album-9-decade-top-25.md)
 
