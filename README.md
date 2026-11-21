@@ -22,6 +22,10 @@ Open <http://localhost:3000/matchups> to answer "which of these two do you like 
 
 Ratings are never stored. Every request replays the year placements (ranked over lower ranked and over honorable mentions, year by year) and then your matchup answers, oldest first, as Elo with K = 32 from 1500. Only ranked and honorable mention albums are rated and served. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md).
 
+## Artists
+
+Open <http://localhost:3000/artists> to see artists ranked by score, overall or one decade at a time (1950s to 2020s). Open an artist to see their placed albums with year, placement and rating. Scores come from the replayed ratings on every request. Details are in [the ALBUM-8 spec](docs/superpowers/specs/2026-11-21-album-8-artist-views.md).
+
 Checks:
 
 - `npm test`
