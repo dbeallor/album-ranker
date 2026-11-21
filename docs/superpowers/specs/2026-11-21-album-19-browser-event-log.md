@@ -1,7 +1,8 @@
 # Browser test event log for replay
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #25, with differences: [as-built](../as-built/2026-11-21-album-19-browser-event-log.md)
 **Ticket:** [ALBUM-19](https://github.com/dbeallor/album-ranker/issues/19)
 **Follows:** [stack](../../stack.md), [catalog search](2026-11-21-album-5-catalog-search.md)
 
