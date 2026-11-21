@@ -1,7 +1,7 @@
 import "server-only";
 import type { CatalogAlbum } from "./types";
 
-const SEARCH_URL = "https://musicbrainz.org/ws/2/release-group";
+const SEARCH_PATH = "/ws/2/release-group";
 const COVER_URL = "https://coverartarchive.org/release-group";
 export const MAX_QUERY_LENGTH = 200;
 const RESULT_LIMIT = 25;
@@ -117,6 +117,7 @@ export type MusicBrainzDeps = {
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   userAgent: () => string;
+  baseUrl: () => string;
 };
 
 function isTimeout(error: unknown): boolean {
@@ -152,7 +153,7 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
 
     let response: Response;
     try {
-      response = await deps.fetch(`${SEARCH_URL}?${params}`, {
+      response = await deps.fetch(`${deps.baseUrl()}${SEARCH_PATH}?${params}`, {
         headers: { "User-Agent": deps.userAgent(), Accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });

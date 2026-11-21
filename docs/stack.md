@@ -8,7 +8,7 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Runtime | Node.js 24 LTS or newer (`engines` in `package.json`, `.nvmrc` set to 24) |
 | Framework | Next.js (App Router), React |
 | Package manager | npm, with a committed `package-lock.json` |
-| Tests | Vitest, with React Testing Library and jsdom for components |
+| Tests | Vitest, with React Testing Library and jsdom for components; Playwright (Chromium) for browser tests in `e2e/`, run with `npm run test:e2e` |
 | Lint | ESLint with the Next.js config (flat config) |
 | Typecheck | `tsc --noEmit` |
 | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |

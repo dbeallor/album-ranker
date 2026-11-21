@@ -59,11 +59,21 @@ Reading the summary the script prints at the end:
 - `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
 - `Decade lists` shows how many entries each decade list now has. The summary describes this run only.
 
+## Browser tests
+
+Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.
+
+1. One time: `npx playwright install chromium`
+2. `npm run test:e2e`
+
+Each test also records what it does in the page (clicks, typing, form submits, route changes) and writes it as `events.json` in that test's folder under `test-results/e2e/`, for the replay renderer. The format is in [docs/event-log-format.md](docs/event-log-format.md). The recorder is injected by the test; the app's own code never contains it.
+
 Checks:
 
 - `npm test`
 - `npm run lint`
 - `npm run typecheck`
 - `npm run build`
+- `npm run test:e2e` (needs the one-time Chromium install above)
 
 The stack and the reasons for it are in [docs/stack.md](docs/stack.md).

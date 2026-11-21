@@ -15,13 +15,14 @@ if (!path || process.argv.length > 3) {
   process.exit(1);
 }
 
-const { databasePath, musicbrainzUserAgent } = getConfig();
+const { databasePath, musicbrainzUserAgent, musicbrainzUrl } = getConfig();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const client = createMusicBrainzClient({
   fetch: (input, init) => fetch(input, init),
   now: Date.now,
   sleep,
   userAgent: () => musicbrainzUserAgent,
+  baseUrl: () => musicbrainzUrl,
 });
 
 let db: ReturnType<typeof openDatabase> | undefined;
