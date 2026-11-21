@@ -40,6 +40,8 @@ const AREAS: Area[] = ["ranked", "honorable_mention", "listed"];
 const COVER_HOST = "coverartarchive.org";
 const MAX_TEXT = 300;
 const MAX_CATALOG_ID = 100;
+/** An artist id is the credit's MusicBrainz ids joined with "+", 36 characters each. */
+const MAX_ARTIST_ID = 500;
 
 export function isValidYear(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= MIN_YEAR && (value as number) <= MAX_YEAR;
@@ -239,7 +241,7 @@ export function addFromCatalog(
     if (input.year !== null && input.year !== undefined && !Number.isInteger(input.year)) {
       bad("That album's release year wasn't valid.");
     }
-    const artistId = input.artistId === null || input.artistId === undefined ? null : text(input.artistId, MAX_CATALOG_ID);
+    const artistId = input.artistId === null || input.artistId === undefined ? null : text(input.artistId, MAX_ARTIST_ID);
     if (input.artistId !== null && input.artistId !== undefined && artistId === null) bad("That album wasn't valid.");
     if (input.coverUrl !== null && input.coverUrl !== undefined && !isCoverUrl(input.coverUrl)) {
       bad("That album's cover wasn't valid.");

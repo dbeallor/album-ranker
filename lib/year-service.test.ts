@@ -225,10 +225,12 @@ describe("addFromCatalog", () => {
     }
   });
 
-  it("accepts a result with no cover and no release year", () => {
+  it("accepts a result with no cover, no release year and a three-artist credit id", () => {
     const db = memoryDb();
-    const result = addFromCatalog(db, 1987, catalog(1, { coverUrl: null, year: null }), "listed");
+    const threeIds = ["a", "b", "c"].map((c) => c.repeat(36)).join("+");
+    const result = addFromCatalog(db, 1987, catalog(1, { coverUrl: null, year: null, artistId: threeIds }), "listed");
     expect(result).toHaveProperty("view");
+    expect(findAlbumByCatalogId(db, "mbid-1")!.artist.catalogId).toBe(threeIds);
   });
 });
 
