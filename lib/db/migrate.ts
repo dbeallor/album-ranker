@@ -22,6 +22,11 @@ function listMigrations(dir: string): Migration[] {
   return migrations.sort((a, b) => a.version - b.version);
 }
 
+/** The migration versions the code knows, in order. */
+export function migrationVersions(dir: string = migrationsDir()): number[] {
+  return listMigrations(dir).map((m) => m.version);
+}
+
 /** Applies the migrations not yet recorded, in number order, each in its own transaction. Returns the names applied. */
 export function migrate(db: DatabaseSync): string[] {
   db.exec(
