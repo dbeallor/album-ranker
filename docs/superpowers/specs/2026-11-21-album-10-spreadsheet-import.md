@@ -1,7 +1,8 @@
 # Spreadsheet import
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #TBD, with differences: [as-built](../as-built/2026-11-21-album-10-spreadsheet-import.md)
 **Ticket:** [ALBUM-10](https://github.com/dbeallor/album-ranker/issues/10), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Spreadsheet import; [data model](2026-11-21-album-4-data-model-storage.md); [catalog search](2026-11-21-album-5-catalog-search.md)
 
