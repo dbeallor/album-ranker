@@ -27,8 +27,17 @@ export function migrationVersions(dir: string = migrationsDir()): number[] {
   return listMigrations(dir).map((m) => m.version);
 }
 
+/** Names of the migrations not yet recorded in `db`, in number order. Read-only: creates nothing. */
+export function pendingMigrations(db: DatabaseSync, dir: string = migrationsDir()): string[] {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get();
+  const recorded = new Set(table ? db.prepare("SELECT version FROM schema_migrations").all().map((row) => row.version) : []);
+  return listMigrations(dir)
+    .filter((migration) => !recorded.has(migration.version))
+    .map((migration) => migration.name);
+}
+
 /** Applies the migrations not yet recorded, in number order, each in its own transaction. Returns the names applied. */
-export function migrate(db: DatabaseSync): string[] {
+export function migrate(db: DatabaseSync, dir: string = migrationsDir()): string[] {
   db.exec(
     `CREATE TABLE IF NOT EXISTS schema_migrations (
        version INTEGER PRIMARY KEY,
@@ -37,7 +46,7 @@ export function migrate(db: DatabaseSync): string[] {
      )`,
   );
   const applied: string[] = [];
-  for (const migration of listMigrations(migrationsDir())) {
+  for (const migration of listMigrations(dir)) {
     // IMMEDIATE takes the write lock first, so a second process waits and then sees this version recorded.
     db.exec("BEGIN IMMEDIATE");
     try {
