@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/migrate.ts",
     "import": "node --conditions=react-server scripts/import.ts",
-    "import:fixture": "node lib/import/fixtures/make-fixture.ts"
+    "import:fixture": "node lib/import/fixtures/make-fixture.ts",
+    "preview": "node scripts/preview.ts"
   },
   "dependencies": {
     "next": "^16.4.6",
