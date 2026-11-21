@@ -1,0 +1,171 @@
+{
+  "created": "2026-11-21T05:24:05.835Z",
+  "count": 28,
+  "offset": 0,
+  "release-groups": [
+    {
+      "id": "b248d212-aace-3c3e-a23d-e13aaac1f87a",
+      "score": 79,
+      "title": "Getz / Gilberto",
+      "primary-type": "Album",
+      "first-release-date": "1964-03",
+      "artist-credit": [
+        {
+          "name": "Stan Getz",
+          "joinphrase": " / ",
+          "artist": {
+            "id": "8f2422ab-0ec6-4c92-80c4-afe9622fab32",
+            "name": "Stan Getz"
+          }
+        },
+        {
+          "name": "João Gilberto",
+          "joinphrase": " featuring ",
+          "artist": {
+            "id": "286ec4c2-b5ca-4f85-b331-280a6d73dd14",
+            "name": "João Gilberto"
+          }
+        },
+        {
+          "name": "Antônio Carlos Jobim",
+          "artist": {
+            "id": "7a8dbe84-f4c0-4457-bfa3-edced1f8cde0",
+            "name": "Antônio Carlos Jobim"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fe958379-f907-4a46-af9d-7f4e7fb45310",
+      "score": 100,
+      "title": "Getz & Gilberto",
+      "primary-type": "Album",
+      "secondary-types": [
+        "Compilation"
+      ],
+      "first-release-date": "1998",
+      "artist-credit": [
+        {
+          "name": "Getz",
+          "joinphrase": " & ",
+          "artist": {
+            "id": "8f2422ab-0ec6-4c92-80c4-afe9622fab32",
+            "name": "Stan Getz"
+          }
+        },
+        {
+          "name": "Gilberto",
+          "artist": {
+            "id": "8d08cabf-03a3-4f38-a815-8197a0984f19",
+            "name": "Astrud Gilberto"
+          }
+        }
+      ]
+    },
+    {
+      "id": "6ac13850-1f8a-4a09-972b-4eb852cf02c1",
+      "score": 78,
+      "title": "Selections from Getz/Gilberto '76",
+      "primary-type": "EP",
+      "secondary-types": [
+        "Live"
+      ],
+      "first-release-date": "2015-04-18",
+      "artist-credit": [
+        {
+          "name": "Stan Getz",
+          "joinphrase": " & ",
+          "artist": {
+            "id": "8f2422ab-0ec6-4c92-80c4-afe9622fab32",
+            "name": "Stan Getz"
+          }
+        },
+        {
+          "name": "João Gilberto",
+          "artist": {
+            "id": "286ec4c2-b5ca-4f85-b331-280a6d73dd14",
+            "name": "João Gilberto"
+          }
+        }
+      ]
+    },
+    {
+      "id": "04722f19-343f-486a-9658-0bc7becad0db",
+      "score": 42,
+      "title": "The Girl From Ipanema",
+      "primary-type": "Single",
+      "first-release-date": "1964-05",
+      "artist-credit": [
+        {
+          "name": "Getz",
+          "joinphrase": " / ",
+          "artist": {
+            "id": "8f2422ab-0ec6-4c92-80c4-afe9622fab32",
+            "name": "Stan Getz"
+          }
+        },
+        {
+          "name": "Gilberto",
+          "artist": {
+            "id": "286ec4c2-b5ca-4f85-b331-280a6d73dd14",
+            "name": "João Gilberto"
+          }
+        }
+      ]
+    },
+    {
+      "id": "05e450b0-35a8-421c-8e74-047cd4c0cebf",
+      "score": 32,
+      "title": "The Girl From Ipanema",
+      "primary-type": "Album",
+      "artist-credit": [
+        {
+          "name": "Stan Getz",
+          "joinphrase": " & ",
+          "artist": {
+            "id": "8f2422ab-0ec6-4c92-80c4-afe9622fab32",
+            "name": "Stan Getz"
+          }
+        },
+        {
+          "name": "João Gilberto",
+          "artist": {
+            "id": "286ec4c2-b5ca-4f85-b331-280a6d73dd14",
+            "name": "João Gilberto"
+          }
+        }
+      ]
+    },
+    {
+      "id": "50f3f0b8-19b3-4cf0-ae4a-7a505c7a6dbe",
+      "score": 35,
+      "title": "Presents Sha Plays Getz & Pessoa Sings Gilberto",
+      "first-release-date": "2022-03-25",
+      "artist-credit": [
+        {
+          "name": "Copenema",
+          "joinphrase": ", ",
+          "artist": {
+            "id": "f81fb4ec-a024-4466-b7ce-d04d626d96c7",
+            "name": "Copenema"
+          }
+        },
+        {
+          "name": "Rodrigo Sha",
+          "joinphrase": " & ",
+          "artist": {
+            "id": "a44d2cc2-4620-4eef-a410-7ce4c7b473b8",
+            "name": "Rodrigo Sha"
+          }
+        },
+        {
+          "name": "Maurício Pessoa",
+          "artist": {
+            "id": "43e290b2-15bb-49f5-826f-64cd833b62a5",
+            "name": "Maurício Pessoa"
+          }
+        }
+      ]
+    }
+  ]
+}
