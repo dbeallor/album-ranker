@@ -1,0 +1,1834 @@
+diff --git a/.gitignore b/.gitignore
+index f7e2dfe..8f23eda 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -8,5 +8,6 @@ next-env.d.ts
+ data/
+ *.db
+ *.sqlite*
++*.db-*
+ coverage/
+ *.tsbuildinfo
+diff --git a/README.md b/README.md
+index 8a1e525..7213fe9 100644
+--- a/README.md
++++ b/README.md
+@@ -6,8 +6,9 @@ Personal Favorite Album Ranker
+ 1. Install Node 24 or newer (`nvm use` reads `.nvmrc`).
+ 2. `npm install`
+ 3. Optional: `cp .env.example .env` to change `DATABASE_PATH` or `MUSICBRAINZ_USER_AGENT`.
+-4. `npm run dev`
+-5. Open <http://localhost:3000>.
++4. `npm run db:migrate` creates the SQLite file and applies migrations. Optional: the app also migrates on first use.
++5. `npm run dev`
++6. Open <http://localhost:3000>.
+ 
+ ## Search albums
+ 
+diff --git a/docs/stack.md b/docs/stack.md
+index c987374..94ab28b 100644
+--- a/docs/stack.md
++++ b/docs/stack.md
+@@ -12,7 +12,7 @@ One web app with a small server, one SQLite file, run on localhost, config from
+ | Lint | ESLint with the Next.js config (flat config) |
+ | Typecheck | `tsc --noEmit` |
+ | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
+-| Database (later, #4) | SQLite in one file. The driver and any ORM are #4's call |
++| Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
+ 
+ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
+ 
+@@ -21,7 +21,7 @@ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
+ - **One process for the page and the server.** Server components, route handlers and server actions run on the server, so the SQLite file never reaches the browser and any catalog key stays server-side.
+ - **React for the hard screens.** The year page (#6) and the decade list (#9) need drag and drop with keyboard and touch, and React has the most mature libraries for that.
+ - **TypeScript end to end.** The Elo replay (#7), the data model (#4) and the import script (#10) share types with the screens.
+-- **The import script runs on the same code.** #10 can import the same modules and run with `tsx` (added by #10).
++- **The import script runs on the same code.** #10 can import the same modules and run as a script through Node's type stripping, as `scripts/migrate.ts` does (`npm run db:migrate`).
+ - **npm** ships with Node and needs no extra install.
+ - **Vitest** runs TypeScript without a build step and covers both pure logic and components.
+ 
+diff --git a/docs/superpowers/as-built/2026-11-21-album-4-data-model-storage.md b/docs/superpowers/as-built/2026-11-21-album-4-data-model-storage.md
+new file mode 100644
+index 0000000..d57a238
+--- /dev/null
++++ b/docs/superpowers/as-built/2026-11-21-album-4-data-model-storage.md
+@@ -0,0 +1,13 @@
++# As-built: Data model and storage
++
++**Shipped:** in PR #18
++**Ticket:** ALBUM-4
++**Spec:** [2026-11-21-album-4-data-model-storage.md](../specs/2026-11-21-album-4-data-model-storage.md)
++
++## Differs from the spec
++
++- `getDb()` lives in `lib/db/server.ts` (which imports `server-only`), not in `lib/db/connection.ts`, so the migrate script and tests can load `connection.ts` outside Next.js.
++- Duplicate source row keys, more than 25 albums in a decade list, a repeated album in a list and a duplicate review item key all throw `DataError` with code `invalid_input`. The spec names no dedicated codes for them.
++- Year entry update, move and remove return `{ entry, removedDecadeEntries }`, and `setYearPlacements` returns `{ entries, removedDecadeEntries }`, so the screen can tell the user which decade list entries were removed.
++- Moving an album that sits on another year through `setYearPlacements` needs the option `moveFromOtherYears`; without it the call throws `album_has_year_entry`.
++- `npm run db:migrate` runs `node scripts/migrate.ts` (Node's type stripping) and prints Node's `MODULE_TYPELESS_PACKAGE_JSON` warning. `tsconfig.json` gains `allowImportingTsExtensions`.
+diff --git a/docs/superpowers/plans/2026-11-21-album-4-data-model-storage.md b/docs/superpowers/plans/2026-11-21-album-4-data-model-storage.md
+new file mode 100644
+index 0000000..ee82b81
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-21-album-4-data-model-storage.md
+@@ -0,0 +1,42 @@
++# Data model and storage: plan
++
++**Spec:** [2026-11-21-album-4-data-model-storage.md](../specs/2026-11-21-album-4-data-model-storage.md)
++**Ticket:** ALBUM-4
++
++Tests run against `:memory:` databases only. Never open the file at `DATABASE_PATH` in a test, and never commit `data/` or a SQLite file.
++
++## Task 0: verification commands
++
++`npm test`, `npm run lint`, `npm run typecheck` all pass after each task.
++
++## Task 1: connection and migrations
++
++- `lib/db/migrate.ts`: `migrate(db)` reads `*.sql` from `lib/db/migrations/` (resolved from `process.cwd()`), applies the ones missing from `schema_migrations(version, name, applied_at)` in number order, each in its own transaction. A failure rolls back and throws with the file name.
++- `lib/db/connection.ts`: `openDatabase(path)` (creates the parent folder unless `:memory:`; `PRAGMA foreign_keys = ON`, `journal_mode = WAL`, `busy_timeout`; runs `migrate`) and `getDb()`, a lazy singleton using `getConfig().databasePath`. `getDb` imports `server-only`; keep `openDatabase` and `migrate` free of it so tests and the script can load them.
++- `lib/db/migrations/001_initial.sql`: the six tables from the spec, with checks, unique constraints and cascades.
++- `scripts/migrate.ts` and `npm run db:migrate` (`node scripts/migrate.ts`, Node's native type stripping; no new dependency). Add `allowImportingTsExtensions` to `tsconfig.json` if relative `.ts` imports need it.
++- README: add the `npm run db:migrate` step to "Run the app".
++- Test: clean database migrates to latest; a second run changes nothing.
++
++## Task 2: types and artists/albums
++
++- `lib/db/types.ts`: row types, `Placement`, `DataError` with a `code` (`album_has_year_entry`, `rank_taken`, `invalid_rank`, `not_eligible_for_decade`, `catalog_id_taken`, plus `not_found`, `invalid_input`).
++- `lib/db/albums.ts`: find or create artist, create/get/list/delete album (deleting removes an orphaned artist), find by catalog id, `linkToCatalog`.
++- Tests: manual album, link keeps year entry, matchups and decade entry; taken catalog id rejected; delete cascade.
++
++## Task 3: year entries
++
++- `lib/db/year-entries.ts`: add, get by album, list a year, list all, update, move, remove, `setYearPlacements`. Rules 1 to 5 of the spec.
++- Hook rule 7: any change that takes an album out of a ranked/honorable-mention placement in its decade removes its decade list entry in the same transaction and compacts positions; return the removed entries.
++- Tests (table-driven): CRUD, three placements, second entry rejected, duplicate rank rejected, rank on non-ranked rejected, swap of two ranks via `setYearPlacements`, source row key unique.
++
++## Task 4: matchups, decade lists, review items
++
++- `lib/db/matchups.ts`: record, list in replay order (created_at, id), count, undo.
++- `lib/db/decade-lists.ts`: get, `setDecadeList`, list all, eligibility and 25 limit.
++- `lib/db/import-review.ts`: create, find by source row key, list by status, resolve, skip.
++- Tests: insert/order/undo/empty undo, decade rules (eligible, listed, other decade, no entry, over 25, repeat), moving out of the decade closes the gap, review keys unique, resolve and skip keep the row.
++
++## Finish
++
++Run the compaction pass (`compact_check.py`), then open the PR.
+diff --git a/docs/superpowers/specs/2026-11-21-album-4-data-model-storage.md b/docs/superpowers/specs/2026-11-21-album-4-data-model-storage.md
+new file mode 100644
+index 0000000..03c480a
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-21-album-4-data-model-storage.md
+@@ -0,0 +1,156 @@
++# Data model and storage
++
++**Status:** Shipped
++**Date:** 2026-11-21
++**Shipped:** in PR #18, with differences: [as-built](../as-built/2026-11-21-album-4-data-model-storage.md)
++**Ticket:** [ALBUM-4](https://github.com/dbeallor/album-ranker/issues/4), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
++**Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Data model outline, [stack and scaffold](2026-11-20-album-3-stack-scaffold.md)
++
++## Goal
++
++Create the SQLite schema and a small data access layer that the later tickets read and write: artists, albums, year entries, matchups, decade lists and import review items. Only inputs are stored. Ratings and artist scores are computed by the Elo engine (#7) and never written to the database.
++
++## Storage
++
++- **Driver: Node's built-in `node:sqlite`** (`DatabaseSync`). Node 24 or newer is already required, so this adds no dependency and no native build. Calls are synchronous, which suits one user and one file.
++- **No ORM.** Plain SQL in the data access layer, with TypeScript types for each row. Six tables don't need a query builder.
++- **One file** at `DATABASE_PATH` (`lib/config.ts`, default `./data/album-ranker.db`). Opening it creates the parent folder if missing, turns on foreign keys, WAL mode and a busy timeout, then applies pending migrations.
++- **Migrations** are numbered SQL files in `lib/db/migrations/` (`001_initial.sql`, ...). A small runner applies the ones not yet recorded in a `schema_migrations` table, each in its own transaction, in number order. A migration that fails rolls back and stops the app with its file name in the error.
++- `npm run db:migrate` creates the file and applies migrations without starting the app. The README's "Run the app" section gains this step. The app also migrates on first open, so the step is optional.
++- The connection is a lazily opened singleton for the server. Everything in `lib/db/` imports `server-only`, except what the migrate script and tests need to load outside Next.js (the plan settles how).
++- **Tests** open a fresh in-memory database (`:memory:`) per test, with migrations applied. No test touches the file at `DATABASE_PATH`.
++
++## Schema
++
++All ids are integer primary keys. Timestamps are ISO 8601 UTC strings with milliseconds, set by the data access layer.
++
++**artists**
++
++| Column | Type | Rule |
++|---|---|---|
++| name | text | required, not blank |
++| catalog_id | text | nullable; unique when set |
++
++Names are not unique: two catalog artists can share a name. A manual artist (no catalog id) is reused by exact name.
++
++**albums**
++
++| Column | Type | Rule |
++|---|---|---|
++| title | text | required, not blank |
++| artist_id | → artists | required |
++| catalog_id | text | nullable (manual album); unique when set |
++| release_year | integer | nullable; the catalog's original release year |
++| cover_url | text | nullable |
++| created_at | text | |
++
++**year_entries**
++
++| Column | Type | Rule |
++|---|---|---|
++| album_id | → albums | unique (one year entry per album); deleted with the album |
++| year | integer | 1900 to 2100 |
++| placement | text | `ranked`, `honorable_mention` or `listed` |
++| rank | integer | 1 to 10 when `ranked`, null otherwise |
++| source_title, source_artist, source_year | text, text, integer | nullable source row key; all three set or none; unique when set |
++| created_at, updated_at | text | |
++
++Unique (year, rank). Honorable mention and listed entries have no order column. The album's year is this entry's year; `albums.release_year` is only a default for callers.
++
++**matchups**
++
++| Column | Type | Rule |
++|---|---|---|
++| album_a_id, album_b_id | → albums | required, different from each other; deleted with either album |
++| result | text | `a`, `b` or `tie` |
++| created_at | text | |
++
++The replay order is created at, then id. The data access layer doesn't check years or placements: the matchup screen (#7) serves pairs, and the replay skips matchups whose albums have no rating.
++
++**decade_list_entries**
++
++| Column | Type | Rule |
++|---|---|---|
++| decade | integer | a multiple of 10, 1900 to 2100 |
++| album_id | → albums | unique; deleted with the album |
++| position | integer | 1 to 25 |
++
++Unique (decade, position).
++
++**import_review_items**
++
++| Column | Type | Rule |
++|---|---|---|
++| source_title, source_artist, source_year | text, text, integer | required; unique together (the source row key) |
++| source_placement, source_rank | text, integer | the row's placement and rank (rank null unless ranked) |
++| source_decade_rank | integer | nullable; the row's decade top 25 rank |
++| candidates | text (JSON) | candidate matches: catalog id, title, artist, release year, cover URL |
++| status | text | `open`, `resolved` or `skipped` |
++| resolved_album_id | → albums | nullable; set to null if the album is deleted |
++| created_at, updated_at | text | |
++
++Rows are kept after they are resolved or skipped, so a re-run of the import (#10) does not queue them again.
++
++## Rules the layer enforces
++
++The schema enforces what SQL can (uniqueness, checks, foreign keys). The data access layer enforces the rest and throws a `DataError` with a code, so a screen can react (for example, offer to move an album that is already on another year).
++
++1. **One year entry per album.** Adding a second throws `album_has_year_entry`. Moving an album to another year is an explicit call.
++2. **Ranks unique within a year.** Taking a rank in use throws `rank_taken`.
++3. **Rank matches placement.** `ranked` needs a rank from 1 to 10; the other placements have none (`invalid_rank`).
++4. **Gaps in ranks are allowed.** Removing rank 4 leaves slot 4 empty; nothing shifts. The year page (#6) shows empty slots, and many years in the sheet stop at rank 5.
++5. **Whole-year save.** `setYearPlacements(year, { ranked, honorableMentions, listed })` replaces a year's entries in one transaction, so a drag that swaps ranks never hits the unique rank rule halfway. Albums dropped from the lists lose their year entry. An album on another year is rejected unless the call says to move it.
++6. **Decade list eligibility.** An entry's album must have a `ranked` or `honorable_mention` year entry in that decade (`not_eligible_for_decade`).
++7. **Decade lists follow year entries.** When an album moves to another decade, becomes `listed` or loses its year entry, its decade list entry is deleted in the same transaction and the positions below it move up one. The call returns the removed entries so the screen can tell the user.
++8. **Whole-list save.** `setDecadeList(decade, albumIds)` replaces a decade's list in one transaction, up to 25 albums, no repeats.
++9. **Undo** deletes the newest matchup by created at, then id, and returns it. With no matchups it returns nothing.
++10. **Deleting an album** deletes its year entry, matchups and decade list entry (foreign key cascades). An artist left with no albums is deleted too.
++11. **Linking a manual album** to a catalog album sets its catalog id, cover, release year, title and artist (found or created by catalog id), keeping its id, so its year entry, matchups and decade list entry stay. A catalog id that already belongs to another album throws `catalog_id_taken`. A manual artist left with no albums is deleted.
++
++## Data access layer
++
++Modules under `lib/db/`, one per table group, each taking the database as its first argument so tests pass an in-memory one. Roughly:
++
++- **artists and albums:** find or create an artist; create, get, list and delete albums; find an album by catalog id; link a manual album to the catalog.
++- **year entries:** add, get by album, list a year, list all (for the replay), update placement and rank, move to another year, remove, `setYearPlacements`.
++- **matchups:** record, list in replay order, count, undo the newest.
++- **decade lists:** get a decade's list, `setDecadeList`, list all.
++- **import review items:** create, find by source row key, list by status, resolve (with album), skip.
++
++Names and signatures are the plan's call. The layer returns plain typed objects, not driver rows.
++
++## Tests
++
++Table-driven where a rule has cases, against an in-memory database:
++
++- year entry create, read, update and delete; a second entry for one album rejected; a duplicate rank in a year rejected; a rank on a non-ranked placement rejected; the three placements stored and read back; `setYearPlacements` swapping two ranks.
++- manual album created without a catalog id, then linked: its year entry, matchups and decade entry survive; linking to a taken catalog id rejected.
++- matchup insert, list order, undo removes the newest only, undo on an empty table.
++- decade list: an eligible album accepted; a listed album, an album from another decade and an album with no year entry rejected; moving an album out of the decade removes its entry and closes the gap; more than 25 rejected.
++- deleting an album cascades to its year entry, matchups and decade entry.
++- import review items: a duplicate source row key rejected; resolve and skip keep the row.
++- migrations: a clean database migrates to the latest version; running again changes nothing.
++
++## Out of scope
++
++- Catalog search and cover art fetching (#5).
++- Elo math, rating caching and matchup picking (#7).
++- The spreadsheet import and the review page (#10).
++- Screens. This ticket adds no route or component.
++- Backups and down migrations.
++
++## Calls I made
++
++Surprising first.
++
++- **Import review items are kept after they are resolved**, with `open`, `resolved` and `skipped` statuses. The ticket says "deleted once resolved"; the MVP spec says kept, so a re-run of the import doesn't queue a row the user already handled. I followed the MVP spec.
++- **`node:sqlite`, not `better-sqlite3` or an ORM** (Drizzle, Prisma). No new dependency and no native build. `node:sqlite` is newer and less battle-tested than `better-sqlite3`.
++- **Rank gaps are allowed and nothing shifts** when a ranked album is removed. Decade list positions, by contrast, close up when an entry is removed automatically.
++- **Decade list entries are removed automatically** when their album leaves the decade or becomes listed, and the call reports what it removed, as the MVP spec says.
++- **Linking a manual album to a catalog album that already exists in the app is rejected**, not merged. Merging two albums' matchups and year entries is left for when it comes up.
++- **The data layer doesn't check years on matchups.** The screen serves only cross-year pairs, and a matchup stays valid if an album later moves into its opponent's year.
++- **Added two columns the outline doesn't list:** the review item's decade rank (so #10 can restore a decade list entry after review) and `resolved_album_id`.
++- **Years are limited to 1900 to 2100.**
++- **Artist names aren't unique**; manual artists are reused by exact name.
++- **Migrations are `.sql` files.** The agent team's migration clash check only reads `NNN_name.py` files, so it won't number-check these.
++- **No change to `docs/agents/project.md`**, since the ticket doesn't ask for one. Suggested follow-up: set `Migrations directory` to `lib/db/migrations` and `Test database` to "in-memory per test".
+diff --git a/lib/db/albums.test.ts b/lib/db/albums.test.ts
+new file mode 100644
+index 0000000..e1d86cb
+--- /dev/null
++++ b/lib/db/albums.test.ts
+@@ -0,0 +1,86 @@
++import type { DatabaseSync } from "node:sqlite";
++import { describe, expect, it } from "vitest";
++import { createAlbum, deleteAlbum, getAlbum, linkToCatalog, listAlbums } from "./albums";
++import { errorCode, memoryDb } from "./test-db";
++
++const TS = "2020-01-01T00:00:00.000Z";
++
++/** Attaches a year entry, a matchup (against a second album) and a decade list entry using plain SQL. */
++function attachRows(db: DatabaseSync, albumId: number): number {
++  const other = createAlbum(db, { title: "Other", artist: { name: "Someone Else" } });
++  db.prepare(
++    "INSERT INTO year_entries (album_id, year, placement, rank, created_at, updated_at) VALUES (?, 1999, 'ranked', 1, ?, ?)",
++  ).run(albumId, TS, TS);
++  db.prepare(
++    "INSERT INTO matchups (album_a_id, album_b_id, result, created_at) VALUES (?, ?, 'a', ?)",
++  ).run(albumId, other.id, TS);
++  db.prepare("INSERT INTO decade_list_entries (decade, album_id, position) VALUES (1990, ?, 1)").run(albumId);
++  return other.id;
++}
++
++function count(db: DatabaseSync, table: string): number {
++  return Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n);
++}
++
++const catalog = {
++  catalogId: "mb-1",
++  title: "OK Computer",
++  artist: { name: "Radiohead", catalogId: "mb-artist-1" },
++  releaseYear: 1997,
++  coverUrl: "https://example.test/ok.jpg",
++};
++
++describe("albums", () => {
++  it("creates a manual album without a catalog id and reuses its artist by name", () => {
++    const db = memoryDb();
++    const a = createAlbum(db, { title: "Demo", artist: { name: "Local Band" } });
++    const b = createAlbum(db, { title: "Demo 2", artist: { name: "Local Band" } });
++    expect(a).toMatchObject({ title: "Demo", catalogId: null, releaseYear: null, coverUrl: null });
++    expect(a.artist.id).toBe(b.artist.id);
++    expect(listAlbums(db)).toHaveLength(2);
++  });
++
++  it("linking to the catalog keeps the album id, year entry, matchups and decade entry", () => {
++    const db = memoryDb();
++    const album = createAlbum(db, { title: "ok computer", artist: { name: "radiohead" } });
++    attachRows(db, album.id);
++
++    const linked = linkToCatalog(db, album.id, catalog);
++
++    expect(linked).toMatchObject({
++      id: album.id,
++      title: "OK Computer",
++      catalogId: "mb-1",
++      releaseYear: 1997,
++      coverUrl: "https://example.test/ok.jpg",
++      artist: { name: "Radiohead", catalogId: "mb-artist-1" },
++    });
++    expect(count(db, "year_entries")).toBe(1);
++    expect(count(db, "matchups")).toBe(1);
++    expect(count(db, "decade_list_entries")).toBe(1);
++    expect(db.prepare("SELECT name FROM artists WHERE name = 'radiohead'").get()).toBeUndefined();
++  });
++
++  it("rejects linking to a catalog id that belongs to another album", () => {
++    const db = memoryDb();
++    createAlbum(db, { title: "OK Computer", artist: catalog.artist, catalogId: "mb-1" });
++    const manual = createAlbum(db, { title: "Mine", artist: { name: "Me" } });
++    expect(errorCode(() => linkToCatalog(db, manual.id, catalog))).toBe("catalog_id_taken");
++    expect(getAlbum(db, manual.id)!.catalogId).toBeNull();
++  });
++
++  it("deleting an album cascades to its year entry, matchups and decade entry, and drops an orphaned artist", () => {
++    const db = memoryDb();
++    const album = createAlbum(db, { title: "Doomed", artist: { name: "Gone" } });
++    const otherId = attachRows(db, album.id);
++
++    expect(deleteAlbum(db, album.id)).toBe(true);
++
++    expect(count(db, "year_entries")).toBe(0);
++    expect(count(db, "matchups")).toBe(0);
++    expect(count(db, "decade_list_entries")).toBe(0);
++    expect(db.prepare("SELECT 1 FROM artists WHERE name = 'Gone'").get()).toBeUndefined();
++    expect(getAlbum(db, otherId)).toBeDefined();
++    expect(deleteAlbum(db, album.id)).toBe(false);
++  });
++});
+diff --git a/lib/db/albums.ts b/lib/db/albums.ts
+new file mode 100644
+index 0000000..2f8ce0a
+--- /dev/null
++++ b/lib/db/albums.ts
+@@ -0,0 +1,138 @@
++import type { DatabaseSync } from "node:sqlite";
++import { now, transaction } from "./transaction";
++import { DataError, type Album, type Artist } from "./types";
++
++type Row = Record<string, unknown>;
++
++const ALBUM_SELECT = `
++  SELECT al.id, al.title, al.catalog_id, al.release_year, al.cover_url, al.created_at,
++         ar.id AS artist_id, ar.name AS artist_name, ar.catalog_id AS artist_catalog_id
++  FROM albums al JOIN artists ar ON ar.id = al.artist_id`;
++
++function toArtist(row: Row): Artist {
++  return { id: row.id as number, name: row.name as string, catalogId: row.catalog_id as string | null };
++}
++
++function toAlbum(row: Row): Album {
++  return {
++    id: row.id as number,
++    title: row.title as string,
++    artist: {
++      id: row.artist_id as number,
++      name: row.artist_name as string,
++      catalogId: row.artist_catalog_id as string | null,
++    },
++    catalogId: row.catalog_id as string | null,
++    releaseYear: row.release_year as number | null,
++    coverUrl: row.cover_url as string | null,
++    createdAt: row.created_at as string,
++  };
++}
++
++export type ArtistInput = { name: string; catalogId?: string | null };
++
++export type AlbumInput = {
++  title: string;
++  artist: ArtistInput;
++  catalogId?: string | null;
++  releaseYear?: number | null;
++  coverUrl?: string | null;
++};
++
++/** Reuses the artist with this catalog id, or (for a manual artist) this exact name; otherwise creates one. */
++export function findOrCreateArtist(db: DatabaseSync, input: ArtistInput): Artist {
++  const name = input.name.trim();
++  if (name === "") throw new DataError("invalid_input", "Artist name is required.");
++  const catalogId = input.catalogId ?? null;
++
++  const existing =
++    catalogId === null
++      ? db.prepare("SELECT * FROM artists WHERE catalog_id IS NULL AND name = ?").get(name)
++      : db.prepare("SELECT * FROM artists WHERE catalog_id = ?").get(catalogId);
++  if (existing) return toArtist(existing);
++
++  const { lastInsertRowid } = db
++    .prepare("INSERT INTO artists (name, catalog_id) VALUES (?, ?)")
++    .run(name, catalogId);
++  return { id: Number(lastInsertRowid), name, catalogId };
++}
++
++export function getAlbum(db: DatabaseSync, id: number): Album | undefined {
++  const row = db.prepare(`${ALBUM_SELECT} WHERE al.id = ?`).get(id);
++  return row ? toAlbum(row) : undefined;
++}
++
++export function findAlbumByCatalogId(db: DatabaseSync, catalogId: string): Album | undefined {
++  const row = db.prepare(`${ALBUM_SELECT} WHERE al.catalog_id = ?`).get(catalogId);
++  return row ? toAlbum(row) : undefined;
++}
++
++export function listAlbums(db: DatabaseSync): Album[] {
++  return db.prepare(`${ALBUM_SELECT} ORDER BY al.id`).all().map(toAlbum);
++}
++
++function assertCatalogIdFree(db: DatabaseSync, catalogId: string, exceptAlbumId?: number): void {
++  const owner = findAlbumByCatalogId(db, catalogId);
++  if (owner && owner.id !== exceptAlbumId) {
++    throw new DataError("catalog_id_taken", `Catalog id ${catalogId} already belongs to another album.`);
++  }
++}
++
++function deleteArtistIfOrphaned(db: DatabaseSync, artistId: number): void {
++  db.prepare(
++    "DELETE FROM artists WHERE id = ? AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = artists.id)",
++  ).run(artistId);
++}
++
++export function createAlbum(db: DatabaseSync, input: AlbumInput): Album {
++  const title = input.title.trim();
++  if (title === "") throw new DataError("invalid_input", "Album title is required.");
++  const catalogId = input.catalogId ?? null;
++
++  return transaction(db, () => {
++    if (catalogId !== null) assertCatalogIdFree(db, catalogId);
++    const artist = findOrCreateArtist(db, input.artist);
++    const { lastInsertRowid } = db
++      .prepare(
++        "INSERT INTO albums (title, artist_id, catalog_id, release_year, cover_url, created_at) VALUES (?, ?, ?, ?, ?, ?)",
++      )
++      .run(title, artist.id, catalogId, input.releaseYear ?? null, input.coverUrl ?? null, now());
++    return getAlbum(db, Number(lastInsertRowid))!;
++  });
++}
++
++/** Deletes the album (its year entry, matchups and decade list entry cascade) and its artist if no albums remain. */
++export function deleteAlbum(db: DatabaseSync, id: number): boolean {
++  return transaction(db, () => {
++    const album = getAlbum(db, id);
++    if (!album) return false;
++    db.prepare("DELETE FROM albums WHERE id = ?").run(id);
++    deleteArtistIfOrphaned(db, album.artist.id);
++    return true;
++  });
++}
++
++export type CatalogAlbum = {
++  catalogId: string;
++  title: string;
++  artist: { name: string; catalogId: string };
++  releaseYear: number | null;
++  coverUrl: string | null;
++};
++
++/** Points a manual album at a catalog album, keeping its id and everything attached to it. */
++export function linkToCatalog(db: DatabaseSync, albumId: number, catalog: CatalogAlbum): Album {
++  return transaction(db, () => {
++    const album = getAlbum(db, albumId);
++    if (!album) throw new DataError("not_found", `Album ${albumId} does not exist.`);
++    if (catalog.title.trim() === "") throw new DataError("invalid_input", "Album title is required.");
++    assertCatalogIdFree(db, catalog.catalogId, albumId);
++
++    const artist = findOrCreateArtist(db, catalog.artist);
++    db.prepare(
++      "UPDATE albums SET catalog_id = ?, title = ?, artist_id = ?, release_year = ?, cover_url = ? WHERE id = ?",
++    ).run(catalog.catalogId, catalog.title.trim(), artist.id, catalog.releaseYear, catalog.coverUrl, albumId);
++    if (album.artist.id !== artist.id) deleteArtistIfOrphaned(db, album.artist.id);
++    return getAlbum(db, albumId)!;
++  });
++}
+diff --git a/lib/db/connection.ts b/lib/db/connection.ts
+new file mode 100644
+index 0000000..49ca2f2
+--- /dev/null
++++ b/lib/db/connection.ts
+@@ -0,0 +1,35 @@
++import { DatabaseSync } from "node:sqlite";
++import { mkdirSync } from "node:fs";
++import { dirname } from "node:path";
++import { migrate } from "./migrate.ts";
++
++/** Switching a new file to WAL can fail with "database is locked" while another process opens it, and the busy timeout doesn't cover that, so retry. */
++function enableWal(db: DatabaseSync): void {
++  for (let attempt = 1; ; attempt++) {
++    try {
++      db.exec("PRAGMA journal_mode = WAL");
++      return;
++    } catch (error) {
++      if (attempt >= 50 || !(error instanceof Error) || !/locked|busy/i.test(error.message)) throw error;
++      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
++    }
++  }
++}
++
++/** Opens (creating if needed) the database at `path`, configures it and applies pending migrations. */
++export function openDatabase(path: string): DatabaseSync {
++  if (path !== ":memory:") {
++    mkdirSync(dirname(path), { recursive: true });
++  }
++  const db = new DatabaseSync(path);
++  db.exec("PRAGMA busy_timeout = 5000"); // first, so the pragmas below wait for another process
++  db.exec("PRAGMA foreign_keys = ON");
++  enableWal(db);
++  try {
++    migrate(db);
++  } catch (error) {
++    db.close();
++    throw error;
++  }
++  return db;
++}
+diff --git a/lib/db/decade-lists.test.ts b/lib/db/decade-lists.test.ts
+new file mode 100644
+index 0000000..7932c6a
+--- /dev/null
++++ b/lib/db/decade-lists.test.ts
+@@ -0,0 +1,66 @@
++import type { DatabaseSync } from "node:sqlite";
++import { describe, expect, it } from "vitest";
++import { getDecadeList, setDecadeList } from "./decade-lists";
++import { errorCode, memoryDb, seedAlbums } from "./test-db";
++import type { Placement } from "./types";
++import { addYearEntry, moveYearEntry, updateYearEntry } from "./year-entries";
++
++function enter(db: DatabaseSync, albumId: number, year: number, placement: Placement, rank?: number) {
++  addYearEntry(db, { albumId, year, placement, rank });
++}
++
++describe("decade lists", () => {
++  const cases: { name: string; setup: (db: DatabaseSync, id: number) => void; code: string | null }[] = [
++    { name: "a ranked album in the decade is accepted", setup: (db, id) => enter(db, id, 1994, "ranked", 1), code: null },
++    { name: "an honorable mention in the decade is accepted", setup: (db, id) => enter(db, id, 1991, "honorable_mention"), code: null },
++    { name: "a listed album is rejected", setup: (db, id) => enter(db, id, 1994, "listed"), code: "not_eligible_for_decade" },
++    { name: "an album from another decade is rejected", setup: (db, id) => enter(db, id, 2001, "ranked", 1), code: "not_eligible_for_decade" },
++    { name: "an album with no year entry is rejected", setup: () => {}, code: "not_eligible_for_decade" },
++  ];
++  it.each(cases)("$name", ({ setup, code }) => {
++    const db = memoryDb();
++    const [id] = seedAlbums(db, 1);
++    setup(db, id);
++    if (code === null) {
++      expect(setDecadeList(db, 1990, [id])).toMatchObject([{ decade: 1990, albumId: id, position: 1 }]);
++    } else {
++      expect(errorCode(() => setDecadeList(db, 1990, [id]))).toBe(code);
++      expect(getDecadeList(db, 1990)).toEqual([]);
++    }
++  });
++
++  it("rejects more than 25 albums and repeated albums", () => {
++    const db = memoryDb();
++    const ids = seedAlbums(db, 26);
++    expect(errorCode(() => setDecadeList(db, 1990, ids))).toBe("invalid_input");
++    ids.slice(0, 2).forEach((id, i) => enter(db, id, 1990 + i, "listed"));
++    expect(errorCode(() => setDecadeList(db, 1990, [ids[0], ids[0]]))).toBe("invalid_input");
++  });
++
++  it("moving an album out of the decade removes its entry, closes the gap and reports it", () => {
++    const db = memoryDb();
++    const [a, b, c] = seedAlbums(db, 3);
++    enter(db, a, 1990, "ranked", 1);
++    enter(db, b, 1991, "ranked", 1);
++    enter(db, c, 1992, "honorable_mention");
++    setDecadeList(db, 1990, [a, b, c]);
++
++    const { removedDecadeEntries } = moveYearEntry(db, b, 2005);
++
++    expect(removedDecadeEntries).toMatchObject([{ decade: 1990, albumId: b, position: 2 }]);
++    expect(getDecadeList(db, 1990).map((e) => [e.albumId, e.position])).toEqual([
++      [a, 1],
++      [c, 2],
++    ]);
++  });
++
++  it("becoming listed removes the decade entry too", () => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    enter(db, a, 1990, "ranked", 1);
++    setDecadeList(db, 1990, [a]);
++    const { removedDecadeEntries } = updateYearEntry(db, a, { placement: "listed" });
++    expect(removedDecadeEntries).toHaveLength(1);
++    expect(getDecadeList(db, 1990)).toEqual([]);
++  });
++});
+diff --git a/lib/db/decade-lists.ts b/lib/db/decade-lists.ts
+new file mode 100644
+index 0000000..2c7f8a6
+--- /dev/null
++++ b/lib/db/decade-lists.ts
+@@ -0,0 +1,99 @@
++import type { DatabaseSync } from "node:sqlite";
++import { transaction } from "./transaction";
++import { DataError, type DecadeListEntry } from "./types";
++
++type Row = Record<string, unknown>;
++
++function toEntry(row: Row): DecadeListEntry {
++  return {
++    id: row.id as number,
++    decade: row.decade as number,
++    albumId: row.album_id as number,
++    position: row.position as number,
++  };
++}
++
++export function decadeOf(year: number): number {
++  return Math.floor(year / 10) * 10;
++}
++
++/** Replaces a decade's entries with these albums in this order, positions 1 to n. */
++function rewriteDecade(db: DatabaseSync, decade: number, albumIds: number[]): void {
++  db.prepare("DELETE FROM decade_list_entries WHERE decade = ?").run(decade);
++  const insert = db.prepare("INSERT INTO decade_list_entries (decade, album_id, position) VALUES (?, ?, ?)");
++  albumIds.forEach((albumId, index) => insert.run(decade, albumId, index + 1));
++}
++
++/**
++ * Deletes the decade list entries of these albums that no longer have a ranked or honorable mention
++ * year entry in that decade, and closes the gaps they leave. Joins the caller's transaction.
++ */
++export function removeIneligibleDecadeEntries(db: DatabaseSync, albumIds: number[]): DecadeListEntry[] {
++  const removed: DecadeListEntry[] = [];
++  const lookup = db.prepare("SELECT * FROM decade_list_entries WHERE album_id = ?");
++  const eligible = db.prepare(
++    `SELECT 1 FROM year_entries
++     WHERE album_id = ? AND placement IN ('ranked', 'honorable_mention') AND year >= ? AND year < ?`,
++  );
++  for (const albumId of new Set(albumIds)) {
++    const row = lookup.get(albumId);
++    if (!row) continue;
++    const entry = toEntry(row);
++    if (eligible.get(albumId, entry.decade, entry.decade + 10)) continue;
++    removed.push(entry);
++  }
++
++  for (const decade of new Set(removed.map((entry) => entry.decade))) {
++    const gone = new Set(removed.filter((entry) => entry.decade === decade).map((entry) => entry.albumId));
++    const keep = getDecadeList(db, decade)
++      .map((entry) => entry.albumId)
++      .filter((albumId) => !gone.has(albumId));
++    rewriteDecade(db, decade, keep);
++  }
++  return removed;
++}
++
++export function getDecadeList(db: DatabaseSync, decade: number): DecadeListEntry[] {
++  return db
++    .prepare("SELECT * FROM decade_list_entries WHERE decade = ? ORDER BY position")
++    .all(decade)
++    .map(toEntry);
++}
++
++export function listDecadeLists(db: DatabaseSync): DecadeListEntry[] {
++  return db.prepare("SELECT * FROM decade_list_entries ORDER BY decade, position").all().map(toEntry);
++}
++
++export const MAX_DECADE_LIST = 25;
++
++/**
++ * Replaces a decade's list with these albums in order (position 1 first). Each album needs a ranked or
++ * honorable mention year entry in the decade; at most 25 albums, none repeated.
++ */
++export function setDecadeList(db: DatabaseSync, decade: number, albumIds: number[]): DecadeListEntry[] {
++  return transaction(db, () => {
++    if (!Number.isInteger(decade) || decade % 10 !== 0 || decade < 1900 || decade > 2100) {
++      throw new DataError("invalid_input", `Decade must be a multiple of 10 from 1900 to 2100, got ${decade}.`);
++    }
++    if (albumIds.length > MAX_DECADE_LIST) {
++      throw new DataError("invalid_input", `A decade list holds at most ${MAX_DECADE_LIST} albums.`);
++    }
++    if (new Set(albumIds).size !== albumIds.length) {
++      throw new DataError("invalid_input", "An album can be on a decade list only once.");
++    }
++    const eligible = db.prepare(
++      `SELECT 1 FROM year_entries
++       WHERE album_id = ? AND placement IN ('ranked', 'honorable_mention') AND year >= ? AND year < ?`,
++    );
++    for (const albumId of albumIds) {
++      if (!eligible.get(albumId, decade, decade + 10)) {
++        throw new DataError(
++          "not_eligible_for_decade",
++          `Album ${albumId} needs a ranked or honorable mention entry in the ${decade}s.`,
++        );
++      }
++    }
++    rewriteDecade(db, decade, albumIds);
++    return getDecadeList(db, decade);
++  });
++}
+diff --git a/lib/db/import-review.test.ts b/lib/db/import-review.test.ts
+new file mode 100644
+index 0000000..7fec2df
+--- /dev/null
++++ b/lib/db/import-review.test.ts
+@@ -0,0 +1,47 @@
++import { describe, expect, it } from "vitest";
++import {
++  createImportReviewItem,
++  findImportReviewItem,
++  listImportReviewItems,
++  resolveImportReviewItem,
++  skipImportReviewItem,
++} from "./import-review";
++import { errorCode, memoryDb, seedAlbums } from "./test-db";
++
++const source = { title: "Kid A", artist: "Radiohead", year: 2000 };
++const candidate = {
++  catalogId: "mb-1",
++  title: "Kid A",
++  artist: "Radiohead",
++  releaseYear: 2000,
++  coverUrl: null,
++};
++const input = { source, sourcePlacement: "ranked" as const, sourceRank: 1, candidates: [candidate] };
++
++describe("import review items", () => {
++  it("rejects a duplicate source row key", () => {
++    const db = memoryDb();
++    const item = createImportReviewItem(db, input);
++    expect(item).toMatchObject({ status: "open", candidates: [candidate], resolvedAlbumId: null });
++    expect(findImportReviewItem(db, source)).toEqual(item);
++    expect(errorCode(() => createImportReviewItem(db, input))).toBe("invalid_input");
++  });
++
++  const outcomes = [
++    { name: "resolve", status: "resolved", act: (db: Parameters<typeof resolveImportReviewItem>[0], id: number, album: number) => resolveImportReviewItem(db, id, album) },
++    { name: "skip", status: "skipped", act: (db: Parameters<typeof resolveImportReviewItem>[0], id: number) => skipImportReviewItem(db, id) },
++  ] as const;
++  it.each(outcomes)("$name keeps the row", ({ status, act }) => {
++    const db = memoryDb();
++    const [album] = seedAlbums(db, 1);
++    const item = createImportReviewItem(db, input);
++
++    const done = act(db, item.id, album);
++
++    expect(done.status).toBe(status);
++    expect(done.resolvedAlbumId).toBe(status === "resolved" ? album : null);
++    expect(listImportReviewItems(db, "open")).toEqual([]);
++    expect(listImportReviewItems(db, status)).toHaveLength(1);
++    expect(findImportReviewItem(db, source)).toBeDefined();
++  });
++});
+diff --git a/lib/db/import-review.ts b/lib/db/import-review.ts
+new file mode 100644
+index 0000000..5a2e5bb
+--- /dev/null
++++ b/lib/db/import-review.ts
+@@ -0,0 +1,114 @@
++import type { DatabaseSync } from "node:sqlite";
++import { now, transaction } from "./transaction";
++import {
++  DataError,
++  type CatalogCandidate,
++  type ImportReviewItem,
++  type Placement,
++  type ReviewStatus,
++  type SourceRowKey,
++} from "./types";
++
++type Row = Record<string, unknown>;
++
++function toItem(row: Row): ImportReviewItem {
++  return {
++    id: row.id as number,
++    source: {
++      title: row.source_title as string,
++      artist: row.source_artist as string,
++      year: row.source_year as number,
++    },
++    sourcePlacement: row.source_placement as Placement,
++    sourceRank: row.source_rank as number | null,
++    sourceDecadeRank: row.source_decade_rank as number | null,
++    candidates: JSON.parse(row.candidates as string) as CatalogCandidate[],
++    status: row.status as ReviewStatus,
++    resolvedAlbumId: row.resolved_album_id as number | null,
++    createdAt: row.created_at as string,
++    updatedAt: row.updated_at as string,
++  };
++}
++
++export type CreateImportReviewItemInput = {
++  source: SourceRowKey;
++  sourcePlacement: Placement;
++  sourceRank?: number | null;
++  sourceDecadeRank?: number | null;
++  candidates: CatalogCandidate[];
++};
++
++export function findImportReviewItem(db: DatabaseSync, source: SourceRowKey): ImportReviewItem | undefined {
++  const row = db
++    .prepare("SELECT * FROM import_review_items WHERE source_title = ? AND source_artist = ? AND source_year = ?")
++    .get(source.title, source.artist, source.year);
++  return row ? toItem(row) : undefined;
++}
++
++export function createImportReviewItem(db: DatabaseSync, input: CreateImportReviewItemInput): ImportReviewItem {
++  return transaction(db, () => {
++    if (findImportReviewItem(db, input.source)) {
++      throw new DataError("invalid_input", "A review item for this source row already exists.");
++    }
++    const stamp = now();
++    const { lastInsertRowid } = db
++      .prepare(
++        `INSERT INTO import_review_items
++           (source_title, source_artist, source_year, source_placement, source_rank, source_decade_rank,
++            candidates, status, created_at, updated_at)
++         VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
++      )
++      .run(
++        input.source.title,
++        input.source.artist,
++        input.source.year,
++        input.sourcePlacement,
++        input.sourceRank ?? null,
++        input.sourceDecadeRank ?? null,
++        JSON.stringify(input.candidates),
++        stamp,
++        stamp,
++      );
++    return getItem(db, Number(lastInsertRowid));
++  });
++}
++
++function getItem(db: DatabaseSync, id: number): ImportReviewItem {
++  const row = db.prepare("SELECT * FROM import_review_items WHERE id = ?").get(id);
++  if (!row) throw new DataError("not_found", `Import review item ${id} does not exist.`);
++  return toItem(row);
++}
++
++export function listImportReviewItems(db: DatabaseSync, status?: ReviewStatus): ImportReviewItem[] {
++  const rows =
++    status === undefined
++      ? db.prepare("SELECT * FROM import_review_items ORDER BY id").all()
++      : db.prepare("SELECT * FROM import_review_items WHERE status = ? ORDER BY id").all(status);
++  return rows.map(toItem);
++}
++
++function setStatus(db: DatabaseSync, id: number, status: ReviewStatus, albumId: number | null): ImportReviewItem {
++  return transaction(db, () => {
++    getItem(db, id);
++    if (albumId !== null && !db.prepare("SELECT 1 FROM albums WHERE id = ?").get(albumId)) {
++      throw new DataError("not_found", `Album ${albumId} does not exist.`);
++    }
++    db.prepare("UPDATE import_review_items SET status = ?, resolved_album_id = ?, updated_at = ? WHERE id = ?").run(
++      status,
++      albumId,
++      now(),
++      id,
++    );
++    return getItem(db, id);
++  });
++}
++
++/** Marks the item resolved with the album it ended up as. The row stays so a re-import skips it. */
++export function resolveImportReviewItem(db: DatabaseSync, id: number, albumId: number): ImportReviewItem {
++  return setStatus(db, id, "resolved", albumId);
++}
++
++/** Marks the item skipped. The row stays so a re-import skips it. */
++export function skipImportReviewItem(db: DatabaseSync, id: number): ImportReviewItem {
++  return setStatus(db, id, "skipped", null);
++}
+diff --git a/lib/db/matchups.test.ts b/lib/db/matchups.test.ts
+new file mode 100644
+index 0000000..9f649d0
+--- /dev/null
++++ b/lib/db/matchups.test.ts
+@@ -0,0 +1,36 @@
++import { describe, expect, it } from "vitest";
++import { countMatchups, listMatchups, recordMatchup, undoLastMatchup } from "./matchups";
++import { memoryDb, seedAlbums } from "./test-db";
++
++describe("matchups", () => {
++  it("records a matchup and reads it back", () => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    const m = recordMatchup(db, { albumAId: a, albumBId: b, result: "tie" });
++    expect(m).toMatchObject({ albumAId: a, albumBId: b, result: "tie" });
++    expect(listMatchups(db)).toEqual([m]);
++    expect(countMatchups(db)).toBe(1);
++  });
++
++  it("lists in replay order: created at, then id", () => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    const late = recordMatchup(db, { albumAId: a, albumBId: b, result: "a", createdAt: "2024-01-02T00:00:00.000Z" });
++    const early = recordMatchup(db, { albumAId: b, albumBId: a, result: "b", createdAt: "2024-01-01T00:00:00.000Z" });
++    const tieFirst = recordMatchup(db, { albumAId: a, albumBId: b, result: "tie", createdAt: "2024-01-01T00:00:00.000Z" });
++    expect(listMatchups(db).map((m) => m.id)).toEqual([early.id, tieFirst.id, late.id]);
++  });
++
++  it("undo removes only the newest matchup and returns it", () => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    const first = recordMatchup(db, { albumAId: a, albumBId: b, result: "a", createdAt: "2024-01-01T00:00:00.000Z" });
++    const second = recordMatchup(db, { albumAId: a, albumBId: b, result: "b", createdAt: "2024-01-01T00:00:00.000Z" });
++    expect(undoLastMatchup(db)).toEqual(second);
++    expect(listMatchups(db)).toEqual([first]);
++  });
++
++  it("undo on an empty table returns nothing", () => {
++    expect(undoLastMatchup(memoryDb())).toBeUndefined();
++  });
++});
+diff --git a/lib/db/matchups.ts b/lib/db/matchups.ts
+new file mode 100644
+index 0000000..bda3672
+--- /dev/null
++++ b/lib/db/matchups.ts
+@@ -0,0 +1,63 @@
++import type { DatabaseSync } from "node:sqlite";
++import { now, transaction } from "./transaction";
++import { DataError, type Matchup, type MatchupResult } from "./types";
++
++type Row = Record<string, unknown>;
++
++const RESULTS: MatchupResult[] = ["a", "b", "tie"];
++const REPLAY_ORDER = "ORDER BY created_at, id";
++
++function toMatchup(row: Row): Matchup {
++  return {
++    id: row.id as number,
++    albumAId: row.album_a_id as number,
++    albumBId: row.album_b_id as number,
++    result: row.result as MatchupResult,
++    createdAt: row.created_at as string,
++  };
++}
++
++export type RecordMatchupInput = {
++  albumAId: number;
++  albumBId: number;
++  result: MatchupResult;
++  /** Defaults to now. Mainly for tests and imports. */
++  createdAt?: string;
++};
++
++export function recordMatchup(db: DatabaseSync, input: RecordMatchupInput): Matchup {
++  if (input.albumAId === input.albumBId) {
++    throw new DataError("invalid_input", "A matchup needs two different albums.");
++  }
++  if (!RESULTS.includes(input.result)) {
++    throw new DataError("invalid_input", `Unknown matchup result ${String(input.result)}.`);
++  }
++  for (const albumId of [input.albumAId, input.albumBId]) {
++    if (!db.prepare("SELECT 1 FROM albums WHERE id = ?").get(albumId)) {
++      throw new DataError("not_found", `Album ${albumId} does not exist.`);
++    }
++  }
++  const { lastInsertRowid } = db
++    .prepare("INSERT INTO matchups (album_a_id, album_b_id, result, created_at) VALUES (?, ?, ?, ?)")
++    .run(input.albumAId, input.albumBId, input.result, input.createdAt ?? now());
++  return toMatchup(db.prepare("SELECT * FROM matchups WHERE id = ?").get(Number(lastInsertRowid))!);
++}
++
++/** All matchups in replay order: created at, then id. */
++export function listMatchups(db: DatabaseSync): Matchup[] {
++  return db.prepare(`SELECT * FROM matchups ${REPLAY_ORDER}`).all().map(toMatchup);
++}
++
++export function countMatchups(db: DatabaseSync): number {
++  return Number(db.prepare("SELECT COUNT(*) AS n FROM matchups").get()!.n);
++}
++
++/** Deletes and returns the newest matchup (created at, then id), or returns undefined if there are none. */
++export function undoLastMatchup(db: DatabaseSync): Matchup | undefined {
++  return transaction(db, () => {
++    const row = db.prepare("SELECT * FROM matchups ORDER BY created_at DESC, id DESC LIMIT 1").get();
++    if (!row) return undefined;
++    db.prepare("DELETE FROM matchups WHERE id = ?").run(row.id);
++    return toMatchup(row);
++  });
++}
+diff --git a/lib/db/migrate.test.ts b/lib/db/migrate.test.ts
+new file mode 100644
+index 0000000..28984e9
+--- /dev/null
++++ b/lib/db/migrate.test.ts
+@@ -0,0 +1,35 @@
++import { readdirSync } from "node:fs";
++import { join } from "node:path";
++import { describe, expect, it } from "vitest";
++import { migrate } from "./migrate";
++import { memoryDb } from "./test-db";
++
++const latest = readdirSync(join(process.cwd(), "lib", "db", "migrations")).filter((f) =>
++  f.endsWith(".sql"),
++).length;
++
++describe("migrate", () => {
++  it("brings a clean database to the latest version", () => {
++    const db = memoryDb();
++    const versions = db.prepare("SELECT version FROM schema_migrations ORDER BY version").all();
++    expect(versions.map((v) => v.version)).toEqual(Array.from({ length: latest }, (_, i) => i + 1));
++    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all();
++    expect(tables.map((t) => t.name)).toEqual(
++      expect.arrayContaining([
++        "artists",
++        "albums",
++        "year_entries",
++        "matchups",
++        "decade_list_entries",
++        "import_review_items",
++      ]),
++    );
++  });
++
++  it("changes nothing when run again", () => {
++    const db = memoryDb();
++    const before = db.prepare("SELECT * FROM schema_migrations").all();
++    expect(migrate(db)).toEqual([]);
++    expect(db.prepare("SELECT * FROM schema_migrations").all()).toEqual(before);
++  });
++});
+diff --git a/lib/db/migrate.ts b/lib/db/migrate.ts
+new file mode 100644
+index 0000000..74ea035
+--- /dev/null
++++ b/lib/db/migrate.ts
+@@ -0,0 +1,59 @@
++import type { DatabaseSync } from "node:sqlite";
++import { readdirSync, readFileSync } from "node:fs";
++import { join } from "node:path";
++
++const MIGRATION_FILE = /^(\d+)_.+\.sql$/;
++
++type Migration = { version: number; name: string; file: string };
++
++/** Relative to the working directory, so run the app and the migrate script from the repo root. */
++function migrationsDir(): string {
++  return join(process.cwd(), "lib", "db", "migrations");
++}
++
++function listMigrations(dir: string): Migration[] {
++  const migrations: Migration[] = [];
++  for (const file of readdirSync(dir)) {
++    const match = MIGRATION_FILE.exec(file);
++    if (match) {
++      migrations.push({ version: Number(match[1]), name: file, file: join(dir, file) });
++    }
++  }
++  return migrations.sort((a, b) => a.version - b.version);
++}
++
++/** Applies the migrations not yet recorded, in number order, each in its own transaction. Returns the names applied. */
++export function migrate(db: DatabaseSync): string[] {
++  db.exec(
++    `CREATE TABLE IF NOT EXISTS schema_migrations (
++       version INTEGER PRIMARY KEY,
++       name TEXT NOT NULL,
++       applied_at TEXT NOT NULL
++     )`,
++  );
++  const applied: string[] = [];
++  for (const migration of listMigrations(migrationsDir())) {
++    // IMMEDIATE takes the write lock first, so a second process waits and then sees this version recorded.
++    db.exec("BEGIN IMMEDIATE");
++    try {
++      const recorded = db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(migration.version);
++      if (recorded) {
++        db.exec("COMMIT");
++        continue;
++      }
++      db.exec(readFileSync(migration.file, "utf8"));
++      db.prepare("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)").run(
++        migration.version,
++        migration.name,
++        new Date().toISOString(),
++      );
++      db.exec("COMMIT");
++    } catch (error) {
++      if (db.isTransaction) db.exec("ROLLBACK");
++      const reason = error instanceof Error ? error.message : String(error);
++      throw new Error(`Migration ${migration.name} failed: ${reason}`, { cause: error });
++    }
++    applied.push(migration.name);
++  }
++  return applied;
++}
+diff --git a/lib/db/migrations/001_initial.sql b/lib/db/migrations/001_initial.sql
+new file mode 100644
+index 0000000..a5873cf
+--- /dev/null
++++ b/lib/db/migrations/001_initial.sql
+@@ -0,0 +1,81 @@
++CREATE TABLE artists (
++  id INTEGER PRIMARY KEY,
++  name TEXT NOT NULL CHECK (trim(name) <> ''),
++  catalog_id TEXT UNIQUE
++);
++
++CREATE TABLE albums (
++  id INTEGER PRIMARY KEY,
++  title TEXT NOT NULL CHECK (trim(title) <> ''),
++  artist_id INTEGER NOT NULL REFERENCES artists (id),
++  catalog_id TEXT UNIQUE,
++  release_year INTEGER,
++  cover_url TEXT,
++  created_at TEXT NOT NULL
++);
++
++CREATE INDEX albums_artist_id ON albums (artist_id);
++
++CREATE TABLE year_entries (
++  id INTEGER PRIMARY KEY,
++  album_id INTEGER NOT NULL UNIQUE REFERENCES albums (id) ON DELETE CASCADE,
++  year INTEGER NOT NULL CHECK (year BETWEEN 1900 AND 2100),
++  placement TEXT NOT NULL CHECK (placement IN ('ranked', 'honorable_mention', 'listed')),
++  rank INTEGER,
++  source_title TEXT,
++  source_artist TEXT,
++  source_year INTEGER,
++  created_at TEXT NOT NULL,
++  updated_at TEXT NOT NULL,
++  UNIQUE (year, rank),
++  UNIQUE (source_title, source_artist, source_year),
++  CHECK (
++    (placement = 'ranked' AND rank BETWEEN 1 AND 10)
++    OR (placement <> 'ranked' AND rank IS NULL)
++  ),
++  CHECK (
++    (source_title IS NULL AND source_artist IS NULL AND source_year IS NULL)
++    OR (source_title IS NOT NULL AND source_artist IS NOT NULL AND source_year IS NOT NULL)
++  )
++);
++
++CREATE TABLE matchups (
++  id INTEGER PRIMARY KEY,
++  album_a_id INTEGER NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
++  album_b_id INTEGER NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
++  result TEXT NOT NULL CHECK (result IN ('a', 'b', 'tie')),
++  created_at TEXT NOT NULL,
++  CHECK (album_a_id <> album_b_id)
++);
++
++CREATE INDEX matchups_replay_order ON matchups (created_at, id);
++CREATE INDEX matchups_album_a_id ON matchups (album_a_id);
++CREATE INDEX matchups_album_b_id ON matchups (album_b_id);
++
++CREATE TABLE decade_list_entries (
++  id INTEGER PRIMARY KEY,
++  decade INTEGER NOT NULL CHECK (decade BETWEEN 1900 AND 2100 AND decade % 10 = 0),
++  album_id INTEGER NOT NULL UNIQUE REFERENCES albums (id) ON DELETE CASCADE,
++  position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 25),
++  UNIQUE (decade, position)
++);
++
++CREATE TABLE import_review_items (
++  id INTEGER PRIMARY KEY,
++  source_title TEXT NOT NULL,
++  source_artist TEXT NOT NULL,
++  source_year INTEGER NOT NULL,
++  source_placement TEXT NOT NULL CHECK (source_placement IN ('ranked', 'honorable_mention', 'listed')),
++  source_rank INTEGER,
++  source_decade_rank INTEGER,
++  candidates TEXT NOT NULL DEFAULT '[]',
++  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'skipped')),
++  resolved_album_id INTEGER REFERENCES albums (id) ON DELETE SET NULL,
++  created_at TEXT NOT NULL,
++  updated_at TEXT NOT NULL,
++  UNIQUE (source_title, source_artist, source_year),
++  CHECK (
++    (source_placement = 'ranked' AND source_rank BETWEEN 1 AND 10)
++    OR (source_placement <> 'ranked' AND source_rank IS NULL)
++  )
++);
+diff --git a/lib/db/server.ts b/lib/db/server.ts
+new file mode 100644
+index 0000000..0373b08
+--- /dev/null
++++ b/lib/db/server.ts
+@@ -0,0 +1,12 @@
++import "server-only";
++import type { DatabaseSync } from "node:sqlite";
++import { getConfig } from "../config.ts";
++import { openDatabase } from "./connection.ts";
++
++let db: DatabaseSync | undefined;
++
++/** The server's database, opened on first use at `DATABASE_PATH`. */
++export function getDb(): DatabaseSync {
++  db ??= openDatabase(getConfig().databasePath);
++  return db;
++}
+diff --git a/lib/db/test-db.ts b/lib/db/test-db.ts
+new file mode 100644
+index 0000000..35d2de3
+--- /dev/null
++++ b/lib/db/test-db.ts
+@@ -0,0 +1,27 @@
++import type { DatabaseSync } from "node:sqlite";
++import { createAlbum } from "./albums";
++import { openDatabase } from "./connection.ts";
++import { DataError } from "./types";
++
++/** A fresh in-memory database with all migrations applied. Tests use this and never open a file. */
++export function memoryDb(): DatabaseSync {
++  return openDatabase(":memory:");
++}
++
++/** Runs `fn` and returns the code of the DataError it throws; fails if it throws anything else or nothing. */
++export function errorCode(fn: () => unknown): string {
++  try {
++    fn();
++  } catch (error) {
++    if (error instanceof DataError) return error.code;
++    throw error;
++  }
++  throw new Error("Expected a DataError, but nothing was thrown.");
++}
++
++/** Creates `count` manual albums by distinct artists and returns their ids. */
++export function seedAlbums(db: DatabaseSync, count: number): number[] {
++  return Array.from({ length: count }, (_, i) =>
++    createAlbum(db, { title: `Album ${i + 1}`, artist: { name: `Artist ${i + 1}` } }).id,
++  );
++}
+diff --git a/lib/db/transaction.ts b/lib/db/transaction.ts
+new file mode 100644
+index 0000000..19ff4d5
+--- /dev/null
++++ b/lib/db/transaction.ts
+@@ -0,0 +1,19 @@
++import type { DatabaseSync } from "node:sqlite";
++
++/** Runs `fn` in a transaction. Inside an open transaction it joins that one, so callers can nest. */
++export function transaction<T>(db: DatabaseSync, fn: () => T): T {
++  if (db.isTransaction) return fn();
++  db.exec("BEGIN IMMEDIATE");
++  try {
++    const result = fn();
++    db.exec("COMMIT");
++    return result;
++  } catch (error) {
++    db.exec("ROLLBACK");
++    throw error;
++  }
++}
++
++export function now(): string {
++  return new Date().toISOString();
++}
+diff --git a/lib/db/types.ts b/lib/db/types.ts
+new file mode 100644
+index 0000000..e4f35de
+--- /dev/null
++++ b/lib/db/types.ts
+@@ -0,0 +1,91 @@
++export type Placement = "ranked" | "honorable_mention" | "listed";
++export type MatchupResult = "a" | "b" | "tie";
++export type ReviewStatus = "open" | "resolved" | "skipped";
++
++export type DataErrorCode =
++  | "album_has_year_entry"
++  | "rank_taken"
++  | "invalid_rank"
++  | "not_eligible_for_decade"
++  | "catalog_id_taken"
++  | "not_found"
++  | "invalid_input";
++
++export class DataError extends Error {
++  readonly code: DataErrorCode;
++
++  constructor(code: DataErrorCode, message: string) {
++    super(message);
++    this.name = "DataError";
++    this.code = code;
++  }
++}
++
++export type Artist = {
++  id: number;
++  name: string;
++  catalogId: string | null;
++};
++
++export type Album = {
++  id: number;
++  title: string;
++  artist: Artist;
++  catalogId: string | null;
++  releaseYear: number | null;
++  coverUrl: string | null;
++  createdAt: string;
++};
++
++export type SourceRowKey = {
++  title: string;
++  artist: string;
++  year: number;
++};
++
++export type YearEntry = {
++  id: number;
++  albumId: number;
++  year: number;
++  placement: Placement;
++  rank: number | null;
++  source: SourceRowKey | null;
++  createdAt: string;
++  updatedAt: string;
++};
++
++export type Matchup = {
++  id: number;
++  albumAId: number;
++  albumBId: number;
++  result: MatchupResult;
++  createdAt: string;
++};
++
++export type DecadeListEntry = {
++  id: number;
++  decade: number;
++  albumId: number;
++  position: number;
++};
++
++export type CatalogCandidate = {
++  catalogId: string;
++  title: string;
++  artist: string;
++  releaseYear: number | null;
++  coverUrl: string | null;
++};
++
++export type ImportReviewItem = {
++  id: number;
++  source: SourceRowKey;
++  sourcePlacement: Placement;
++  sourceRank: number | null;
++  sourceDecadeRank: number | null;
++  candidates: CatalogCandidate[];
++  status: ReviewStatus;
++  resolvedAlbumId: number | null;
++  createdAt: string;
++  updatedAt: string;
++};
+diff --git a/lib/db/year-entries.test.ts b/lib/db/year-entries.test.ts
+new file mode 100644
+index 0000000..07a9871
+--- /dev/null
++++ b/lib/db/year-entries.test.ts
+@@ -0,0 +1,103 @@
++import { describe, expect, it } from "vitest";
++import {
++  addYearEntry,
++  getYearEntryByAlbum,
++  listAllYearEntries,
++  listYear,
++  removeYearEntry,
++  setYearPlacements,
++  updateYearEntry,
++} from "./year-entries";
++import { errorCode, memoryDb, seedAlbums } from "./test-db";
++import type { Placement } from "./types";
++
++describe("year entries", () => {
++  it("creates, reads, updates and deletes an entry", () => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++
++    const added = addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 3 });
++    expect(added).toMatchObject({ albumId: a, year: 1999, placement: "ranked", rank: 3, source: null });
++    expect(getYearEntryByAlbum(db, a)).toEqual(added);
++    expect(listYear(db, 1999)).toEqual([added]);
++
++    const { entry } = updateYearEntry(db, a, { placement: "ranked", rank: 1 });
++    expect(entry.rank).toBe(1);
++    expect(listAllYearEntries(db)).toEqual([entry]);
++
++    removeYearEntry(db, a);
++    expect(getYearEntryByAlbum(db, a)).toBeUndefined();
++    expect(listAllYearEntries(db)).toEqual([]);
++  });
++
++  const placements: { placement: Placement; rank: number | null }[] = [
++    { placement: "ranked", rank: 2 },
++    { placement: "honorable_mention", rank: null },
++    { placement: "listed", rank: null },
++  ];
++  it.each(placements)("stores and reads back $placement", ({ placement, rank }) => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    addYearEntry(db, { albumId: a, year: 2004, placement, rank });
++    expect(getYearEntryByAlbum(db, a)).toMatchObject({ year: 2004, placement, rank });
++  });
++
++  const rejections: {
++    name: string;
++    second: { year: number; placement: Placement; rank?: number | null; sameAlbum?: boolean };
++    code: string;
++  }[] = [
++    {
++      name: "a second entry for one album",
++      second: { year: 2001, placement: "listed", sameAlbum: true },
++      code: "album_has_year_entry",
++    },
++    { name: "a duplicate rank in a year", second: { year: 1999, placement: "ranked", rank: 1 }, code: "rank_taken" },
++    { name: "a rank on a honorable mention", second: { year: 1999, placement: "honorable_mention", rank: 4 }, code: "invalid_rank" },
++    { name: "a ranked entry with no rank", second: { year: 1999, placement: "ranked" }, code: "invalid_rank" },
++    { name: "a rank above 10", second: { year: 1999, placement: "ranked", rank: 11 }, code: "invalid_rank" },
++  ];
++  it.each(rejections)("rejects $name", ({ second, code }) => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1 });
++    const albumId = second.sameAlbum ? a : b;
++    expect(errorCode(() => addYearEntry(db, { albumId, ...second }))).toBe(code);
++    expect(listAllYearEntries(db)).toHaveLength(1);
++  });
++
++  it("swaps two ranks with setYearPlacements and keeps gaps", () => {
++    const db = memoryDb();
++    const [a, b, c] = seedAlbums(db, 3);
++    addYearEntry(db, { albumId: a, year: 2010, placement: "ranked", rank: 1 });
++    addYearEntry(db, { albumId: b, year: 2010, placement: "ranked", rank: 2 });
++    addYearEntry(db, { albumId: c, year: 2010, placement: "ranked", rank: 5 });
++
++    const { entries } = setYearPlacements(db, 2010, {
++      ranked: [
++        { albumId: a, rank: 2 },
++        { albumId: b, rank: 1 },
++        { albumId: c, rank: 5 },
++      ],
++      honorableMentions: [],
++      listed: [],
++    });
++
++    expect(entries.map((e) => [e.albumId, e.rank])).toEqual([
++      [b, 1],
++      [a, 2],
++      [c, 5],
++    ]);
++  });
++
++  it("enforces a unique source row key", () => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    const source = { title: "Kid A", artist: "Radiohead", year: 2000 };
++    addYearEntry(db, { albumId: a, year: 2000, placement: "listed", source });
++    expect(getYearEntryByAlbum(db, a)!.source).toEqual(source);
++    expect(errorCode(() => addYearEntry(db, { albumId: b, year: 2000, placement: "listed", source }))).toBe(
++      "invalid_input",
++    );
++  });
++});
+diff --git a/lib/db/year-entries.ts b/lib/db/year-entries.ts
+new file mode 100644
+index 0000000..a888ba0
+--- /dev/null
++++ b/lib/db/year-entries.ts
+@@ -0,0 +1,298 @@
++import type { DatabaseSync } from "node:sqlite";
++import { removeIneligibleDecadeEntries } from "./decade-lists";
++import { now, transaction } from "./transaction";
++import {
++  DataError,
++  type DecadeListEntry,
++  type Placement,
++  type SourceRowKey,
++  type YearEntry,
++} from "./types";
++
++type Row = Record<string, unknown>;
++
++const PLACEMENTS: Placement[] = ["ranked", "honorable_mention", "listed"];
++const MAX_RANK = 10;
++
++const ORDER = `ORDER BY year,
++  CASE placement WHEN 'ranked' THEN 0 WHEN 'honorable_mention' THEN 1 ELSE 2 END, rank, id`;
++
++function toEntry(row: Row): YearEntry {
++  const source =
++    row.source_title === null
++      ? null
++      : {
++          title: row.source_title as string,
++          artist: row.source_artist as string,
++          year: row.source_year as number,
++        };
++  return {
++    id: row.id as number,
++    albumId: row.album_id as number,
++    year: row.year as number,
++    placement: row.placement as Placement,
++    rank: row.rank as number | null,
++    source,
++    createdAt: row.created_at as string,
++    updatedAt: row.updated_at as string,
++  };
++}
++
++/** A year entry change plus the decade list entries it removed (rule 7), so the screen can tell the user. */
++export type YearChange = { entry: YearEntry; removedDecadeEntries: DecadeListEntry[] };
++
++function checkYear(year: number): void {
++  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
++    throw new DataError("invalid_input", `Year must be a whole number from 1900 to 2100, got ${year}.`);
++  }
++}
++
++function checkPlacement(placement: Placement, rank: number | null | undefined): number | null {
++  if (!PLACEMENTS.includes(placement)) {
++    throw new DataError("invalid_input", `Unknown placement ${String(placement)}.`);
++  }
++  if (placement === "ranked") {
++    if (rank === null || rank === undefined || !Number.isInteger(rank) || rank < 1 || rank > MAX_RANK) {
++      throw new DataError("invalid_rank", `A ranked album needs a rank from 1 to ${MAX_RANK}.`);
++    }
++    return rank;
++  }
++  if (rank !== null && rank !== undefined) {
++    throw new DataError("invalid_rank", `A ${placement} album has no rank.`);
++  }
++  return null;
++}
++
++function assertRankFree(db: DatabaseSync, year: number, rank: number | null, exceptAlbumId?: number): void {
++  if (rank === null) return;
++  const holder = db.prepare("SELECT album_id FROM year_entries WHERE year = ? AND rank = ?").get(year, rank);
++  if (holder && holder.album_id !== exceptAlbumId) {
++    throw new DataError("rank_taken", `Rank ${rank} in ${year} is already taken.`);
++  }
++}
++
++function assertAlbumExists(db: DatabaseSync, albumId: number): void {
++  if (!db.prepare("SELECT 1 FROM albums WHERE id = ?").get(albumId)) {
++    throw new DataError("not_found", `Album ${albumId} does not exist.`);
++  }
++}
++
++export function getYearEntryByAlbum(db: DatabaseSync, albumId: number): YearEntry | undefined {
++  const row = db.prepare("SELECT * FROM year_entries WHERE album_id = ?").get(albumId);
++  return row ? toEntry(row) : undefined;
++}
++
++/** A year's entries: ranked by rank, then honorable mentions, then listed. */
++export function listYear(db: DatabaseSync, year: number): YearEntry[] {
++  return db.prepare(`SELECT * FROM year_entries WHERE year = ? ${ORDER}`).all(year).map(toEntry);
++}
++
++export function listAllYearEntries(db: DatabaseSync): YearEntry[] {
++  return db.prepare(`SELECT * FROM year_entries ${ORDER}`).all().map(toEntry);
++}
++
++export type AddYearEntryInput = {
++  albumId: number;
++  year: number;
++  placement: Placement;
++  rank?: number | null;
++  source?: SourceRowKey | null;
++};
++
++export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEntry {
++  return transaction(db, () => {
++    checkYear(input.year);
++    const rank = checkPlacement(input.placement, input.rank);
++    assertAlbumExists(db, input.albumId);
++    if (getYearEntryByAlbum(db, input.albumId)) {
++      throw new DataError("album_has_year_entry", `Album ${input.albumId} already has a year entry.`);
++    }
++    assertRankFree(db, input.year, rank);
++
++    const source = input.source ?? null;
++    if (
++      source &&
++      db
++        .prepare("SELECT 1 FROM year_entries WHERE source_title = ? AND source_artist = ? AND source_year = ?")
++        .get(source.title, source.artist, source.year)
++    ) {
++      throw new DataError("invalid_input", "A year entry for this source row already exists.");
++    }
++
++    const stamp = now();
++    db.prepare(
++      `INSERT INTO year_entries
++         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++    ).run(
++      input.albumId,
++      input.year,
++      input.placement,
++      rank,
++      source?.title ?? null,
++      source?.artist ?? null,
++      source?.year ?? null,
++      stamp,
++      stamp,
++    );
++    return getYearEntryByAlbum(db, input.albumId)!;
++  });
++}
++
++function changeEntry(
++  db: DatabaseSync,
++  albumId: number,
++  year: number,
++  placement: Placement,
++  rankInput: number | null | undefined,
++): YearChange {
++  checkYear(year);
++  const rank = checkPlacement(placement, rankInput);
++  assertRankFree(db, year, rank, albumId);
++  db.prepare("UPDATE year_entries SET year = ?, placement = ?, rank = ?, updated_at = ? WHERE album_id = ?").run(
++    year,
++    placement,
++    rank,
++    now(),
++    albumId,
++  );
++  return {
++    entry: getYearEntryByAlbum(db, albumId)!,
++    removedDecadeEntries: removeIneligibleDecadeEntries(db, [albumId]),
++  };
++}
++
++function requireEntry(db: DatabaseSync, albumId: number): YearEntry {
++  const entry = getYearEntryByAlbum(db, albumId);
++  if (!entry) throw new DataError("not_found", `Album ${albumId} has no year entry.`);
++  return entry;
++}
++
++/** Changes the placement and rank within the entry's year. */
++export function updateYearEntry(
++  db: DatabaseSync,
++  albumId: number,
++  change: { placement: Placement; rank?: number | null },
++): YearChange {
++  return transaction(db, () => {
++    const current = requireEntry(db, albumId);
++    return changeEntry(db, albumId, current.year, change.placement, change.rank);
++  });
++}
++
++/** Moves the album's year entry to another year, keeping placement and rank unless `target` says otherwise. */
++export function moveYearEntry(
++  db: DatabaseSync,
++  albumId: number,
++  year: number,
++  target?: { placement: Placement; rank?: number | null },
++): YearChange {
++  return transaction(db, () => {
++    const current = requireEntry(db, albumId);
++    return changeEntry(
++      db,
++      albumId,
++      year,
++      target?.placement ?? current.placement,
++      target ? target.rank : current.rank,
++    );
++  });
++}
++
++/** Removes the album's year entry. Other ranks stay where they are. */
++export function removeYearEntry(db: DatabaseSync, albumId: number): YearChange {
++  return transaction(db, () => {
++    const entry = requireEntry(db, albumId);
++    db.prepare("DELETE FROM year_entries WHERE album_id = ?").run(albumId);
++    return { entry, removedDecadeEntries: removeIneligibleDecadeEntries(db, [albumId]) };
++  });
++}
++
++export type YearPlacements = {
++  ranked: { albumId: number; rank: number }[];
++  honorableMentions: number[];
++  listed: number[];
++};
++
++/**
++ * Replaces a year's entries with these lists in one transaction. Albums dropped from the lists lose their
++ * year entry. An album with an entry in another year is rejected unless `moveFromOtherYears` is set.
++ */
++export function setYearPlacements(
++  db: DatabaseSync,
++  year: number,
++  placements: YearPlacements,
++  options: { moveFromOtherYears?: boolean } = {},
++): { entries: YearEntry[]; removedDecadeEntries: DecadeListEntry[] } {
++  return transaction(db, () => {
++    checkYear(year);
++    const wanted: { albumId: number; placement: Placement; rank: number | null }[] = [
++      ...placements.ranked.map(({ albumId, rank }) => ({
++        albumId,
++        placement: "ranked" as const,
++        rank: checkPlacement("ranked", rank),
++      })),
++      ...placements.honorableMentions.map((albumId) => ({
++        albumId,
++        placement: "honorable_mention" as const,
++        rank: null,
++      })),
++      ...placements.listed.map((albumId) => ({ albumId, placement: "listed" as const, rank: null })),
++    ];
++
++    const albumIds = new Set<number>();
++    const ranks = new Set<number>();
++    for (const item of wanted) {
++      if (albumIds.has(item.albumId)) {
++        throw new DataError("invalid_input", `Album ${item.albumId} appears more than once.`);
++      }
++      albumIds.add(item.albumId);
++      if (item.rank !== null) {
++        if (ranks.has(item.rank)) throw new DataError("rank_taken", `Rank ${item.rank} is used twice.`);
++        ranks.add(item.rank);
++      }
++      assertAlbumExists(db, item.albumId);
++    }
++
++    const existing = db
++      .prepare("SELECT * FROM year_entries")
++      .all()
++      .map(toEntry)
++      .filter((entry) => entry.year === year || albumIds.has(entry.albumId));
++    for (const entry of existing) {
++      if (entry.year !== year && !options.moveFromOtherYears) {
++        throw new DataError("album_has_year_entry", `Album ${entry.albumId} already has an entry in ${entry.year}.`);
++      }
++    }
++
++    const previous = new Map(existing.map((entry) => [entry.albumId, entry]));
++    const remove = db.prepare("DELETE FROM year_entries WHERE id = ?");
++    for (const entry of existing) remove.run(entry.id);
++
++    const insert = db.prepare(
++      `INSERT INTO year_entries
++         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++    );
++    const stamp = now();
++    for (const item of wanted) {
++      const before = previous.get(item.albumId);
++      insert.run(
++        item.albumId,
++        year,
++        item.placement,
++        item.rank,
++        before?.source?.title ?? null,
++        before?.source?.artist ?? null,
++        before?.source?.year ?? null,
++        before?.createdAt ?? stamp,
++        stamp,
++      );
++    }
++
++    return {
++      entries: listYear(db, year),
++      removedDecadeEntries: removeIneligibleDecadeEntries(db, [...previous.keys(), ...albumIds]),
++    };
++  });
++}
+diff --git a/package.json b/package.json
+index 8802f0b..38ea258 100644
+--- a/package.json
++++ b/package.json
+@@ -11,7 +11,8 @@
+     "start": "next start",
+     "test": "vitest run",
+     "lint": "eslint .",
+-    "typecheck": "tsc --noEmit"
++    "typecheck": "tsc --noEmit",
++    "db:migrate": "node scripts/migrate.ts"
+   },
+   "dependencies": {
+     "next": "^16.4.6",
+diff --git a/scripts/migrate.ts b/scripts/migrate.ts
+new file mode 100644
+index 0000000..103d12d
+--- /dev/null
++++ b/scripts/migrate.ts
+@@ -0,0 +1,7 @@
++import { getConfig } from "../lib/config.ts";
++import { openDatabase } from "../lib/db/connection.ts";
++
++const { databasePath } = getConfig();
++const db = openDatabase(databasePath);
++db.close();
++console.log(`Database ready at ${databasePath}`);
+diff --git a/tsconfig.json b/tsconfig.json
+index 9d2ed23..56abdf3 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -11,6 +11,7 @@
+     "moduleResolution": "bundler",
+     "resolveJsonModule": true,
+     "isolatedModules": true,
++    "allowImportingTsExtensions": true,
+     "jsx": "react-jsx",
+     "incremental": true,
+     "plugins": [{ "name": "next" }],

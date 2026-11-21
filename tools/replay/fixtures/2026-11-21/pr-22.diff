@@ -1,0 +1,4059 @@
+diff --git a/README.md b/README.md
+index b1ba4fa..1b07f03 100644
+--- a/README.md
++++ b/README.md
+@@ -22,6 +22,23 @@ Open <http://localhost:3000/matchups> to answer "which of these two do you like
+ 
+ Ratings are never stored. Every request replays the year placements (ranked over lower ranked and over honorable mentions, year by year) and then your matchup answers, oldest first, as Elo with K = 32 from 1500. Only ranked and honorable mention albums are rated and served. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md).
+ 
++## Import the spreadsheet
++
++`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then writes year entries and the decade lists. Rows it can't match with confidence go to the review page.
++
++- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
++- It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
++- Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog, keep it as a manual album, or skip it.
++- The spreadsheet is never committed; keep it outside the repo.
++
++Reading the summary the script prints at the end:
++
++- `Imported` rows were matched automatically. `Sent to review` splits into no match, ambiguous, duplicate album match and rank taken; the rows themselves are on `/import`.
++- `Merged duplicates`, `Conflicting placement` (a rank and an honorable mention on one row; imported as an honorable mention), `Decade rank dropped` (a decade rank on a listed album, or one that is not a whole number from 1 to 25; the row is still imported) and `Decade list full` name the rows that need a look.
++- `Invalid, skipped` rows are left out, each with its reason; fix the sheet and run again.
++- `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
++- `Decade lists` shows how many entries each decade list now has. The summary describes this run only.
++
+ Checks:
+ 
+ - `npm test`
+diff --git a/app/import/actions.ts b/app/import/actions.ts
+new file mode 100644
+index 0000000..251912d
+--- /dev/null
++++ b/app/import/actions.ts
+@@ -0,0 +1,75 @@
++"use server";
++
++import { redirect } from "next/navigation";
++import { getAlbum } from "@/lib/db/albums";
++import { getDb } from "@/lib/db/server";
++import type { CatalogCandidate } from "@/lib/db/types";
++import { resolveReviewItem, skipReviewItem, type ResolveChoice } from "@/lib/import/resolve";
++
++function field(formData: FormData, name: string): string {
++  const value = formData.get(name);
++  return typeof value === "string" ? value.trim() : "";
++}
++
++function whole(value: string): number | null {
++  return /^\d+$/.test(value) ? Number(value) : null;
++}
++
++/** Sends the browser back to the review page; the message shows next to the item it is about. */
++function back(params: Record<string, string>): never {
++  redirect(`/import?${new URLSearchParams(params)}`);
++}
++
++function fail(itemId: number | null, message: string): never {
++  return back(itemId === null ? { error: message } : { error: message, item: String(itemId) });
++}
++
++function candidateFrom(formData: FormData): CatalogCandidate | null {
++  const catalogId = field(formData, "catalogId");
++  const title = field(formData, "title");
++  const artist = field(formData, "artist");
++  if (catalogId === "" || title === "" || artist === "") return null;
++  return {
++    catalogId,
++    title,
++    artist,
++    artistId: field(formData, "artistId") || null,
++    releaseYear: whole(field(formData, "releaseYear")),
++    coverUrl: field(formData, "coverUrl") || null,
++  };
++}
++
++function resolve(itemId: number, choice: ResolveChoice): never {
++  const db = getDb();
++  const result = resolveReviewItem(db, itemId, choice);
++  if (!result.ok) return fail(itemId, result.message);
++  const params: Record<string, string> = {};
++  if (result.removedDecadeEntries.length > 0) {
++    params.removed = String(result.removedDecadeEntries.length);
++    params.album = getAlbum(db, result.albumId)?.title ?? "The album";
++  }
++  return back(params);
++}
++
++/** Use this album (a candidate or a search result), or Move it here when `moveHere` is set. */
++export async function chooseAlbumAction(formData: FormData): Promise<void> {
++  const itemId = whole(field(formData, "itemId"));
++  if (itemId === null) return fail(null, "That review item could not be found.");
++  const album = candidateFrom(formData);
++  if (!album) return fail(itemId, "That album is missing its catalog details.");
++  return resolve(itemId, { kind: "catalog", album, moveHere: field(formData, "moveHere") === "1" });
++}
++
++export async function keepManualAction(formData: FormData): Promise<void> {
++  const itemId = whole(field(formData, "itemId"));
++  if (itemId === null) return fail(null, "That review item could not be found.");
++  return resolve(itemId, { kind: "manual" });
++}
++
++export async function skipAction(formData: FormData): Promise<void> {
++  const itemId = whole(field(formData, "itemId"));
++  if (itemId === null) return fail(null, "That review item could not be found.");
++  const result = skipReviewItem(getDb(), itemId);
++  if (!result.ok) return fail(itemId, result.message);
++  return back({});
++}
+diff --git a/app/import/page.test.tsx b/app/import/page.test.tsx
+new file mode 100644
+index 0000000..06b6f73
+--- /dev/null
++++ b/app/import/page.test.tsx
+@@ -0,0 +1,185 @@
++import { cleanup, render, screen, within } from "@testing-library/react";
++import type { DatabaseSync } from "node:sqlite";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { createAlbum } from "@/lib/db/albums";
++import { createImportReviewItem, skipImportReviewItem } from "@/lib/db/import-review";
++import { memoryDb } from "@/lib/db/test-db";
++import { addYearEntry } from "@/lib/db/year-entries";
++
++const state = vi.hoisted(() => ({ db: undefined as unknown }));
++
++vi.mock("@/lib/db/server", () => ({ getDb: () => state.db }));
++vi.mock("@/lib/catalog/search", () => ({ searchAlbums: vi.fn() }));
++vi.mock("./actions", () => ({
++  chooseAlbumAction: async () => {},
++  keepManualAction: async () => {},
++  skipAction: async () => {},
++}));
++
++import { searchAlbums } from "@/lib/catalog/search";
++import ImportPage from "./page";
++
++const searchAlbumsMock = vi.mocked(searchAlbums);
++
++type Params = Record<string, string>;
++
++async function renderPage(params: Params = {}) {
++  render(await ImportPage({ searchParams: Promise.resolve(params) }));
++}
++
++const candidate = (catalogId: string, title: string, artist: string, releaseYear: number | null) => ({
++  catalogId,
++  title,
++  artist,
++  artistId: `artist-${artist}`,
++  releaseYear,
++  coverUrl: `https://covers.test/${catalogId}`,
++});
++
++function seed(db: DatabaseSync) {
++  createImportReviewItem(db, {
++    source: { title: "Fake Album Later", artist: "Fake Artist B", year: 2005 },
++    sourcePlacement: "listed",
++    reason: "no_match",
++    candidates: [candidate("c-later", "Fake Album Latter", "Fake Artist B", 2005)],
++  });
++  createImportReviewItem(db, {
++    source: { title: "Fake Album Early", artist: "Fake Artist A", year: 1990 },
++    sourcePlacement: "ranked",
++    sourceRank: 3,
++    sourceDecadeRank: 7,
++    reason: "ambiguous",
++    candidates: [
++      candidate("c-one", "Fake Album Early", "Fake Artist A", 1990),
++      candidate("c-two", "Fake Album Early", "Fake Artist A", 1991),
++    ],
++  });
++}
++
++describe("import review page", () => {
++  afterEach(cleanup);
++
++  beforeEach(() => {
++    state.db = memoryDb();
++    searchAlbumsMock.mockReset();
++  });
++
++  it("lists open items oldest year first with the sheet row, reason and candidates", async () => {
++    seed(state.db as DatabaseSync);
++    await renderPage();
++
++    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
++    expect(headings).toEqual([
++      "Fake Album Early - Fake Artist A (1990), rank 3, decade rank 7",
++      "Fake Album Later - Fake Artist B (2005), listed",
++    ]);
++    expect(screen.getByText("Several albums match. Pick the right one.")).toBeDefined();
++    expect(screen.getByText("No match in the catalog.")).toBeDefined();
++    expect(screen.getAllByText("Fake Album Early", { selector: "strong" })).toHaveLength(2);
++    expect(screen.getByText("1991")).toBeDefined();
++    expect(screen.getAllByRole("button", { name: "Use this album" })).toHaveLength(3);
++    expect(screen.getAllByRole("button", { name: "Keep as manual album" })).toHaveLength(2);
++    expect(screen.getAllByRole("button", { name: "Skip" })).toHaveLength(2);
++    expect(screen.getByText("2 open, 0 resolved, 0 skipped")).toBeDefined();
++  });
++
++  it("prefills each search box with the album and artist", async () => {
++    seed(state.db as DatabaseSync);
++    await renderPage();
++
++    const boxes = screen.getAllByRole("searchbox") as HTMLInputElement[];
++    expect(boxes.map((box) => box.value)).toEqual(["Fake Album Early Fake Artist A", "Fake Album Later Fake Artist B"]);
++  });
++
++  it("names the year of a duplicate album match and the album holding a taken rank", async () => {
++    const db = state.db as DatabaseSync;
++    createImportReviewItem(db, {
++      source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
++      sourcePlacement: "listed",
++      reason: "duplicate_album",
++      reasonDetail: "1999",
++      candidates: [candidate("c-dup", "Fake Album Dup", "Fake Artist C", 1999)],
++    });
++    createImportReviewItem(db, {
++      source: { title: "Fake Album Taken", artist: "Fake Artist D", year: 2002 },
++      sourcePlacement: "ranked",
++      sourceRank: 1,
++      reason: "rank_taken",
++      reasonDetail: "Fake Album Holder - Fake Artist E",
++      candidates: [candidate("c-taken", "Fake Album Taken", "Fake Artist D", 2002)],
++    });
++    await renderPage();
++
++    expect(screen.getByText("The matched album is already on the 1999 year page.")).toBeDefined();
++    expect(screen.getByText("Rank 1 in 2002 is already held by Fake Album Holder - Fake Artist E.")).toBeDefined();
++  });
++
++  it("offers Move it here for a candidate that is already on a year page", async () => {
++    const db = state.db as DatabaseSync;
++    const album = createAlbum(db, {
++      title: "Fake Album Dup",
++      artist: { name: "Fake Artist C", catalogId: "artist-Fake Artist C" },
++      catalogId: "c-dup",
++    });
++    addYearEntry(db, { albumId: album.id, year: 1999, placement: "listed" });
++    createImportReviewItem(db, {
++      source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
++      sourcePlacement: "listed",
++      reason: "duplicate_album",
++      reasonDetail: "1999",
++      candidates: [candidate("c-dup", "Fake Album Dup", "Fake Artist C", 1999)],
++    });
++    await renderPage();
++
++    expect(screen.getByText("Already on the 1999 year page.")).toBeDefined();
++    expect(screen.getByRole("button", { name: "Move it here" })).toBeDefined();
++    expect(screen.queryByRole("button", { name: "Use this album" })).toBeNull();
++  });
++
++  it("leaves resolved and skipped items off the list but counts them", async () => {
++    const db = state.db as DatabaseSync;
++    seed(db);
++    const skipped = createImportReviewItem(db, {
++      source: { title: "Fake Album Skip", artist: "Fake Artist F", year: 2003 },
++      sourcePlacement: "listed",
++      candidates: [],
++    });
++    skipImportReviewItem(db, skipped.id);
++    await renderPage();
++
++    expect(screen.queryByText(/Fake Album Skip/)).toBeNull();
++    expect(screen.getByText("2 open, 0 resolved, 1 skipped")).toBeDefined();
++  });
++
++  it("shows search results under the searched item", async () => {
++    const db = state.db as DatabaseSync;
++    seed(db);
++    searchAlbumsMock.mockResolvedValue({
++      ok: true,
++      albums: [{ catalogId: "s-1", title: "Fake Album Found", artist: "Fake Artist A", artistId: "a", year: 1990, coverUrl: "https://covers.test/s-1" }],
++    });
++    await renderPage({ search: "2", q: "fake found" });
++
++    expect(searchAlbumsMock).toHaveBeenCalledWith("fake found");
++    expect(screen.getByText("Fake Album Found")).toBeDefined();
++    const box = screen.getAllByRole("searchbox")[0] as HTMLInputElement;
++    expect(box.value).toBe("fake found");
++  });
++
++  it("shows a failed action's message with the item still listed", async () => {
++    seed(state.db as DatabaseSync);
++    await renderPage({ item: "2", error: "Rank 3 in 1990 is held by Fake Album Holder - Fake Artist E." });
++
++    const item = screen.getByRole("heading", { name: /Fake Album Early/ }).closest("li") as HTMLElement;
++    expect(within(item).getByRole("alert").textContent).toBe("Rank 3 in 1990 is held by Fake Album Holder - Fake Artist E.");
++  });
++
++  it("tells the user when a move removed decade list entries", async () => {
++    await renderPage({ removed: "1", album: "Fake Album One" });
++
++    expect(screen.getByRole("status").textContent).toBe(
++      "Fake Album One no longer qualifies for a decade list, so 1 decade list entry was removed.",
++    );
++    expect(screen.getByText("Nothing to check.")).toBeDefined();
++  });
++});
+diff --git a/app/import/page.tsx b/app/import/page.tsx
+new file mode 100644
+index 0000000..869fd2e
+--- /dev/null
++++ b/app/import/page.tsx
+@@ -0,0 +1,85 @@
++import type { DatabaseSync } from "node:sqlite";
++import { ImportReview, type CandidateView, type ReviewItemView } from "@/components/import-review";
++import { searchAlbums } from "@/lib/catalog/search";
++import { findAlbumByCatalogId } from "@/lib/db/albums";
++import { listImportReviewItems } from "@/lib/db/import-review";
++import { getDb } from "@/lib/db/server";
++import type { CatalogCandidate } from "@/lib/db/types";
++import { getYearEntryByAlbum } from "@/lib/db/year-entries";
++import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
++
++type Param = string | string[] | undefined;
++type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; removed?: Param; album?: Param }>;
++
++function first(param: Param): string {
++  return (Array.isArray(param) ? param[0] : param) ?? "";
++}
++
++function withYearPage(db: DatabaseSync, candidate: CatalogCandidate): CandidateView {
++  const album = findAlbumByCatalogId(db, candidate.catalogId);
++  return { ...candidate, onYearPage: (album && getYearEntryByAlbum(db, album.id)?.year) || null };
++}
++
++export default async function ImportPage({ searchParams }: { searchParams: SearchParams }) {
++  const params = await searchParams;
++  const db = getDb();
++  const all = listImportReviewItems(db);
++  const open = all
++    .filter((item) => item.status === "open")
++    .sort((a, b) => a.source.year - b.source.year || a.id - b.id);
++  const counts = {
++    open: open.length,
++    resolved: all.filter((item) => item.status === "resolved").length,
++    skipped: all.filter((item) => item.status === "skipped").length,
++  };
++
++  const searchedId = Number(first(params.search));
++  const searchedQuery = first(params.q).trim();
++  const searched = open.find((item) => item.id === searchedId);
++  const searchResult = searched && searchedQuery !== "" ? await searchAlbums(searchedQuery) : null;
++
++  const errorItemId = Number(first(params.item));
++  const errorMessage = first(params.error) || null;
++
++  const items: ReviewItemView[] = open.map((item) => {
++    const isSearched = item === searched;
++    return {
++      item,
++      candidates: item.candidates.map((candidate) => withYearPage(db, candidate)),
++      search: {
++        query: isSearched ? first(params.q) : `${item.source.title} ${item.source.artist}`,
++        results:
++          isSearched && searchResult?.ok
++            ? searchResult.albums.map((album) =>
++                withYearPage(db, {
++                  catalogId: album.catalogId,
++                  title: album.title,
++                  artist: album.artist,
++                  artistId: album.artistId,
++                  releaseYear: album.year,
++                  coverUrl: album.coverUrl,
++                }),
++              )
++            : null,
++        error: isSearched && searchResult && !searchResult.ok ? searchResult.message : null,
++      },
++      error: errorMessage && item.id === errorItemId ? errorMessage : null,
++    };
++  });
++
++  const removed = Number(first(params.removed));
++  const removedNotice =
++    removed > 0
++      ? `${first(params.album) || "The album"} no longer qualifies for a decade list, so ${removed} decade list ${removed === 1 ? "entry was" : "entries were"} removed.`
++      : null;
++
++  return (
++    <ImportReview
++      items={items}
++      counts={counts}
++      error={errorMessage && !open.some((item) => item.id === errorItemId) ? errorMessage : null}
++      removedNotice={removedNotice}
++      actions={{ chooseAlbum: chooseAlbumAction, keepManual: keepManualAction, skip: skipAction }}
++    />
++  );
++}
+diff --git a/app/page.test.tsx b/app/page.test.tsx
+index 1cffda7..e9a4c18 100644
+--- a/app/page.test.tsx
++++ b/app/page.test.tsx
+@@ -1,10 +1,51 @@
+-import { render, screen } from "@testing-library/react";
+-import { expect, test } from "vitest";
++import { cleanup, render, screen } from "@testing-library/react";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { memoryDb } from "@/lib/db/test-db";
++import { createImportReviewItem } from "@/lib/db/import-review";
++
++const state = vi.hoisted(() => ({ db: undefined as unknown }));
++
++vi.mock("@/lib/db/server", () => ({ getDb: () => state.db }));
++vi.mock("next/server", () => ({ connection: async () => {} }));
++
+ import Home from "./page";
+ 
+-test("home page shows the Album ranker heading", () => {
+-  render(<Home />);
+-  expect(
+-    screen.getByRole("heading", { level: 1, name: "Album ranker" }),
+-  ).toBeDefined();
++async function renderHome() {
++  render(await Home());
++}
++
++describe("home page", () => {
++  afterEach(cleanup);
++
++  beforeEach(() => {
++    state.db = memoryDb();
++  });
++
++  it("shows the Album ranker heading and the search link", async () => {
++    await renderHome();
++
++    expect(screen.getByRole("heading", { level: 1, name: "Album ranker" })).toBeDefined();
++    expect(screen.getByRole("link", { name: "Search albums" })).toBeDefined();
++  });
++
++  it("has no import review link while nothing is open", async () => {
++    await renderHome();
++
++    expect(screen.queryByRole("link", { name: /Import review/ })).toBeNull();
++  });
++
++  it("links to the import review with the number of open items", async () => {
++    const db = state.db as ReturnType<typeof memoryDb>;
++    for (const title of ["Fake Album One", "Fake Album Two"]) {
++      createImportReviewItem(db, {
++        source: { title, artist: "Fake Artist A", year: 2001 },
++        sourcePlacement: "listed",
++        candidates: [],
++      });
++    }
++    await renderHome();
++
++    const link = screen.getByRole("link", { name: "Import review: 2 to check" });
++    expect(link.getAttribute("href")).toBe("/import");
++  });
+ });
+diff --git a/app/page.tsx b/app/page.tsx
+index a219e30..f51fd57 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,6 +1,13 @@
+ import Link from "next/link";
++import { connection } from "next/server";
++import { getDb } from "@/lib/db/server";
++import { listImportReviewItems } from "@/lib/db/import-review";
++
++export default async function Home() {
++  // The count comes from the database, so this page is rendered per request, not at build time.
++  await connection();
++  const openItems = listImportReviewItems(getDb(), "open").length;
+ 
+-export default function Home() {
+   return (
+     <main>
+       <h1>Album ranker</h1>
+@@ -10,6 +17,11 @@ export default function Home() {
+       <p>
+         <Link href="/matchups">Matchups</Link>
+       </p>
++      {openItems > 0 && (
++        <p>
++          <Link href="/import">Import review: {openItems} to check</Link>
++        </p>
++      )}
+     </main>
+   );
+ }
+diff --git a/app/search/page.test.tsx b/app/search/page.test.tsx
+index 6ed2802..7a9ea97 100644
+--- a/app/search/page.test.tsx
++++ b/app/search/page.test.tsx
+@@ -31,8 +31,8 @@ describe("search page", () => {
+     searchAlbumsMock.mockResolvedValue({
+       ok: true,
+       albums: [
+-        { catalogId: "a", title: "Getz / Gilberto", artist: "Stan Getz", year: 1964, coverUrl: "https://example.test/a.jpg" },
+-        { catalogId: "b", title: "Undated", artist: "Someone", year: null, coverUrl: "https://example.test/b.jpg" },
++        { catalogId: "a", title: "Getz / Gilberto", artist: "Stan Getz", artistId: "s", year: 1964, coverUrl: "https://example.test/a.jpg" },
++        { catalogId: "b", title: "Undated", artist: "Someone", artistId: null, year: null, coverUrl: "https://example.test/b.jpg" },
+       ],
+     });
+     await renderPage("getz");
+diff --git a/components/import-review.tsx b/components/import-review.tsx
+new file mode 100644
+index 0000000..2649493
+--- /dev/null
++++ b/components/import-review.tsx
+@@ -0,0 +1,174 @@
++import { Cover } from "@/components/cover";
++import type { CatalogCandidate, ImportReviewItem } from "@/lib/db/types";
++
++type FormAction = (formData: FormData) => void | Promise<void>;
++
++export type ReviewActions = {
++  chooseAlbum: FormAction;
++  keepManual: FormAction;
++  skip: FormAction;
++};
++
++/** A catalog album the user can pick; `onYearPage` is the year it already sits on, if any. */
++export type CandidateView = CatalogCandidate & { onYearPage: number | null };
++
++export type ReviewItemView = {
++  item: ImportReviewItem;
++  candidates: CandidateView[];
++  /** The search box of this item: its text, and the results when the user searched. */
++  search: { query: string; results: CandidateView[] | null; error: string | null };
++  /** Why the last action on this item failed. */
++  error: string | null;
++};
++
++export type ReviewCounts = { open: number; resolved: number; skipped: number };
++
++function describeRow(item: ImportReviewItem): string {
++  const placement =
++    item.sourcePlacement === "ranked"
++      ? `rank ${item.sourceRank}`
++      : item.sourcePlacement === "honorable_mention"
++        ? "honorable mention"
++        : "listed";
++  return item.sourceDecadeRank === null ? placement : `${placement}, decade rank ${item.sourceDecadeRank}`;
++}
++
++export function describeReason(item: ImportReviewItem): string {
++  switch (item.reason) {
++    case "no_match":
++      return "No match in the catalog.";
++    case "ambiguous":
++      return "Several albums match. Pick the right one.";
++    case "duplicate_album":
++      return `The matched album is already on the ${item.reasonDetail} year page.`;
++    case "rank_taken":
++      return `Rank ${item.sourceRank} in ${item.source.year} is already held by ${item.reasonDetail}.`;
++  }
++}
++
++function HiddenFields({ item, candidate }: { item: ImportReviewItem; candidate: CandidateView }) {
++  return (
++    <>
++      <input type="hidden" name="itemId" value={item.id} />
++      <input type="hidden" name="catalogId" value={candidate.catalogId} />
++      <input type="hidden" name="title" value={candidate.title} />
++      <input type="hidden" name="artist" value={candidate.artist} />
++      <input type="hidden" name="artistId" value={candidate.artistId ?? ""} />
++      <input type="hidden" name="releaseYear" value={candidate.releaseYear ?? ""} />
++      <input type="hidden" name="coverUrl" value={candidate.coverUrl ?? ""} />
++    </>
++  );
++}
++
++function Candidate({ item, candidate, actions }: { item: ImportReviewItem; candidate: CandidateView; actions: ReviewActions }) {
++  return (
++    <li style={{ display: "flex", gap: 16, marginBottom: 16 }}>
++      {candidate.coverUrl ? (
++        <Cover src={candidate.coverUrl} alt={`Cover of ${candidate.title}`} />
++      ) : (
++        <div role="img" aria-label={`No cover for ${candidate.title}`} style={{ width: 125, height: 125, background: "#d4d4d4" }} />
++      )}
++      <div>
++        <strong>{candidate.title}</strong>
++        <div>{candidate.artist}</div>
++        <div>{candidate.releaseYear ?? "Unknown year"}</div>
++        {candidate.onYearPage !== null && <div>Already on the {candidate.onYearPage} year page.</div>}
++        <form action={actions.chooseAlbum}>
++          <HiddenFields item={item} candidate={candidate} />
++          {candidate.onYearPage !== null && <input type="hidden" name="moveHere" value="1" />}
++          <button type="submit">{candidate.onYearPage !== null ? "Move it here" : "Use this album"}</button>
++        </form>
++      </div>
++    </li>
++  );
++}
++
++function CandidateList({ item, candidates, actions }: { item: ImportReviewItem; candidates: CandidateView[]; actions: ReviewActions }) {
++  return (
++    <ul style={{ listStyle: "none", padding: 0 }}>
++      {candidates.map((candidate) => (
++        <Candidate key={candidate.catalogId} item={item} candidate={candidate} actions={actions} />
++      ))}
++    </ul>
++  );
++}
++
++function ReviewItem({ view, actions }: { view: ReviewItemView; actions: ReviewActions }) {
++  const { item, search } = view;
++  return (
++    <li style={{ marginBottom: 32 }}>
++      <h3>
++        {item.source.title} - {item.source.artist} ({item.source.year}), {describeRow(item)}
++      </h3>
++      <p>{describeReason(item)}</p>
++      {view.error && <p role="alert">{view.error}</p>}
++
++      {view.candidates.length > 0 && (
++        <>
++          <h4>Candidates</h4>
++          <CandidateList item={item} candidates={view.candidates} actions={actions} />
++        </>
++      )}
++
++      <form method="get" action="/import">
++        <input type="hidden" name="search" value={item.id} />
++        <input type="search" name="q" defaultValue={search.query} aria-label={`Search the catalog for ${item.source.title}`} />
++        <button type="submit">Search</button>
++      </form>
++      {search.error && <p role="alert">{search.error}</p>}
++      {search.results && search.results.length === 0 && <p>No albums found for &quot;{search.query}&quot;.</p>}
++      {search.results && search.results.length > 0 && (
++        <>
++          <h4>Search results</h4>
++          <CandidateList item={item} candidates={search.results} actions={actions} />
++        </>
++      )}
++
++      <div style={{ display: "flex", gap: 8 }}>
++        <form action={actions.keepManual}>
++          <input type="hidden" name="itemId" value={item.id} />
++          <button type="submit">Keep as manual album</button>
++        </form>
++        <form action={actions.skip}>
++          <input type="hidden" name="itemId" value={item.id} />
++          <button type="submit">Skip</button>
++        </form>
++      </div>
++    </li>
++  );
++}
++
++export function ImportReview({
++  items,
++  counts,
++  error,
++  removedNotice,
++  actions,
++}: {
++  items: ReviewItemView[];
++  counts: ReviewCounts;
++  /** A failure for an item that is not on the page (already resolved, or unknown). */
++  error: string | null;
++  removedNotice: string | null;
++  actions: ReviewActions;
++}) {
++  return (
++    <main>
++      <h1>Import review</h1>
++      <p>
++        {counts.open} open, {counts.resolved} resolved, {counts.skipped} skipped
++      </p>
++      {error && <p role="alert">{error}</p>}
++      {removedNotice && <p role="status">{removedNotice}</p>}
++      {items.length === 0 ? (
++        <p>Nothing to check.</p>
++      ) : (
++        <ul style={{ listStyle: "none", padding: 0 }}>
++          {items.map((view) => (
++            <ReviewItem key={view.item.id} view={view} actions={actions} />
++          ))}
++        </ul>
++      )}
++    </main>
++  );
++}
+diff --git a/docs/stack.md b/docs/stack.md
+index 94ab28b..32634af 100644
+--- a/docs/stack.md
++++ b/docs/stack.md
+@@ -12,6 +12,7 @@ One web app with a small server, one SQLite file, run on localhost, config from
+ | Lint | ESLint with the Next.js config (flat config) |
+ | Typecheck | `tsc --noEmit` |
+ | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
++| Spreadsheet reader | `read-excel-file`, read-only, used by the import script (`npm run import`). `write-excel-file` (dev dependency) generates the test fixture. See [the import spec](superpowers/specs/2026-11-21-album-10-spreadsheet-import.md) |
+ | Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
+ 
+ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
+@@ -21,7 +22,7 @@ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
+ - **One process for the page and the server.** Server components, route handlers and server actions run on the server, so the SQLite file never reaches the browser and any catalog key stays server-side.
+ - **React for the hard screens.** The year page (#6) and the decade list (#9) need drag and drop with keyboard and touch, and React has the most mature libraries for that.
+ - **TypeScript end to end.** The Elo replay (#7), the data model (#4) and the import script (#10) share types with the screens.
+-- **The import script runs on the same code.** #10 can import the same modules and run as a script through Node's type stripping, as `scripts/migrate.ts` does (`npm run db:migrate`).
++- **The import script runs on the same code.** `scripts/import.ts` (`npm run import`, #10) imports the same modules and runs through Node's type stripping, as `scripts/migrate.ts` does (`npm run db:migrate`). It runs with `node --conditions=react-server`, which makes the `server-only` marker package resolve to its empty module, so server-only modules such as the catalog client load outside Next.js.
+ - **npm** ships with Node and needs no extra install.
+ - **Vitest** runs TypeScript without a build step and covers both pure logic and components.
+ 
+diff --git a/docs/superpowers/as-built/2026-11-21-album-10-spreadsheet-import.md b/docs/superpowers/as-built/2026-11-21-album-10-spreadsheet-import.md
+new file mode 100644
+index 0000000..3839ceb
+--- /dev/null
++++ b/docs/superpowers/as-built/2026-11-21-album-10-spreadsheet-import.md
+@@ -0,0 +1,33 @@
++# As-built: Spreadsheet import
++
++**Shipped:** in PR #22
++**Ticket:** ALBUM-10
++**Spec:** [2026-11-21-album-10-spreadsheet-import.md](../specs/2026-11-21-album-10-spreadsheet-import.md)
++
++## Differs from the spec
++
++### Data layer and catalog
++
++- The data access layer gains three helpers the spec doesn't list: `findYearEntryBySource` (re-run check by source row key), `setSourceDecadeRank` (used when a moved album gets the row's decade rank) and `getImportReviewItem` (by id, for the review actions).
++- `insertIntoDecadeBySourceRank` has a third result, `already_listed`, for an album already on its decade list. The spec names `inserted` and `full` only.
++- A catalog candidate saved on a review item carries the artist id (`artistId`), so a candidate chosen on the review page shares its artist like an automatic match does.
++- A `duplicate_album` or `rank_taken` review item stores the matched album as its only candidate, so the page can offer it (and "Move it here").
++- `CatalogError` declares `kind` as a field instead of a constructor parameter property, because Node's type stripping (the import script) can't run parameter properties. Behavior is the same.
++- `lib/` modules the script reaches import each other with `.ts` suffixes, for the same reason. `lib/db/albums.ts` and `lib/db/matchups.ts` changed only in that.
++
++### Import script
++
++- The script runs as `node --conditions=react-server scripts/import.ts`, so `server-only` resolves to its empty module. The spec left this to the plan.
++- `Rows read` counts every non-blank row: imported, merged duplicate and invalid rows alike.
++- The summary has two lines the spec's sketch doesn't show: `Decade rank dropped` and `Decade list full`. `Decade rank dropped` now also covers a decade rank that isn't a whole number or is outside 1 to 25.
++- A decade rank that is present but invalid (not a whole number, or outside 1 to 25) drops only the decade rank, and the row is imported; the spec as first approved skipped the whole row. The spec's "Reading the sheet" and "Calls I made" now say so.
++- The fixture spreadsheet is generated by a committed script, `lib/import/fixtures/make-fixture.ts` (`npm run import:fixture`, uses the `write-excel-file` dev dependency). The spec left this to the plan.
++
++### Review page
++
++- The page is `app/import/page.tsx` with the markup in `components/import-review.tsx` and the actions in `app/import/actions.ts`. Three actions: choose album (a candidate or a search result, or "Move it here"), keep as manual, skip. Each calls `resolveReviewItem` or `skipReviewItem`, one transaction each.
++- The per-item catalog search is a plain GET form (`/import?search=<item id>&q=<text>`), the same pattern as `/search`, so it works without JavaScript. Only one item shows search results at a time.
++- "Move it here" is shown up front in place of "Use this album" when the candidate or search result is already on a year page (with that year named), not only after a failed attempt.
++- Actions answer by redirecting to `/import`. A failure message (rank taken, album already on a year page, item no longer open) travels in the `error` and `item` query parameters and shows next to the item, which stays open. The notice for decade list entries removed by a move uses `removed` and `album`. It is plain text rendered escaped.
++- The home page and `/import` are rendered per request (`connection()` on the home page), so `next build` doesn't open a database.
++- The page tests mock `getDb` with an in-memory database and the catalog search; the server actions themselves are covered through `resolveReviewItem`'s tests, not a separate test.
+diff --git a/docs/superpowers/plans/2026-11-21-album-10-spreadsheet-import.md b/docs/superpowers/plans/2026-11-21-album-10-spreadsheet-import.md
+new file mode 100644
+index 0000000..91d0005
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-21-album-10-spreadsheet-import.md
+@@ -0,0 +1,29 @@
++# ALBUM-10 spreadsheet import: plan
++
++**Spec:** [2026-11-21-album-10-spreadsheet-import.md](../specs/2026-11-21-album-10-spreadsheet-import.md)
++
++Run `npm install` first. Read the relevant guide in `node_modules/next/dist/docs/` before touching pages or server actions (`searchParams` is async; server-only modules import `server-only`). Tests use `memoryDb()` and a fake catalog; none calls MusicBrainz or touches `DATABASE_PATH`. Test fixtures hold made-up rows only; never commit the real spreadsheet, `data/`, SQLite files or `.env`.
++
++## Task A: data layer and catalog artist ids
++- Migration `lib/db/migrations/002_import.sql` (`ALTER TABLE ... ADD COLUMN`): `year_entries.source_decade_rank INTEGER CHECK (source_decade_rank IS NULL OR source_decade_rank BETWEEN 1 AND 25)`; `import_review_items.reason TEXT NOT NULL DEFAULT 'no_match' CHECK (reason IN ('no_match','ambiguous','duplicate_album','rank_taken'))`; `import_review_items.reason_detail TEXT`.
++- `lib/db/types.ts`: `ReviewReason`, `YearEntry.sourceDecadeRank`, `ImportReviewItem.reason` and `reasonDetail`.
++- `year-entries.ts`: `addYearEntry` takes `sourceDecadeRank`, validated 1 to 25; `toEntry` reads it; `setYearPlacements` and moves keep it. Add `findRankHolder(db, year, rank)` returning the album id or `undefined`, for the "rank taken" details.
++- `import-review.ts`: `createImportReviewItem` takes `reason` (default `no_match`) and `reasonDetail`.
++- `decade-lists.ts`: `insertIntoDecadeBySourceRank(db, albumId, decade)` returns `{ status: "inserted", position }`, `{ status: "full" }` or `{ status: "already_listed" }`. Inserts before the first entry whose `source_decade_rank` is higher than the album's, else at the end; entries with no source rank keep their place; a full list (25) is untouched; the album must be eligible (`not_eligible_for_decade` otherwise).
++- Catalog: `CatalogAlbum.artistId: string | null` (the credit's artist ids joined with `+`, `null` if none), set in `mapReleaseGroups`. The search page ignores it.
++- Tests: migrate (versions follow the file count), one table-driven test per rule: source decade rank stored and bounded, review reason stored and bounded, insertion order (rows inserted out of order end in sheet order; null source ranks keep their place; ties go after), full list unchanged, ineligible album rejected, `findRankHolder`; catalog `artistId` for a collaboration, a single artist and a credit with no ids.
++
++## Task B: import library and script
++- Dependency: `read-excel-file` (read-only `.xlsx`). A committed generator script writes the fixture `lib/import/fixtures/albums.xlsx` (made-up rows; both `Rank` columns, a formula column, a blank row, an invalid row, a duplicate, a rank plus honorable mention row, a decade rank on a listed row).
++- `lib/import/`: `read-sheet.ts` (find the `Albums` sheet and columns by header; the input `Rank` is the one right of `Album`; cell values only), `rows.ts` (mapping, validation, honorable mention rule, exact duplicate merge ignoring case), `normalize.ts` and `match.ts` (spec § Matching; takes the catalog search as a parameter), `write-row.ts` (one transaction per row: album and artist by catalog id and artist id, year entry with source key and source decade rank, decade insert, or a review item with reason and detail), `run.ts` (re-run skip, retries at 5 and 15 s, ten failures in a row stop, progress, summary).
++- `scripts/import.ts` and `npm run import`: config, `openDatabase` (migrates), MusicBrainz client at 1.1 s spacing, progress every 25 rows. Pick how it loads `server-only` modules the same way `db:migrate` does.
++- Tests, table-driven: sheet reading, row mapping, duplicates, normalizing and matching, writing (accepted, duplicate album, taken rank, catalog error leaves the row), re-run changes nothing and a skipped item stays skipped, summary counts.
++
++## Task C: review page, README and docs
++- `lib/import/resolve.ts`: use a candidate (create or reuse the album, year entry, decade entry; "Move it here" when the album is on another year), keep as manual album, skip. Each in one transaction; a taken rank fails with the holder named and the item stays open.
++- `app/import/`: page (open items by year, reason, candidates, search box reusing the catalog search, counts) and server actions. Home page link "Import review: N to check" only while items are open.
++- Tests: resolve actions (candidate, manual, skip, move here, taken rank), one page test (open items render with reason and candidates).
++- README "Import the spreadsheet" section; `docs/stack.md` row for the xlsx reader.
++
++## Verify
++`npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+diff --git a/docs/superpowers/specs/2026-11-21-album-10-spreadsheet-import.md b/docs/superpowers/specs/2026-11-21-album-10-spreadsheet-import.md
+new file mode 100644
+index 0000000..b2d2cb9
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-21-album-10-spreadsheet-import.md
+@@ -0,0 +1,183 @@
++# Spreadsheet import
++
++**Status:** Shipped
++**Date:** 2026-11-21
++**Shipped:** in PR #22, with differences: [as-built](../as-built/2026-11-21-album-10-spreadsheet-import.md)
++**Ticket:** [ALBUM-10](https://github.com/dbeallor/album-ranker/issues/10), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
++**Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Spreadsheet import; [data model](2026-11-21-album-4-data-model-storage.md); [catalog search](2026-11-21-album-5-catalog-search.md)
++
++## Goal
++
++Load the user's `Best Albums.xlsx` into the app once, so years of rankings are not retyped. A command-line script reads the Albums sheet, matches each row to a MusicBrainz album, and writes year entries and decade list entries. Rows it can't match with confidence go to a review page in the app, where the user picks the album, keeps the row as a manual album, or skips it.
++
++The spreadsheet stays out of the repo. Tests use a small fixture of made-up rows.
++
++## Running it
++
++```
++npm run import -- "/path/to/Best Albums.xlsx"
++```
++
++- Writes to the database at `DATABASE_PATH` (default `./data/album-ranker.db`), migrating it first like the app does.
++- Calls MusicBrainz with `MUSICBRAINZ_USER_AGENT`, one search per row, at most one request every 1.1 seconds. The user's 752 rows take about 15 minutes. The script prints a progress line every 25 rows.
++- Each row is written in its own transaction, so stopping the script (Ctrl-C, a crash) leaves the database consistent, and running it again carries on where it stopped.
++- The README gains an "Import the spreadsheet" section.
++
++## Reading the sheet
++
++- Opens the sheet named `Albums`. A file without it fails with a message naming the sheets it found.
++- Finds the columns by their header in row 1: `Album`, `Artist`, `Year`, `Honorable Mention`, `Decade Top 25 Rank`, and `Rank`. The sheet has two `Rank` columns; the input one is the `Rank` to the right of `Album` (the leading one is a derived label). A missing header fails with a message naming it.
++- Reads cell values only. Formulas, derived columns (`Decade`, `Title`, `Points`, `Total Albums In Year`, `Year Weight`, the weighted score, `DecadeRank`), `New`, `Decade Top 25 Candidate` and every other sheet are ignored.
++- A row with an empty album, artist and year is a blank row and is not counted. A row missing one of the three, a year outside 1900 to 2100, or a rank outside 1 to 10 is skipped as invalid and named in the summary. A decade rank outside 1 to 25 or not a whole number is dropped and named in the summary; the row is still imported.
++- Honorable mention is set when the cell holds a non-zero number, `TRUE`, or text other than `0`, `no` or `false` (the sheet uses `1`).
++
++### Row mapping
++
++| Sheet row | Imported as |
++|---|---|
++| Rank 1 to 10, no honorable mention | `ranked` with that rank |
++| Honorable mention (with or without a rank) | `honorable_mention` |
++| Neither | `listed` |
++
++A row with both a rank and the honorable mention flag is imported as an honorable mention, as the sheet scores it, and named in the summary under "conflicting placement". It does not go to the review page, because the placement is settled; the user can move it on the year page (#6). See § Calls I made: the ticket says it goes to review, the MVP spec says it doesn't.
++
++A decade rank on a ranked or honorable mention row becomes a decade list entry for the decade of the row's year. A decade rank on a listed row is dropped and named in the summary (listed albums can't be on a decade list). The sheet has none.
++
++### Source row key and duplicates
++
++- Each row's key is its album, artist and year as written, trimmed. The data model stores this key on the year entry or the review item it produced (`source_title`, `source_artist`, `source_year`).
++- **Exact duplicates.** Rows whose key matches another row's, ignoring case, are merged into the first such row and named in the summary. If the merged rows differ in placement, rank or decade rank, the summary says so and the first row's values win. The sheet has one such pair (a 1960 album, both listed).
++
++## Matching a row to the catalog
++
++The script searches the catalog with `"<album> <artist>"` through the MusicBrainz client from #5 (same query building, Singles dropped, up to 25 results).
++
++**Normalizing** a title or artist for comparison: Unicode compatibility decomposition with accents removed, lower case, `&` and `+` read as `and`, a leading `the ` removed, a trailing bracketed qualifier removed (`(Remastered)`, `[Deluxe Edition]`), all other punctuation removed, spaces collapsed.
++
++**Clear match:** a result whose normalized title and normalized artist both equal the row's.
++
++- Exactly one clear match: accepted.
++- Several clear matches (the same artist has two release groups with the same title, for example a self-titled album and its live version): accepted only if exactly one has a release year within one year of the row's year; otherwise the row goes to review as **ambiguous**, with the clear matches as candidates.
++- No clear match: the row goes to review as **no match**, with the first 5 results as candidates. A typo in a title lands here.
++
++An accepted album is created with the catalog id, title, credited artist, release year and cover URL from the result. If an album with that catalog id already exists:
++
++- without a year entry, it is reused;
++- with a year entry (another row matched the same album), the row goes to review as **duplicate album match**, naming the year it is already on. One album, one year.
++
++**Artists.** Albums from the catalog share an artist when MusicBrainz credits the same artist. To do that, the catalog result gains the artist credit's MusicBrainz artist ids (joined with `+` for a collaboration, so "Stan Getz & João Gilberto" is one artist, as the MVP spec says). The search page ignores the new field.
++
++**Rank already taken.** If the row's rank is already used in that year (the sheet repeats a rank, or the user edited the year page), the row goes to review as **rank taken**, naming the album that holds it.
++
++**Catalog errors.** A busy answer or timeout is retried twice, 5 and 15 seconds later. A row the catalog still can't answer is left untouched (no year entry, no review item) and counted as "not reached"; the next run tries it again. Ten failures in a row stop the script with a message to try later.
++
++## Re-running
++
++- A row whose key already has a year entry or a review item (open, resolved or skipped) is not processed again and counts as "already imported". It costs no catalog call.
++- So a second run over the same file changes nothing, and a row the user skipped on the review page stays skipped.
++- A row whose key is new (the user edited the sheet) is processed as above.
++
++## Decade lists
++
++- The decade rank from the sheet is kept on the year entry (new nullable column `source_decade_rank`), so later insertions can find their place.
++- An imported album with a decade rank is inserted into its decade's list before the first entry whose `source_decade_rank` is higher, or at the end if there is none. Entries the user added by hand (no source decade rank) keep their place. When every row of a decade is imported, in any order, the list matches the sheet's decade ranks exactly.
++- A full list (25 entries) is left alone and the summary names the album that didn't fit.
++- The same rule runs when a review item with a decade rank is resolved.
++
++## Review page
++
++`/import` in the app, linked from the home page while open items exist ("Import review: N to check").
++
++- Lists open items by year, oldest year first. Each shows the sheet row (album, artist, year, placement and rank, decade rank) and why it is there: no match, ambiguous, duplicate album match (with the year it is already on) or rank taken (with the album holding the rank).
++- Candidates show cover, title, artist and release year, from the catalog results saved with the item. A search box on each item runs the same catalog search as `/search`, prefilled with the row's album and artist, for when the right album isn't among them.
++- **Actions** on an item:
++  - **Use this album** (a candidate or search result): creates or reuses the album and adds the row's year entry (placement, rank, source key, source decade rank), plus its decade list entry. If that album is already on a year page, the page says which and offers **Move it here**, which moves its year entry to this row's year and placement.
++  - **Keep as manual album**: creates a manual album with the row's album, artist and year (placeholder cover), then the same year entry and decade entry.
++  - **Skip**: marks the item skipped. Nothing is added.
++- A resolved or skipped item leaves the list. A count at the top says how many are open, resolved and skipped. Undoing a resolution is out of scope; the year page (#6) can remove or move the album.
++- If the row's rank is taken when the user resolves it, the action fails with a message naming the album that holds the rank, and the item stays open.
++- Each action runs in one transaction through a server action. The page has no login, like the rest of the app on localhost.
++
++## Summary
++
++At the end the script prints counts and names the rows that need a look:
++
++```
++Rows read            752
++Imported             ...  (matched automatically)
++Sent to review       ...  (no match ..., ambiguous ..., duplicate album match ..., rank taken ...)
++Merged duplicates    1    <album> - <artist> (<year>)
++Conflicting placement 1   <album> - <artist> (<year>): rank 5 and honorable mention, imported as honorable mention
++Already imported     ...
++Invalid, skipped     ...  each named with the reason
++Not reached          ...  re-run to retry
++Decade lists         1960s 25, 2000s 25, 2010s 25 (entries now on each list)
++Open review items    ...  see /import
++```
++
++The summary describes this run. What the user resolves later shows on the review page.
++
++## Data changes
++
++Migration `002_import.sql`:
++
++- `year_entries.source_decade_rank INTEGER` (nullable, 1 to 25).
++- `import_review_items.reason TEXT NOT NULL DEFAULT 'no_match'`, one of `no_match`, `ambiguous`, `duplicate_album`, `rank_taken`.
++- `import_review_items.reason_detail TEXT` (nullable): the year or album the reason names, for the page.
++
++The data access layer gains the fields; nothing else in the schema changes.
++
++## Code layout
++
++- `scripts/import.ts`: the command-line entry point (argument, config, database, progress, summary).
++- `lib/import/`: reading the sheet into plain rows, row mapping and validation, duplicate merging, normalizing and matching, and the per-row write. The import logic takes the catalog search as a parameter so tests pass a fake.
++- `lib/import/resolve.ts` (or similar): the review actions, shared by the page's server actions.
++- `app/import/`: the review page.
++- Reading `.xlsx` needs a library; the plan picks a small, maintained, read-only one (`read-excel-file` is the likely pick) and adds it as a dependency. How the script loads `server-only` modules outside Next.js is the plan's call, as it was for `db:migrate`.
++
++## Tests
++
++One table-driven test per rule, with a fake catalog. No test calls MusicBrainz or touches `DATABASE_PATH`.
++
++- Sheet reading: a small fixture `.xlsx` of made-up rows, committed under `lib/import/fixtures/`, with both `Rank` columns, a derived formula column, a blank row and an invalid row. The plan settles whether it is generated by a committed script.
++- Row mapping: ranked, honorable mention, listed, rank plus honorable mention, decade rank on a listed row, invalid values.
++- Duplicates: an exact duplicate merges; a case-only difference merges; differing placements merge with a note.
++- Normalizing and matching: one clear match, several with one near year, several without, a typo, `&` versus `and`, a leading "The", a `(Remastered)` suffix.
++- Writing: an accepted row creates album, artist and year entry with the source key; a second row matching the same album goes to review as duplicate; a taken rank goes to review; a catalog error leaves the row untouched.
++- Re-run: importing the fixture twice changes nothing the second time; a skipped review item stays skipped.
++- Decade lists: insertion order with rows resolved out of order matches the sheet ranks; a full list is left alone.
++- Review actions: use a candidate, keep as manual, skip, move an album here, taken rank fails and keeps the item open.
++- One page test: open items render with their reason and candidates.
++
++## Acceptance
++
++- After importing the user's file and resolving the review page, every year page shows the sheet's ranks, honorable mentions and listed albums for that year, and the 1960s, 2000s and 2010s decade lists match the sheet's decade ranks. The only differences are the merged duplicate and the rank-plus-honorable-mention row, both named in the summary.
++- A second import changes nothing.
++- A row with a typo in the title lands on the review page, not in the data.
++- Tests use the fixture of made-up rows covering each row kind, a duplicate and a rank-plus-honorable-mention row.
++- `npm test`, `npm run lint` and `npm run typecheck` pass.
++
++The year pages themselves are #6. Until it ships, the acceptance is checked through the data (year entries and decade lists) and the review page.
++
++## Non-goals
++
++- The artist rollup sheets, weighted scores and the candidate flag.
++- Exporting back to a spreadsheet.
++- Undoing a review resolution, or a "re-import from scratch" option.
++- Importing any sheet but Albums, or a file other than `.xlsx`.
++
++## Calls I made
++
++- **The rank-plus-honorable-mention row is imported as an honorable mention and named in the summary, without a review item.** The ticket says it "goes to the review page"; the later MVP spec says no review item, because the placement is settled. I followed the MVP spec. If you'd rather review it, it becomes a fifth review reason.
++- **A migration adds three columns:** a source decade rank on year entries (so decade lists come out in sheet order even when review items are resolved out of order), and a reason plus detail on review items (so the page can say why a row is there).
++- **The catalog result gains the artist's MusicBrainz ids**, so imported albums by the same artist share one artist. This touches `lib/catalog/` from #5.
++- **Clear match means equal normalized title and artist.** The normalizing rules above are mine. When there are several, a release year within one year of the sheet's year breaks the tie.
++- **An exact match is accepted even if MusicBrainz's release year is far from the sheet's year.** The sheet's year always wins as the year page.
++- **Catalog errors leave the row for the next run** instead of sending it to review, so a busy MusicBrainz doesn't fill the review page.
++- **Exact duplicates ignore case**; the first row wins when merged rows differ.
++- **A rank repeated within a year** sends the second row to review.
++- **Columns are found by header name**, and the input `Rank` is the one right of `Album`. Checked against the header row of the user's file; no rows from it are in the spec or tests.
++- **The review page lives at `/import`**, linked from the home page only while items are open. No undo.
++- **A new dependency** to read `.xlsx`, read-only. Proposed: `read-excel-file`.
++- **No dry-run mode.** A run takes about 15 minutes; a dry run would double that, and re-running is safe.
++- **A bad decade rank drops only the decade rank.** The decade rank is a side annotation; losing the whole row (its year entry and rank) over a typo in it would cost more than the decade list entry it protects. The summary names the dropped decade rank and why, under "Decade rank dropped", so the user can fix it by hand.
+diff --git a/lib/catalog/musicbrainz.ts b/lib/catalog/musicbrainz.ts
+index e7b6ac5..c8f29cb 100644
+--- a/lib/catalog/musicbrainz.ts
++++ b/lib/catalog/musicbrainz.ts
+@@ -12,13 +12,13 @@ const REQUEST_TIMEOUT_MS = 8000;
+ export type CatalogErrorKind = "busy" | "unreachable";
+ 
+ export class CatalogError extends Error {
+-  constructor(
+-    readonly kind: CatalogErrorKind,
+-    detail: string,
+-    options?: { cause?: unknown },
+-  ) {
++  // Declared as a field, not a constructor parameter property, so Node's type stripping (the import script) can run it.
++  readonly kind: CatalogErrorKind;
++
++  constructor(kind: CatalogErrorKind, detail: string, options?: { cause?: unknown }) {
+     super(detail, options);
+     this.name = "CatalogError";
++    this.kind = kind;
+   }
+ }
+ 
+@@ -45,7 +45,7 @@ export function buildQuery(text: string): string {
+     .join(" AND ");
+ }
+ 
+-type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { name?: unknown } };
++type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { id?: unknown; name?: unknown } };
+ 
+ function joinArtistCredit(credit: unknown): string {
+   if (!Array.isArray(credit)) {
+@@ -62,6 +62,16 @@ function joinArtistCredit(credit: unknown): string {
+     .trim();
+ }
+ 
++function joinArtistIds(credit: unknown): string | null {
++  if (!Array.isArray(credit)) {
++    return null;
++  }
++  const ids = (credit as ArtistCredit[]).flatMap((part) =>
++    typeof part.artist?.id === "string" && part.artist.id !== "" ? [part.artist.id] : [],
++  );
++  return ids.length > 0 ? ids.join("+") : null;
++}
++
+ function parseYear(date: unknown): number | null {
+   if (typeof date !== "string") {
+     return null;
+@@ -94,6 +104,7 @@ export function mapReleaseGroups(body: unknown): CatalogAlbum[] {
+       catalogId: id,
+       title,
+       artist: joinArtistCredit((group as { "artist-credit"?: unknown })["artist-credit"]),
++      artistId: joinArtistIds((group as { "artist-credit"?: unknown })["artist-credit"]),
+       year: parseYear((group as { "first-release-date"?: unknown })["first-release-date"]),
+       coverUrl: `${COVER_URL}/${id}/front-250`,
+     });
+diff --git a/lib/catalog/search.test.ts b/lib/catalog/search.test.ts
+index 47a83f3..0613e0e 100644
+--- a/lib/catalog/search.test.ts
++++ b/lib/catalog/search.test.ts
+@@ -48,6 +48,8 @@ describe("searchAlbums results", () => {
+       catalogId: "b248d212-aace-3c3e-a23d-e13aaac1f87a",
+       title: "Getz / Gilberto",
+       artist: "Stan Getz / João Gilberto featuring Antônio Carlos Jobim",
++      artistId:
++        "8f2422ab-0ec6-4c92-80c4-afe9622fab32+286ec4c2-b5ca-4f85-b331-280a6d73dd14+7a8dbe84-f4c0-4457-bfa3-edced1f8cde0",
+       year: 1964,
+       coverUrl: "https://coverartarchive.org/release-group/b248d212-aace-3c3e-a23d-e13aaac1f87a/front-250",
+     });
+@@ -94,6 +96,26 @@ describe("searchAlbums results", () => {
+     expect(undated?.year).toBeNull();
+   });
+ 
++  const credits: { name: string; credit: unknown; artistId: string | null }[] = [
++    { name: "one artist", credit: [{ name: "A", artist: { id: "id-a", name: "A" } }], artistId: "id-a" },
++    {
++      name: "a collaboration joins ids with +",
++      credit: [
++        { name: "A", joinphrase: " & ", artist: { id: "id-a", name: "A" } },
++        { name: "B", artist: { id: "id-b", name: "B" } },
++      ],
++      artistId: "id-a+id-b",
++    },
++    { name: "a credit with no ids", credit: [{ name: "A" }], artistId: null },
++    { name: "a missing credit", credit: undefined, artistId: null },
++  ];
++  it.each(credits)("gives the artist id for $name", async ({ credit, artistId }) => {
++    const group = { id: "g1", title: "T", "primary-type": "Album", "artist-credit": credit };
++    const { search } = setup(() => jsonResponse({ "release-groups": [group] }));
++    const result = await search("album");
++    expect(result.ok && result.albums[0].artistId).toBe(artistId);
++  });
++
+   it("reads the year from full and partial dates", async () => {
+     const dates = [
+       { date: "1964-03", year: 1964 },
+diff --git a/lib/catalog/types.ts b/lib/catalog/types.ts
+index 22d4a43..fe883d7 100644
+--- a/lib/catalog/types.ts
++++ b/lib/catalog/types.ts
+@@ -2,6 +2,8 @@ export type CatalogAlbum = {
+   catalogId: string;
+   title: string;
+   artist: string;
++  /** The credit's MusicBrainz artist ids joined with "+", or null when the credit has none. */
++  artistId: string | null;
+   year: number | null;
+   coverUrl: string;
+ };
+diff --git a/lib/db/albums.ts b/lib/db/albums.ts
+index 2f8ce0a..1e7ea72 100644
+--- a/lib/db/albums.ts
++++ b/lib/db/albums.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+-import { now, transaction } from "./transaction";
+-import { DataError, type Album, type Artist } from "./types";
++import { now, transaction } from "./transaction.ts";
++import { DataError, type Album, type Artist } from "./types.ts";
+ 
+ type Row = Record<string, unknown>;
+ 
+diff --git a/lib/db/decade-lists.test.ts b/lib/db/decade-lists.test.ts
+index 7932c6a..27459d7 100644
+--- a/lib/db/decade-lists.test.ts
++++ b/lib/db/decade-lists.test.ts
+@@ -1,12 +1,19 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import { describe, expect, it } from "vitest";
+-import { getDecadeList, setDecadeList } from "./decade-lists";
++import { getDecadeList, insertIntoDecadeBySourceRank, setDecadeList } from "./decade-lists";
+ import { errorCode, memoryDb, seedAlbums } from "./test-db";
+ import type { Placement } from "./types";
+ import { addYearEntry, moveYearEntry, updateYearEntry } from "./year-entries";
+ 
+-function enter(db: DatabaseSync, albumId: number, year: number, placement: Placement, rank?: number) {
+-  addYearEntry(db, { albumId, year, placement, rank });
++function enter(
++  db: DatabaseSync,
++  albumId: number,
++  year: number,
++  placement: Placement,
++  rank?: number,
++  sourceDecadeRank?: number,
++) {
++  addYearEntry(db, { albumId, year, placement, rank, sourceDecadeRank });
+ }
+ 
+ describe("decade lists", () => {
+@@ -64,3 +71,74 @@ describe("decade lists", () => {
+     expect(getDecadeList(db, 1990)).toEqual([]);
+   });
+ });
++
++describe("insertIntoDecadeBySourceRank", () => {
++  /** Seeds albums on 1990 honorable mentions with these source decade ranks (null = added by hand). */
++  function seed(db: DatabaseSync, ranks: (number | null)[]): number[] {
++    const ids = seedAlbums(db, ranks.length);
++    ids.forEach((id, i) => enter(db, id, 1990, "honorable_mention", undefined, ranks[i] ?? undefined));
++    return ids;
++  }
++  const order = (db: DatabaseSync) => getDecadeList(db, 1990).map((e) => e.albumId);
++
++  const cases: { name: string; ranks: (number | null)[]; insertOrder: number[]; expected: number[] }[] = [
++    { name: "rows resolved out of order end in sheet order", ranks: [3, 1, 2], insertOrder: [0, 1, 2], expected: [1, 2, 0] },
++    { name: "rows already in order stay in order", ranks: [1, 2, 3], insertOrder: [0, 1, 2], expected: [0, 1, 2] },
++    { name: "a rank higher than all goes to the end", ranks: [1, 9], insertOrder: [1, 0], expected: [0, 1] },
++    { name: "an equal rank goes after the existing entry", ranks: [2, 2], insertOrder: [0, 1], expected: [0, 1] },
++  ];
++  it.each(cases)("$name", ({ ranks, insertOrder, expected }) => {
++    const db = memoryDb();
++    const ids = seed(db, ranks);
++    for (const i of insertOrder) insertIntoDecadeBySourceRank(db, ids[i], 1990);
++    expect(order(db)).toEqual(expected.map((i) => ids[i]));
++    expect(getDecadeList(db, 1990).map((e) => e.position)).toEqual(expected.map((_, i) => i + 1));
++  });
++
++  it("keeps hand-added entries (no source rank) in place and skips past them", () => {
++    const db = memoryDb();
++    const [manual, a, b] = seed(db, [null, 5, 2]);
++    setDecadeList(db, 1990, [manual]);
++    expect(insertIntoDecadeBySourceRank(db, a, 1990)).toEqual({ status: "inserted", position: 2 });
++    expect(insertIntoDecadeBySourceRank(db, b, 1990)).toEqual({ status: "inserted", position: 2 });
++    expect(order(db)).toEqual([manual, b, a]);
++  });
++
++  it("puts an album with no source rank at the end", () => {
++    const db = memoryDb();
++    const [a, b] = seed(db, [4, null]);
++    insertIntoDecadeBySourceRank(db, a, 1990);
++    insertIntoDecadeBySourceRank(db, b, 1990);
++    expect(order(db)).toEqual([a, b]);
++  });
++
++  it("leaves a full list unchanged and says so", () => {
++    const db = memoryDb();
++    const ids = seed(db, Array.from({ length: 26 }, (_, i) => Math.min(i + 1, 25)));
++    setDecadeList(db, 1990, ids.slice(0, 25));
++    const before = getDecadeList(db, 1990);
++    expect(insertIntoDecadeBySourceRank(db, ids[25], 1990)).toEqual({ status: "full" });
++    expect(getDecadeList(db, 1990)).toEqual(before);
++  });
++
++  it("does not add an album that is already on the list again", () => {
++    const db = memoryDb();
++    const [a] = seed(db, [1]);
++    insertIntoDecadeBySourceRank(db, a, 1990);
++    expect(insertIntoDecadeBySourceRank(db, a, 1990)).toEqual({ status: "already_listed", position: 1 });
++    expect(order(db)).toEqual([a]);
++  });
++
++  const ineligible: { name: string; setup: (db: DatabaseSync, id: number) => void }[] = [
++    { name: "a listed album", setup: (db, id) => enter(db, id, 1994, "listed") },
++    { name: "an album from another decade", setup: (db, id) => enter(db, id, 2001, "ranked", 1) },
++    { name: "an album with no year entry", setup: () => {} },
++  ];
++  it.each(ineligible)("rejects $name and changes nothing", ({ setup }) => {
++    const db = memoryDb();
++    const [id] = seedAlbums(db, 1);
++    setup(db, id);
++    expect(errorCode(() => insertIntoDecadeBySourceRank(db, id, 1990))).toBe("not_eligible_for_decade");
++    expect(getDecadeList(db, 1990)).toEqual([]);
++  });
++});
+diff --git a/lib/db/decade-lists.ts b/lib/db/decade-lists.ts
+index 2c7f8a6..cf05f95 100644
+--- a/lib/db/decade-lists.ts
++++ b/lib/db/decade-lists.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+-import { transaction } from "./transaction";
+-import { DataError, type DecadeListEntry } from "./types";
++import { transaction } from "./transaction.ts";
++import { DataError, type DecadeListEntry } from "./types.ts";
+ 
+ type Row = Record<string, unknown>;
+ 
+@@ -97,3 +97,53 @@ export function setDecadeList(db: DatabaseSync, decade: number, albumIds: number
+     return getDecadeList(db, decade);
+   });
+ }
++
++export type DecadeInsertResult =
++  | { status: "inserted"; position: number }
++  | { status: "already_listed"; position: number }
++  | { status: "full" };
++
++/**
++ * Puts the album on its decade's list by the decade rank the import read from the sheet: before the first
++ * entry whose source decade rank is higher, else at the end. Entries with no source decade rank keep their
++ * place. A full list is left unchanged. The album needs a ranked or honorable mention year entry in the decade.
++ */
++export function insertIntoDecadeBySourceRank(
++  db: DatabaseSync,
++  albumId: number,
++  decade: number,
++): DecadeInsertResult {
++  return transaction(db, () => {
++    const entry = db
++      .prepare(
++        `SELECT source_decade_rank FROM year_entries
++         WHERE album_id = ? AND placement IN ('ranked', 'honorable_mention') AND year >= ? AND year < ?`,
++      )
++      .get(albumId, decade, decade + 10);
++    if (!entry) {
++      throw new DataError(
++        "not_eligible_for_decade",
++        `Album ${albumId} needs a ranked or honorable mention entry in the ${decade}s.`,
++      );
++    }
++    const list = getDecadeList(db, decade);
++    const existing = list.find((item) => item.albumId === albumId);
++    if (existing) return { status: "already_listed", position: existing.position };
++    if (list.length >= MAX_DECADE_LIST) return { status: "full" };
++
++    const rank = entry.source_decade_rank as number | null;
++    const sourceRanks = new Map<number, number | null>(
++      db
++        .prepare("SELECT album_id, source_decade_rank FROM year_entries")
++        .all()
++        .map((row) => [row.album_id as number, row.source_decade_rank as number | null]),
++    );
++    const before =
++      rank === null ? -1 : list.findIndex((item) => (sourceRanks.get(item.albumId) ?? -Infinity) > rank);
++    const index = before === -1 ? list.length : before;
++    const ids = list.map((item) => item.albumId);
++    ids.splice(index, 0, albumId);
++    rewriteDecade(db, decade, ids);
++    return { status: "inserted", position: index + 1 };
++  });
++}
+diff --git a/lib/db/import-review.test.ts b/lib/db/import-review.test.ts
+index 7fec2df..fb7e419 100644
+--- a/lib/db/import-review.test.ts
++++ b/lib/db/import-review.test.ts
+@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
+ import {
+   createImportReviewItem,
+   findImportReviewItem,
++  getImportReviewItem,
+   listImportReviewItems,
+   resolveImportReviewItem,
+   skipImportReviewItem,
+@@ -44,4 +45,31 @@ describe("import review items", () => {
+     expect(listImportReviewItems(db, status)).toHaveLength(1);
+     expect(findImportReviewItem(db, source)).toBeDefined();
+   });
++
++  const reasons = [
++    { name: "defaults to no match", extra: {}, reason: "no_match", detail: null },
++    { name: "stores ambiguous", extra: { reason: "ambiguous" as const }, reason: "ambiguous", detail: null },
++    { name: "stores a duplicate album with its year", extra: { reason: "duplicate_album" as const, reasonDetail: "1999" }, reason: "duplicate_album", detail: "1999" },
++    { name: "stores a taken rank with the album", extra: { reason: "rank_taken" as const, reasonDetail: "Kid A - Radiohead" }, reason: "rank_taken", detail: "Kid A - Radiohead" },
++  ];
++  it.each(reasons)("$name", ({ extra, reason, detail }) => {
++    const db = memoryDb();
++    const item = createImportReviewItem(db, { ...input, ...extra });
++    expect(item).toMatchObject({ reason, reasonDetail: detail });
++    expect(findImportReviewItem(db, source)).toEqual(item);
++  });
++
++  it("rejects a reason the schema does not know", () => {
++    const db = memoryDb();
++    expect(() =>
++      createImportReviewItem(db, { ...input, reason: "bogus" as unknown as "no_match" }),
++    ).toThrow(/CHECK/);
++  });
++
++  it("gets an item by id, or undefined", () => {
++    const db = memoryDb();
++    const item = createImportReviewItem(db, input);
++    expect(getImportReviewItem(db, item.id)).toEqual(item);
++    expect(getImportReviewItem(db, item.id + 1)).toBeUndefined();
++  });
+ });
+diff --git a/lib/db/import-review.ts b/lib/db/import-review.ts
+index 5a2e5bb..99d052d 100644
+--- a/lib/db/import-review.ts
++++ b/lib/db/import-review.ts
+@@ -1,13 +1,14 @@
+ import type { DatabaseSync } from "node:sqlite";
+-import { now, transaction } from "./transaction";
++import { now, transaction } from "./transaction.ts";
+ import {
+   DataError,
+   type CatalogCandidate,
+   type ImportReviewItem,
+   type Placement,
++  type ReviewReason,
+   type ReviewStatus,
+   type SourceRowKey,
+-} from "./types";
++} from "./types.ts";
+ 
+ type Row = Record<string, unknown>;
+ 
+@@ -22,6 +23,8 @@ function toItem(row: Row): ImportReviewItem {
+     sourcePlacement: row.source_placement as Placement,
+     sourceRank: row.source_rank as number | null,
+     sourceDecadeRank: row.source_decade_rank as number | null,
++    reason: row.reason as ReviewReason,
++    reasonDetail: row.reason_detail as string | null,
+     candidates: JSON.parse(row.candidates as string) as CatalogCandidate[],
+     status: row.status as ReviewStatus,
+     resolvedAlbumId: row.resolved_album_id as number | null,
+@@ -35,6 +38,8 @@ export type CreateImportReviewItemInput = {
+   sourcePlacement: Placement;
+   sourceRank?: number | null;
+   sourceDecadeRank?: number | null;
++  reason?: ReviewReason;
++  reasonDetail?: string | null;
+   candidates: CatalogCandidate[];
+ };
+ 
+@@ -45,6 +50,11 @@ export function findImportReviewItem(db: DatabaseSync, source: SourceRowKey): Im
+   return row ? toItem(row) : undefined;
+ }
+ 
++export function getImportReviewItem(db: DatabaseSync, id: number): ImportReviewItem | undefined {
++  const row = db.prepare("SELECT * FROM import_review_items WHERE id = ?").get(id);
++  return row ? toItem(row) : undefined;
++}
++
+ export function createImportReviewItem(db: DatabaseSync, input: CreateImportReviewItemInput): ImportReviewItem {
+   return transaction(db, () => {
+     if (findImportReviewItem(db, input.source)) {
+@@ -55,8 +65,8 @@ export function createImportReviewItem(db: DatabaseSync, input: CreateImportRevi
+       .prepare(
+         `INSERT INTO import_review_items
+            (source_title, source_artist, source_year, source_placement, source_rank, source_decade_rank,
+-            candidates, status, created_at, updated_at)
+-         VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
++            reason, reason_detail, candidates, status, created_at, updated_at)
++         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+       )
+       .run(
+         input.source.title,
+@@ -65,6 +75,8 @@ export function createImportReviewItem(db: DatabaseSync, input: CreateImportRevi
+         input.sourcePlacement,
+         input.sourceRank ?? null,
+         input.sourceDecadeRank ?? null,
++        input.reason ?? "no_match",
++        input.reasonDetail ?? null,
+         JSON.stringify(input.candidates),
+         stamp,
+         stamp,
+diff --git a/lib/db/matchups.ts b/lib/db/matchups.ts
+index bda3672..52f5441 100644
+--- a/lib/db/matchups.ts
++++ b/lib/db/matchups.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+-import { now, transaction } from "./transaction";
+-import { DataError, type Matchup, type MatchupResult } from "./types";
++import { now, transaction } from "./transaction.ts";
++import { DataError, type Matchup, type MatchupResult } from "./types.ts";
+ 
+ type Row = Record<string, unknown>;
+ 
+diff --git a/lib/db/migrate.test.ts b/lib/db/migrate.test.ts
+index 28984e9..3236129 100644
+--- a/lib/db/migrate.test.ts
++++ b/lib/db/migrate.test.ts
+@@ -32,4 +32,12 @@ describe("migrate", () => {
+     expect(migrate(db)).toEqual([]);
+     expect(db.prepare("SELECT * FROM schema_migrations").all()).toEqual(before);
+   });
++
++  it("adds the import columns", () => {
++    const db = memoryDb();
++    const columns = (table: string) =>
++      db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name);
++    expect(columns("year_entries")).toContain("source_decade_rank");
++    expect(columns("import_review_items")).toEqual(expect.arrayContaining(["reason", "reason_detail"]));
++  });
+ });
+diff --git a/lib/db/migrations/002_import.sql b/lib/db/migrations/002_import.sql
+new file mode 100644
+index 0000000..acd7ed1
+--- /dev/null
++++ b/lib/db/migrations/002_import.sql
+@@ -0,0 +1,10 @@
++ALTER TABLE year_entries
++  ADD COLUMN source_decade_rank INTEGER
++  CHECK (source_decade_rank IS NULL OR source_decade_rank BETWEEN 1 AND 25);
++
++ALTER TABLE import_review_items
++  ADD COLUMN reason TEXT NOT NULL DEFAULT 'no_match'
++  CHECK (reason IN ('no_match', 'ambiguous', 'duplicate_album', 'rank_taken'));
++
++ALTER TABLE import_review_items
++  ADD COLUMN reason_detail TEXT;
+diff --git a/lib/db/types.ts b/lib/db/types.ts
+index e4f35de..8996325 100644
+--- a/lib/db/types.ts
++++ b/lib/db/types.ts
+@@ -1,6 +1,7 @@
+ export type Placement = "ranked" | "honorable_mention" | "listed";
+ export type MatchupResult = "a" | "b" | "tie";
+ export type ReviewStatus = "open" | "resolved" | "skipped";
++export type ReviewReason = "no_match" | "ambiguous" | "duplicate_album" | "rank_taken";
+ 
+ export type DataErrorCode =
+   | "album_has_year_entry"
+@@ -50,6 +51,8 @@ export type YearEntry = {
+   placement: Placement;
+   rank: number | null;
+   source: SourceRowKey | null;
++  /** Rank on the decade list in the imported sheet, so later insertions find their place. */
++  sourceDecadeRank: number | null;
+   createdAt: string;
+   updatedAt: string;
+ };
+@@ -73,6 +76,8 @@ export type CatalogCandidate = {
+   catalogId: string;
+   title: string;
+   artist: string;
++  /** The catalog's artist id (ids joined with "+" for a collaboration), so a chosen candidate shares its artist. */
++  artistId?: string | null;
+   releaseYear: number | null;
+   coverUrl: string | null;
+ };
+@@ -83,6 +88,9 @@ export type ImportReviewItem = {
+   sourcePlacement: Placement;
+   sourceRank: number | null;
+   sourceDecadeRank: number | null;
++  reason: ReviewReason;
++  /** The year or album the reason names, for the review page. */
++  reasonDetail: string | null;
+   candidates: CatalogCandidate[];
+   status: ReviewStatus;
+   resolvedAlbumId: number | null;
+diff --git a/lib/db/year-entries.test.ts b/lib/db/year-entries.test.ts
+index 07a9871..c7daedc 100644
+--- a/lib/db/year-entries.test.ts
++++ b/lib/db/year-entries.test.ts
+@@ -1,10 +1,13 @@
+ import { describe, expect, it } from "vitest";
+ import {
+   addYearEntry,
++  findRankHolder,
++  findYearEntryBySource,
+   getYearEntryByAlbum,
+   listAllYearEntries,
+   listYear,
+   removeYearEntry,
++  setSourceDecadeRank,
+   setYearPlacements,
+   updateYearEntry,
+ } from "./year-entries";
+@@ -100,4 +103,66 @@ describe("year entries", () => {
+       "invalid_input",
+     );
+   });
++
++  const decadeRanks: { name: string; sourceDecadeRank: number | null | undefined; code: string | null }[] = [
++    { name: "a source decade rank of 1", sourceDecadeRank: 1, code: null },
++    { name: "a source decade rank of 25", sourceDecadeRank: 25, code: null },
++    { name: "no source decade rank", sourceDecadeRank: undefined, code: null },
++    { name: "a source decade rank of 0", sourceDecadeRank: 0, code: "invalid_input" },
++    { name: "a source decade rank of 26", sourceDecadeRank: 26, code: "invalid_input" },
++    { name: "a fractional source decade rank", sourceDecadeRank: 1.5, code: "invalid_input" },
++  ];
++  it.each(decadeRanks)("handles $name", ({ sourceDecadeRank, code }) => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    const add = () => addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank });
++    if (code === null) {
++      expect(add().sourceDecadeRank).toBe(sourceDecadeRank ?? null);
++      expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(sourceDecadeRank ?? null);
++    } else {
++      expect(errorCode(add)).toBe(code);
++      expect(listAllYearEntries(db)).toEqual([]);
++    }
++  });
++
++  it("keeps the source decade rank when the entry changes or the year is rewritten", () => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank: 7 });
++    updateYearEntry(db, a, { placement: "honorable_mention" });
++    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(7);
++    setYearPlacements(db, 1999, { ranked: [], honorableMentions: [a], listed: [] });
++    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(7);
++  });
++
++  it("finds the album holding a rank in a year", () => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 4 });
++    expect(findRankHolder(db, 1999, 4)).toBe(a);
++    expect(findRankHolder(db, 1999, 5)).toBeUndefined();
++    expect(findRankHolder(db, 2000, 4)).toBeUndefined();
++  });
++
++  it("finds an entry by its source key, exact text only", () => {
++    const db = memoryDb();
++    const [a] = seedAlbums(db, 1);
++    const source = { title: "Fake Album One", artist: "Fake Artist A", year: 1999 };
++    addYearEntry(db, { albumId: a, year: 1999, placement: "listed", source });
++    expect(findYearEntryBySource(db, source)?.albumId).toBe(a);
++    expect(findYearEntryBySource(db, { ...source, title: "fake album one" })).toBeUndefined();
++    expect(findYearEntryBySource(db, { ...source, year: 2000 })).toBeUndefined();
++  });
++
++  it("replaces the source decade rank, validating it and requiring an entry", () => {
++    const db = memoryDb();
++    const [a, b] = seedAlbums(db, 2);
++    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank: 7 });
++    setSourceDecadeRank(db, a, 3);
++    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(3);
++    setSourceDecadeRank(db, a, null);
++    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBeNull();
++    expect(errorCode(() => setSourceDecadeRank(db, a, 26))).toBe("invalid_input");
++    expect(errorCode(() => setSourceDecadeRank(db, b, 3))).toBe("not_found");
++  });
+ });
+diff --git a/lib/db/year-entries.ts b/lib/db/year-entries.ts
+index a888ba0..5daf62b 100644
+--- a/lib/db/year-entries.ts
++++ b/lib/db/year-entries.ts
+@@ -1,13 +1,13 @@
+ import type { DatabaseSync } from "node:sqlite";
+-import { removeIneligibleDecadeEntries } from "./decade-lists";
+-import { now, transaction } from "./transaction";
++import { removeIneligibleDecadeEntries } from "./decade-lists.ts";
++import { now, transaction } from "./transaction.ts";
+ import {
+   DataError,
+   type DecadeListEntry,
+   type Placement,
+   type SourceRowKey,
+   type YearEntry,
+-} from "./types";
++} from "./types.ts";
+ 
+ type Row = Record<string, unknown>;
+ 
+@@ -33,6 +33,7 @@ function toEntry(row: Row): YearEntry {
+     placement: row.placement as Placement,
+     rank: row.rank as number | null,
+     source,
++    sourceDecadeRank: row.source_decade_rank as number | null,
+     createdAt: row.created_at as string,
+     updatedAt: row.updated_at as string,
+   };
+@@ -77,6 +78,29 @@ function assertAlbumExists(db: DatabaseSync, albumId: number): void {
+   }
+ }
+ 
++/** The album that holds this rank in this year, if any. */
++export function findRankHolder(db: DatabaseSync, year: number, rank: number): number | undefined {
++  const row = db.prepare("SELECT album_id FROM year_entries WHERE year = ? AND rank = ?").get(year, rank);
++  return row ? (row.album_id as number) : undefined;
++}
++
++/** The year entry an import row produced, by its source key (exact text, as stored). */
++export function findYearEntryBySource(db: DatabaseSync, source: SourceRowKey): YearEntry | undefined {
++  const row = db
++    .prepare("SELECT * FROM year_entries WHERE source_title = ? AND source_artist = ? AND source_year = ?")
++    .get(source.title, source.artist, source.year);
++  return row ? toEntry(row) : undefined;
++}
++
++/** Replaces the source decade rank the album's year entry keeps for ordering decade list insertions. */
++export function setSourceDecadeRank(db: DatabaseSync, albumId: number, rank: number | null): void {
++  if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 25)) {
++    throw new DataError("invalid_input", `Source decade rank must be from 1 to 25, got ${rank}.`);
++  }
++  requireEntry(db, albumId);
++  db.prepare("UPDATE year_entries SET source_decade_rank = ? WHERE album_id = ?").run(rank, albumId);
++}
++
+ export function getYearEntryByAlbum(db: DatabaseSync, albumId: number): YearEntry | undefined {
+   const row = db.prepare("SELECT * FROM year_entries WHERE album_id = ?").get(albumId);
+   return row ? toEntry(row) : undefined;
+@@ -97,6 +121,8 @@ export type AddYearEntryInput = {
+   placement: Placement;
+   rank?: number | null;
+   source?: SourceRowKey | null;
++  /** The decade rank the imported sheet gave this album, kept for ordering later insertions. */
++  sourceDecadeRank?: number | null;
+ };
+ 
+ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEntry {
+@@ -108,6 +134,10 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
+       throw new DataError("album_has_year_entry", `Album ${input.albumId} already has a year entry.`);
+     }
+     assertRankFree(db, input.year, rank);
++    const sourceDecadeRank = input.sourceDecadeRank ?? null;
++    if (sourceDecadeRank !== null && (!Number.isInteger(sourceDecadeRank) || sourceDecadeRank < 1 || sourceDecadeRank > 25)) {
++      throw new DataError("invalid_input", `Source decade rank must be from 1 to 25, got ${sourceDecadeRank}.`);
++    }
+ 
+     const source = input.source ?? null;
+     if (
+@@ -122,8 +152,9 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
+     const stamp = now();
+     db.prepare(
+       `INSERT INTO year_entries
+-         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
+-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++         (album_id, year, placement, rank, source_title, source_artist, source_year, source_decade_rank,
++          created_at, updated_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ).run(
+       input.albumId,
+       input.year,
+@@ -132,6 +163,7 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
+       source?.title ?? null,
+       source?.artist ?? null,
+       source?.year ?? null,
++      sourceDecadeRank,
+       stamp,
+       stamp,
+     );
+@@ -271,8 +303,9 @@ export function setYearPlacements(
+ 
+     const insert = db.prepare(
+       `INSERT INTO year_entries
+-         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
+-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++         (album_id, year, placement, rank, source_title, source_artist, source_year, source_decade_rank,
++          created_at, updated_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     );
+     const stamp = now();
+     for (const item of wanted) {
+@@ -285,6 +318,7 @@ export function setYearPlacements(
+         before?.source?.title ?? null,
+         before?.source?.artist ?? null,
+         before?.source?.year ?? null,
++        before?.sourceDecadeRank ?? null,
+         before?.createdAt ?? stamp,
+         stamp,
+       );
+diff --git a/lib/import/fixtures/albums.xlsx b/lib/import/fixtures/albums.xlsx
+new file mode 100644
+index 0000000..ad17e08
+Binary files /dev/null and b/lib/import/fixtures/albums.xlsx differ
+diff --git a/lib/import/fixtures/make-fixture.ts b/lib/import/fixtures/make-fixture.ts
+new file mode 100644
+index 0000000..e7b1c57
+--- /dev/null
++++ b/lib/import/fixtures/make-fixture.ts
+@@ -0,0 +1,74 @@
++// Writes albums.xlsx next to this file: a small spreadsheet of made-up rows in the shape of the real one
++// (an Albums sheet with two Rank columns and formula columns, plus a sheet the import must ignore).
++// Run it with `npm run import:fixture` after changing the rows below, and commit the result.
++import writeExcelFile from "write-excel-file/node";
++
++type Cell = { value: string | number; type?: "Formula" } | null;
++
++const HEADER = [
++  "Rank", // derived label in the real sheet; the import must not read it
++  "Album",
++  "Artist",
++  "Year",
++  "Rank", // the input rank
++  "Honorable Mention",
++  "Decade Top 25 Rank",
++  "Decade",
++  "Points",
++];
++
++// album, artist, year, rank, honorable mention, decade rank
++type Row = [string | null, string | null, number | null, number | null, number | null, number | null];
++
++const ROWS: Row[] = [
++  ["Fake Album One", "Fake Artist A", 2001, 1, null, 3], // ranked, decade rank 3
++  ["Fake Album Two", "Fake Artist A", 2001, 2, null, 1], // same artist as One, decade rank 1
++  ["Fake Album Three", "Fake Artist B", 2001, null, 1, null], // honorable mention
++  ["Fake Album Four", "Fake Artist C", 2001, null, null, null], // listed
++  ["Fake Album Five", "Fake Artist D", 2001, 3, 1, 2], // rank and honorable mention, decade rank 2
++  [null, null, null, null, null, null], // blank row
++  ["Fake Album Four", "Fake Artist C", 2001, null, null, null], // exact duplicate of Four
++  ["Fake Album Six", "Fake Artist E", 2002, null, null, null], // listed
++  ["fake album six", "FAKE ARTIST E", 2002, null, 1, null], // case-only duplicate with another placement
++  ["Fake Albm Seven", "Fake Artist F", 2002, 4, null, null], // typo in the title
++  ["Fake Album Nine", "Fake Artist H", 2002, 2, null, null], // ranked 2
++  ["Fake Album Ten", "Fake Artist I", 2002, 2, null, null], // repeats rank 2 in 2002
++  ["Fake Album Eleven", "Fake Artist J", 2003, null, null, 5], // decade rank on a listed row
++  ["Fake Album Twelve", "Fake Artist K", 1850, 1, null, null], // invalid year
++  ["Fake Album Thirteen", "Fake Artist L", 2003, 1, null, null], // two catalog albums with this title
++  ["Fake Album Fourteen", "Fake Artist M", 2004, null, null, null], // listed
++  ["Fake Album Fourteen", "Fake Artist M", 2005, null, 1, null], // same catalog album, another year
++  ["The Fake Album Seventeen (Remastered)", "Fake Artist N & Fake Artist O", 2004, 1, null, null], // normalizing
++  ["Fake Album Eighteen", null, 2004, null, null, null], // missing artist
++];
++
++function cell(value: string | number | null): Cell {
++  return value === null ? null : { value };
++}
++
++const albums: Cell[][] = [
++  HEADER.map((value) => ({ value })),
++  ...ROWS.map((row, index) => {
++    const line = index + 2;
++    return [
++      { value: 99 },
++      cell(row[0]),
++      cell(row[1]),
++      cell(row[2]),
++      cell(row[3]),
++      cell(row[4]),
++      cell(row[5]),
++      row[0] === null ? null : { value: `=INT(D${line}/10)*10`, type: "Formula" },
++      row[0] === null ? null : { value: `=IF(E${line}="",0,11-E${line})`, type: "Formula" },
++    ] satisfies Cell[];
++  }),
++];
++// A blank row has no cells at all, not even the filler columns.
++albums[1 + ROWS.findIndex((row) => row[0] === null)] = [];
++
++const notes: Cell[][] = [[{ value: "Artist" }, { value: "Fake Artist A" }]];
++
++await writeExcelFile([
++  { data: albums, sheet: "Albums" },
++  { data: notes, sheet: "Artists" },
++]).toFile(new URL("./albums.xlsx", import.meta.url).pathname);
+diff --git a/lib/import/match.test.ts b/lib/import/match.test.ts
+new file mode 100644
+index 0000000..4235d68
+--- /dev/null
++++ b/lib/import/match.test.ts
+@@ -0,0 +1,91 @@
++import { describe, expect, it, vi } from "vitest";
++import { chooseMatch, matchRow } from "./match.ts";
++import { catalogAlbum, importRow } from "./test-support.ts";
++
++const row = (title: string, artist: string, year = 2001) => importRow({ key: { title, artist, year } });
++
++describe("chooseMatch", () => {
++  it("accepts exactly one clear match", () => {
++    const one = catalogAlbum("a", "Fake Album One", "Fake Artist A", 2001);
++    const other = catalogAlbum("b", "Fake Album Two", "Fake Artist A", 2001);
++    expect(chooseMatch(row("Fake Album One", "Fake Artist A"), [other, one])).toEqual({ kind: "accepted", album: one });
++  });
++
++  it("accepts a clear match whatever its release year", () => {
++    const far = catalogAlbum("a", "Fake Album One", "Fake Artist A", 1975);
++    expect(chooseMatch(row("Fake Album One", "Fake Artist A"), [far])).toEqual({ kind: "accepted", album: far });
++  });
++
++  const several = [
++    {
++      name: "exactly one within a year",
++      years: [1990, 2002],
++      outcome: "accepted",
++      pick: 1,
++    },
++    { name: "one a year earlier", years: [2000, 1970], outcome: "accepted", pick: 0 },
++    { name: "none within a year", years: [1990, 2010], outcome: "ambiguous", pick: null },
++    { name: "two within a year", years: [2000, 2002], outcome: "ambiguous", pick: null },
++    { name: "two years away is too far", years: [1999, 2003], outcome: "ambiguous", pick: null },
++    { name: "an unknown year", years: [null, null], outcome: "ambiguous", pick: null },
++  ];
++  it.each(several)("with several clear matches, $name", ({ years, outcome, pick }) => {
++    const results = years.map((year, i) => catalogAlbum(`id-${i}`, "Fake Album One", "Fake Artist A", year));
++    const result = chooseMatch(row("Fake Album One", "Fake Artist A"), results);
++    expect(result.kind).toBe(outcome);
++    if (result.kind === "accepted") expect(result.album).toBe(results[pick!]);
++    if (result.kind === "ambiguous") expect(result.candidates.map((c) => c.catalogId)).toEqual(["id-0", "id-1"]);
++  });
++
++  it("sends a typo to review as no match with the first 5 results", () => {
++    const results = Array.from({ length: 8 }, (_, i) => catalogAlbum(`id-${i}`, `Fake Album ${i}`, "Fake Artist A", 2001));
++    const result = chooseMatch(row("Fake Albm One", "Fake Artist A"), results);
++    expect(result.kind).toBe("no_match");
++    if (result.kind === "no_match") {
++      expect(result.candidates.map((c) => c.catalogId)).toEqual(["id-0", "id-1", "id-2", "id-3", "id-4"]);
++      expect(result.candidates[0]).toEqual({
++        catalogId: "id-0",
++        title: "Fake Album 0",
++        artist: "Fake Artist A",
++        artistId: "artist-Fake Artist A",
++        releaseYear: 2001,
++        coverUrl: "https://covers.test/id-0",
++      });
++    }
++  });
++
++  it("sends no results to review as no match", () => {
++    expect(chooseMatch(row("Fake Album One", "Fake Artist A"), [])).toEqual({ kind: "no_match", candidates: [] });
++  });
++
++  it("needs the artist to match too", () => {
++    const wrongArtist = catalogAlbum("a", "Fake Album One", "Fake Artist Z", 2001);
++    expect(chooseMatch(row("Fake Album One", "Fake Artist A"), [wrongArtist]).kind).toBe("no_match");
++  });
++
++  const normalized = [
++    { name: "& against and", row: ["Fake Album", "Fake Artist N and Fake Artist O"], catalog: ["Fake Album", "Fake Artist N & Fake Artist O"] },
++    { name: "a leading The on the title", row: ["Fake Album", "Fake Artist A"], catalog: ["The Fake Album", "Fake Artist A"] },
++    { name: "a leading The on the artist", row: ["Fake Album", "The Fake Artist A"], catalog: ["Fake Album", "Fake Artist A"] },
++    { name: "a (Remastered) suffix", row: ["Fake Album (Remastered)", "Fake Artist A"], catalog: ["Fake Album", "Fake Artist A"] },
++    { name: "a [Deluxe Edition] suffix in the catalog", row: ["Fake Album", "Fake Artist A"], catalog: ["Fake Album [Deluxe Edition]", "Fake Artist A"] },
++    { name: "accents and case", row: ["fake album", "fake artist á"], catalog: ["Fake Album", "Fake Artist A"] },
++  ];
++  it.each(normalized)("matches through $name", ({ row: [title, artist], catalog: [catTitle, catArtist] }) => {
++    const album = catalogAlbum("a", catTitle, catArtist, 2001);
++    expect(chooseMatch(row(title, artist), [album])).toEqual({ kind: "accepted", album });
++  });
++});
++
++describe("matchRow", () => {
++  it("searches for the album and artist together", async () => {
++    const search = vi.fn(async () => [catalogAlbum("a", "Fake Album One", "Fake Artist A", 2001)]);
++    const result = await matchRow(row("Fake Album One", "Fake Artist A"), search);
++    expect(search).toHaveBeenCalledExactlyOnceWith("Fake Album One Fake Artist A");
++    expect(result.kind).toBe("accepted");
++  });
++
++  it("passes a catalog failure on", async () => {
++    await expect(matchRow(row("A", "B"), async () => Promise.reject(new Error("busy")))).rejects.toThrow("busy");
++  });
++});
+diff --git a/lib/import/match.ts b/lib/import/match.ts
+new file mode 100644
+index 0000000..1624df8
+--- /dev/null
++++ b/lib/import/match.ts
+@@ -0,0 +1,44 @@
++import type { CatalogAlbum } from "../catalog/types.ts";
++import type { CatalogCandidate } from "../db/types.ts";
++import { normalizeText } from "./normalize.ts";
++import type { CatalogSearch, ImportRow } from "./types.ts";
++
++const NO_MATCH_CANDIDATES = 5;
++
++export type MatchOutcome =
++  | { kind: "accepted"; album: CatalogAlbum }
++  | { kind: "no_match"; candidates: CatalogCandidate[] }
++  | { kind: "ambiguous"; candidates: CatalogCandidate[] };
++
++export function toCandidate(album: CatalogAlbum): CatalogCandidate {
++  return {
++    catalogId: album.catalogId,
++    title: album.title,
++    artist: album.artist,
++    artistId: album.artistId,
++    releaseYear: album.year,
++    coverUrl: album.coverUrl,
++  };
++}
++
++/** Picks the catalog album for a row from its search results, or says why none can be picked. */
++export function chooseMatch(row: ImportRow, results: CatalogAlbum[]): MatchOutcome {
++  const title = normalizeText(row.key.title);
++  const artist = normalizeText(row.key.artist);
++  const clear = results.filter(
++    (album) => normalizeText(album.title) === title && normalizeText(album.artist) === artist,
++  );
++
++  if (clear.length === 1) return { kind: "accepted", album: clear[0] };
++  if (clear.length === 0) {
++    return { kind: "no_match", candidates: results.slice(0, NO_MATCH_CANDIDATES).map(toCandidate) };
++  }
++  const near = clear.filter((album) => album.year !== null && Math.abs(album.year - row.key.year) <= 1);
++  if (near.length === 1) return { kind: "accepted", album: near[0] };
++  return { kind: "ambiguous", candidates: clear.map(toCandidate) };
++}
++
++/** Searches the catalog with "<album> <artist>" and chooses. Rejects when the catalog can't answer. */
++export async function matchRow(row: ImportRow, search: CatalogSearch): Promise<MatchOutcome> {
++  return chooseMatch(row, await search(`${row.key.title} ${row.key.artist}`));
++}
+diff --git a/lib/import/normalize.test.ts b/lib/import/normalize.test.ts
+new file mode 100644
+index 0000000..1ad130b
+--- /dev/null
++++ b/lib/import/normalize.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from "vitest";
++import { normalizeText } from "./normalize.ts";
++
++describe("normalizeText", () => {
++  const cases: [string, string, string][] = [
++    ["lower case", "Fake ALBUM One", "fake album one"],
++    ["accents", "Café Müller Ångström", "cafe muller angstrom"],
++    ["ampersand", "Fake Artist N & Fake Artist O", "fake artist n and fake artist o"],
++    ["plus", "Fake Artist N + Fake Artist O", "fake artist n and fake artist o"],
++    ["and", "Fake Artist N and Fake Artist O", "fake artist n and fake artist o"],
++    ["leading The", "The Fake Band", "fake band"],
++    ["leading the in lower case", "the fake band", "fake band"],
++    ["a title that only starts with 'the' letters", "Theory of Fake", "theory of fake"],
++    ["trailing parentheses", "Fake Album (Remastered)", "fake album"],
++    ["trailing brackets", "Fake Album [Deluxe Edition]", "fake album"],
++    ["a bracketed qualifier in the middle", "Fake (Live) Album", "fake live album"],
++    ["a title that is only a bracket", "(Untitled)", "untitled"],
++    ["punctuation", "Fake: Album, It's Two!", "fake album its two"],
++    ["slashes and hyphens", "Fake / Album - Two", "fake album two"],
++    ["spaces", "  Fake    Album \t Two ", "fake album two"],
++    ["compatibility characters", "Ｆａｋｅ ① ", "fake 1"],
++  ];
++  it.each(cases)("%s", (_name, input, expected) => {
++    expect(normalizeText(input)).toBe(expected);
++  });
++
++  it("makes equivalent spellings equal", () => {
++    expect(normalizeText("The Fake Album (Remastered)")).toBe(normalizeText("fake album"));
++    expect(normalizeText("Fake & Co.")).toBe(normalizeText("Fake and Co"));
++  });
++});
+diff --git a/lib/import/normalize.ts b/lib/import/normalize.ts
+new file mode 100644
+index 0000000..fab0f70
+--- /dev/null
++++ b/lib/import/normalize.ts
+@@ -0,0 +1,16 @@
++/**
++ * Normalizes a title or artist for comparison: accents removed, lower case, "&" and "+" read as "and",
++ * a leading "the " and a trailing bracketed qualifier removed, other punctuation removed, spaces collapsed.
++ */
++export function normalizeText(value: string): string {
++  return value
++    .normalize("NFKD")
++    .replace(/\p{M}/gu, "")
++    .toLowerCase()
++    .replace(/[&+]/g, " and ")
++    .replace(/(?<=\S)\s*(\([^()[\]]*\)|\[[^()[\]]*\])\s*$/, "")
++    .replace(/^\s*the\s+/, "")
++    .replace(/[^\p{L}\p{N}\s]/gu, "")
++    .replace(/\s+/g, " ")
++    .trim();
++}
+diff --git a/lib/import/read-sheet.test.ts b/lib/import/read-sheet.test.ts
+new file mode 100644
+index 0000000..57ad434
+--- /dev/null
++++ b/lib/import/read-sheet.test.ts
+@@ -0,0 +1,94 @@
++// @vitest-environment node
++import { fileURLToPath } from "node:url";
++import { describe, expect, it } from "vitest";
++import { ImportInputError, extractRows, readAlbumsSheet } from "./read-sheet.ts";
++import { FIXTURE } from "./test-support.ts";
++
++const HEADER = ["Rank", "Album", "Artist", "Year", "Rank", "Honorable Mention", "Decade Top 25 Rank", "Points"];
++
++describe("reading the fixture spreadsheet", () => {
++  it("reads the Albums sheet by header, with the input Rank right of Album and no derived columns", async () => {
++    const rows = await readAlbumsSheet(FIXTURE);
++
++    expect(rows).toHaveLength(19);
++    expect(rows[0]).toEqual({
++      rowNumber: 2,
++      album: "Fake Album One",
++      artist: "Fake Artist A",
++      year: 2001,
++      rank: 1, // not the leading derived Rank, which is 99 on every row
++      honorableMention: null,
++      decadeRank: 3,
++    });
++    expect(rows.every((row) => row.rank !== 99)).toBe(true);
++    expect(rows[2]).toMatchObject({ album: "Fake Album Three", rank: null, honorableMention: 1 });
++  });
++
++  it("keeps the blank row as an empty row, numbered by its place in the sheet", async () => {
++    const rows = await readAlbumsSheet(FIXTURE);
++    expect(rows[5]).toEqual({
++      rowNumber: 7,
++      album: null,
++      artist: null,
++      year: null,
++      rank: null,
++      honorableMention: null,
++      decadeRank: null,
++    });
++  });
++
++  it("fails with a message for a missing file and for a file that is not an .xlsx", async () => {
++    await expect(readAlbumsSheet("/nonexistent/albums.xlsx")).rejects.toThrow("File not found: /nonexistent/albums.xlsx");
++    await expect(readAlbumsSheet(fileURLToPath(import.meta.url))).rejects.toThrow(/as an \.xlsx file/);
++  });
++});
++
++describe("finding the sheet and columns", () => {
++  const sheet = (name: string, data: unknown[][]) => ({ sheet: name, data });
++
++  const failures = [
++    {
++      name: "no Albums sheet names the sheets found",
++      sheets: [sheet("Other", [HEADER]), sheet("Notes", [])],
++      message: 'The file has no sheet named "Albums". Sheets found: "Other", "Notes".',
++    },
++    ...["Album", "Artist", "Year", "Honorable Mention", "Decade Top 25 Rank"].map((missing) => ({
++      name: `a missing ${missing} header`,
++      sheets: [sheet("Albums", [HEADER.map((cell) => (cell === missing ? "Renamed" : cell))])],
++      message: `The "Albums" sheet has no "${missing}" column in row 1.`,
++    })),
++    {
++      name: "no Rank to the right of Album",
++      sheets: [sheet("Albums", [["Rank", "Album", "Artist", "Year", "Honorable Mention", "Decade Top 25 Rank"]])],
++      message: 'The "Albums" sheet has no "Rank" column to the right of "Album" in row 1.',
++    },
++    {
++      name: "an empty Albums sheet",
++      sheets: [sheet("Albums", [])],
++      message: 'The "Albums" sheet has no "Album" column in row 1.',
++    },
++  ];
++  it.each(failures)("fails on $name", ({ sheets, message }) => {
++    expect(() => extractRows(sheets)).toThrow(new ImportInputError(message));
++  });
++
++  it("matches headers ignoring case and surrounding spaces, in any column order", () => {
++    const rows = extractRows([
++      sheet("Albums", [
++        [" decade top 25 rank", "YEAR", "artist ", "Honorable mention", "Rank", " album", "RANK"],
++        [5, 1999, "Fake Artist A", 1, 99, "Fake Album One", 4],
++      ]),
++    ]);
++    expect(rows).toEqual([
++      {
++        rowNumber: 2,
++        album: "Fake Album One",
++        artist: "Fake Artist A",
++        year: 1999,
++        rank: 4,
++        honorableMention: 1,
++        decadeRank: 5,
++      },
++    ]);
++  });
++});
+diff --git a/lib/import/read-sheet.ts b/lib/import/read-sheet.ts
+new file mode 100644
+index 0000000..85cf6cd
+--- /dev/null
++++ b/lib/import/read-sheet.ts
+@@ -0,0 +1,76 @@
++import { existsSync } from "node:fs";
++import readExcelFile from "read-excel-file/node";
++import type { RawRow } from "./types.ts";
++
++/** The file can't be imported as given (missing, not an .xlsx, no Albums sheet, a header missing). The message is for the user. */
++export class ImportInputError extends Error {
++  constructor(message: string) {
++    super(message);
++    this.name = "ImportInputError";
++  }
++}
++
++export const ALBUMS_SHEET = "Albums";
++
++type Sheet = { sheet: string; data: unknown[][] };
++
++function headerText(cell: unknown): string {
++  return typeof cell === "string" ? cell.trim().toLowerCase() : "";
++}
++
++/**
++ * Finds the Albums sheet and its columns by header and returns the data rows as plain values. The input
++ * `Rank` is the first one to the right of `Album`; the sheet has a derived `Rank` label before it.
++ */
++export function extractRows(sheets: Sheet[]): RawRow[] {
++  const albums = sheets.find((sheet) => sheet.sheet === ALBUMS_SHEET);
++  if (!albums) {
++    const found = sheets.map((sheet) => `"${sheet.sheet}"`).join(", ");
++    throw new ImportInputError(`The file has no sheet named "${ALBUMS_SHEET}". Sheets found: ${found || "none"}.`);
++  }
++
++  const header = (albums.data[0] ?? []).map(headerText);
++  const column = (name: string, after = -1): number => {
++    const index = header.findIndex((text, i) => i > after && text === name.toLowerCase());
++    if (index === -1) {
++      throw new ImportInputError(
++        after === -1
++          ? `The "${ALBUMS_SHEET}" sheet has no "${name}" column in row 1.`
++          : `The "${ALBUMS_SHEET}" sheet has no "${name}" column to the right of "Album" in row 1.`,
++      );
++    }
++    return index;
++  };
++
++  const album = column("Album");
++  const artist = column("Artist");
++  const year = column("Year");
++  const rank = column("Rank", album);
++  const honorableMention = column("Honorable Mention");
++  const decadeRank = column("Decade Top 25 Rank");
++
++  return albums.data.slice(1).map((cells, index) => ({
++    rowNumber: index + 2,
++    album: cells[album],
++    artist: cells[artist],
++    year: cells[year],
++    rank: cells[rank],
++    honorableMention: cells[honorableMention],
++    decadeRank: cells[decadeRank],
++  }));
++}
++
++/** Reads the Albums sheet of the .xlsx file at `path`. */
++export async function readAlbumsSheet(path: string): Promise<RawRow[]> {
++  if (!existsSync(path)) {
++    throw new ImportInputError(`File not found: ${path}`);
++  }
++  let sheets: Sheet[];
++  try {
++    sheets = (await readExcelFile(path)) as Sheet[];
++  } catch (error) {
++    const reason = error instanceof Error ? error.message : String(error);
++    throw new ImportInputError(`Could not read ${path} as an .xlsx file: ${reason}`);
++  }
++  return extractRows(sheets);
++}
+diff --git a/lib/import/resolve.test.ts b/lib/import/resolve.test.ts
+new file mode 100644
+index 0000000..795fa7f
+--- /dev/null
++++ b/lib/import/resolve.test.ts
+@@ -0,0 +1,291 @@
++import type { DatabaseSync } from "node:sqlite";
++import { describe, expect, it } from "vitest";
++import { createAlbum, findAlbumByCatalogId, listAlbums } from "../db/albums.ts";
++import { getDecadeList, setDecadeList } from "../db/decade-lists.ts";
++import {
++  createImportReviewItem,
++  getImportReviewItem,
++  listImportReviewItems,
++  type CreateImportReviewItemInput,
++} from "../db/import-review.ts";
++import { memoryDb } from "../db/test-db.ts";
++import type { CatalogCandidate } from "../db/types.ts";
++import { addYearEntry, getYearEntryByAlbum, listAllYearEntries, removeYearEntry } from "../db/year-entries.ts";
++import { resolveReviewItem, skipReviewItem } from "./resolve.ts";
++
++const CANDIDATE: CatalogCandidate = {
++  catalogId: "cat-one",
++  title: "Fake Album One",
++  artist: "Fake Artist A",
++  artistId: "art-a",
++  releaseYear: 2001,
++  coverUrl: "https://covers.test/cat-one",
++};
++
++function item(db: DatabaseSync, over: Partial<CreateImportReviewItemInput> = {}) {
++  return createImportReviewItem(db, {
++    source: { title: "Fake Albm One", artist: "Fake Artist A", year: 2001 },
++    sourcePlacement: "ranked",
++    sourceRank: 3,
++    sourceDecadeRank: 2,
++    candidates: [CANDIDATE],
++    ...over,
++  });
++}
++
++function manualOnYear(db: DatabaseSync, title: string, year: number, placement: "ranked" | "listed", rank?: number) {
++  const album = createAlbum(db, { title, artist: { name: `Artist of ${title}` } });
++  addYearEntry(db, { albumId: album.id, year, placement, rank });
++  return album;
++}
++
++describe("using a catalog album", () => {
++  it("creates the album and artist, the year entry with the source row, the decade entry, and resolves the item", () => {
++    const db = memoryDb();
++    const review = item(db);
++
++    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE });
++
++    expect(result).toMatchObject({ ok: true, movedFromYear: null, decade: { status: "inserted", position: 1 } });
++    if (!result.ok) return;
++    const album = findAlbumByCatalogId(db, "cat-one")!;
++    expect(album).toMatchObject({
++      id: result.albumId,
++      title: "Fake Album One",
++      releaseYear: 2001,
++      coverUrl: "https://covers.test/cat-one",
++      artist: { name: "Fake Artist A", catalogId: "art-a" },
++    });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({
++      year: 2001,
++      placement: "ranked",
++      rank: 3,
++      source: review.source, // the sheet's text, not the catalog's
++      sourceDecadeRank: 2,
++    });
++    expect(getDecadeList(db, 2000).map((e) => e.albumId)).toEqual([album.id]);
++    expect(getImportReviewItem(db, review.id)).toMatchObject({ status: "resolved", resolvedAlbumId: album.id });
++  });
++
++  it("shares the artist with an album already in the catalog from the same artist", () => {
++    const db = memoryDb();
++    createAlbum(db, { title: "Other", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-other" });
++    resolveReviewItem(db, item(db).id, { kind: "catalog", album: CANDIDATE });
++    expect(new Set(listAlbums(db).map((a) => a.artist.id)).size).toBe(1);
++  });
++
++  it("reuses an album that has no year entry", () => {
++    const db = memoryDb();
++    const existing = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
++    const result = resolveReviewItem(db, item(db).id, { kind: "catalog", album: CANDIDATE });
++    expect(result).toMatchObject({ ok: true, albumId: existing.id });
++    expect(listAlbums(db)).toHaveLength(1);
++  });
++
++  const placements = [
++    { name: "an honorable mention", over: { sourcePlacement: "honorable_mention" as const, sourceRank: null }, decade: "inserted" },
++    { name: "a listed row, which has no decade rank", over: { sourcePlacement: "listed" as const, sourceRank: null, sourceDecadeRank: null }, decade: null },
++    { name: "a ranked row without a decade rank", over: { sourceDecadeRank: null }, decade: null },
++  ];
++  it.each(placements)("imports $name", ({ over, decade }) => {
++    const db = memoryDb();
++    const result = resolveReviewItem(db, item(db, over).id, { kind: "catalog", album: CANDIDATE });
++    expect(result.ok).toBe(true);
++    if (result.ok) expect(result.decade?.status ?? null).toBe(decade);
++    expect(getYearEntryByAlbum(db, findAlbumByCatalogId(db, "cat-one")!.id)).toMatchObject({
++      placement: over.sourcePlacement ?? "ranked",
++    });
++  });
++
++  it("puts the album on the decade list by the sheet's decade rank when items resolve out of order", () => {
++    const db = memoryDb();
++    const rows = [3, 1, 2].map((decadeRank) => {
++      const title = `Fake Album ${decadeRank}`;
++      const candidate = { ...CANDIDATE, catalogId: `cat-${decadeRank}`, title };
++      return {
++        candidate,
++        review: item(db, {
++          source: { title, artist: "Fake Artist A", year: 2001 + decadeRank },
++          sourcePlacement: "honorable_mention",
++          sourceRank: null,
++          sourceDecadeRank: decadeRank,
++          candidates: [candidate],
++        }),
++      };
++    });
++    for (const { review, candidate } of rows) resolveReviewItem(db, review.id, { kind: "catalog", album: candidate });
++
++    const titles = new Map(listAlbums(db).map((a) => [a.id, a.title]));
++    expect(getDecadeList(db, 2000).map((e) => titles.get(e.albumId))).toEqual(["Fake Album 1", "Fake Album 2", "Fake Album 3"]);
++  });
++});
++
++describe("keeping a manual album", () => {
++  it("creates a manual album from the row with the same year and decade entries", () => {
++    const db = memoryDb();
++    const review = item(db);
++
++    const result = resolveReviewItem(db, review.id, { kind: "manual" });
++
++    expect(result).toMatchObject({ ok: true, decade: { status: "inserted" } });
++    const [album] = listAlbums(db);
++    expect(album).toMatchObject({
++      title: "Fake Albm One", // as written in the sheet
++      artist: { name: "Fake Artist A", catalogId: null },
++      catalogId: null,
++      releaseYear: 2001,
++      coverUrl: null,
++    });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2001, placement: "ranked", rank: 3, source: review.source, sourceDecadeRank: 2 });
++    expect(getImportReviewItem(db, review.id)).toMatchObject({ status: "resolved", resolvedAlbumId: album.id });
++  });
++
++  it("reuses the manual artist of the same name", () => {
++    const db = memoryDb();
++    resolveReviewItem(db, item(db).id, { kind: "manual" });
++    resolveReviewItem(
++      db,
++      item(db, { source: { title: "Fake Album Two", artist: "Fake Artist A", year: 2002 }, sourceRank: 1 }).id,
++      { kind: "manual" },
++    );
++    expect(new Set(listAlbums(db).map((a) => a.artist.id)).size).toBe(1);
++  });
++});
++
++describe("skipping", () => {
++  it("marks the item skipped and adds nothing", () => {
++    const db = memoryDb();
++    const review = item(db);
++    const result = skipReviewItem(db, review.id);
++    expect(result).toMatchObject({ ok: true, item: { status: "skipped", resolvedAlbumId: null } });
++    expect(listAlbums(db)).toEqual([]);
++    expect(listAllYearEntries(db)).toEqual([]);
++  });
++});
++
++describe("items that can't be resolved", () => {
++  it("fails for an item that is not open or does not exist, changing nothing", () => {
++    const db = memoryDb();
++    const review = item(db);
++    skipReviewItem(db, review.id);
++    expect(resolveReviewItem(db, review.id, { kind: "manual" })).toMatchObject({ ok: false, code: "not_open" });
++    expect(skipReviewItem(db, review.id)).toMatchObject({ ok: false, code: "not_open" });
++    expect(resolveReviewItem(db, 999, { kind: "manual" })).toMatchObject({ ok: false, code: "not_found" });
++    expect(skipReviewItem(db, 999)).toMatchObject({ ok: false, code: "not_found" });
++    expect(listAlbums(db)).toEqual([]);
++  });
++
++  it("resolving twice does not add a second album", () => {
++    const db = memoryDb();
++    const review = item(db);
++    resolveReviewItem(db, review.id, { kind: "manual" });
++    expect(resolveReviewItem(db, review.id, { kind: "manual" })).toMatchObject({ ok: false, code: "not_open" });
++    expect(listAlbums(db)).toHaveLength(1);
++  });
++});
++
++describe("a taken rank", () => {
++  const choices = [
++    { name: "using a catalog album", choice: { kind: "catalog" as const, album: CANDIDATE } },
++    { name: "keeping a manual album", choice: { kind: "manual" as const } },
++  ];
++  it.each(choices)("fails naming the album that holds it when $name, and the item stays open", ({ choice }) => {
++    const db = memoryDb();
++    const holder = manualOnYear(db, "Fake Album Holder", 2001, "ranked", 3);
++    const review = item(db);
++
++    const result = resolveReviewItem(db, review.id, choice);
++
++    expect(result).toEqual({
++      ok: false,
++      code: "rank_taken",
++      message: "Rank 3 in 2001 is held by Fake Album Holder - Artist of Fake Album Holder.",
++      holder: { albumId: holder.id, title: "Fake Album Holder", artist: "Artist of Fake Album Holder" },
++    });
++    expect(getImportReviewItem(db, review.id)!.status).toBe("open");
++    expect(listAlbums(db)).toHaveLength(1);
++    expect(listAllYearEntries(db)).toHaveLength(1);
++  });
++
++  it("works once the user frees the rank", () => {
++    const db = memoryDb();
++    const holder = manualOnYear(db, "Fake Album Holder", 2001, "ranked", 3);
++    const review = item(db);
++    expect(resolveReviewItem(db, review.id, { kind: "manual" }).ok).toBe(false);
++    removeYearEntry(db, holder.id);
++    expect(resolveReviewItem(db, review.id, { kind: "manual" }).ok).toBe(true);
++  });
++});
++
++describe("an album already on a year page", () => {
++  function setup(db: DatabaseSync) {
++    const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
++    addYearEntry(db, { albumId: album.id, year: 2004, placement: "ranked", rank: 1, sourceDecadeRank: 9 });
++    setDecadeList(db, 2000, [album.id]);
++    return album;
++  }
++
++  it("says which year it is on and does not move it by default", () => {
++    const db = memoryDb();
++    const album = setup(db);
++    const review = item(db);
++
++    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE });
++
++    expect(result).toEqual({
++      ok: false,
++      code: "album_on_year_page",
++      message: "Fake Album One is already on the 2004 year page.",
++      albumId: album.id,
++      year: 2004,
++    });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2004 });
++    expect(getImportReviewItem(db, review.id)!.status).toBe("open");
++  });
++
++  it("moves its year entry to the row's year and placement when told to", () => {
++    const db = memoryDb();
++    const album = setup(db);
++    const review = item(db, { sourcePlacement: "honorable_mention", sourceRank: null, sourceDecadeRank: 4 });
++
++    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
++
++    expect(result).toMatchObject({ ok: true, albumId: album.id, movedFromYear: 2004, decade: { status: "already_listed" } });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2001, placement: "honorable_mention", rank: null, sourceDecadeRank: 4 });
++    expect(listAlbums(db)).toHaveLength(1);
++    expect(getImportReviewItem(db, review.id)).toMatchObject({ status: "resolved", resolvedAlbumId: album.id });
++  });
++
++  it("drops it from the decade list when the move makes it ineligible, and says so", () => {
++    const db = memoryDb();
++    const album = setup(db);
++    const review = item(db, { sourcePlacement: "listed", sourceRank: null, sourceDecadeRank: null });
++
++    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
++
++    expect(result.ok && result.removedDecadeEntries.map((e) => e.albumId)).toEqual([album.id]);
++    expect(getDecadeList(db, 2000)).toEqual([]);
++  });
++
++  it("fails when the rank is taken in the row's year, leaving the album and the item as they were", () => {
++    const db = memoryDb();
++    const album = setup(db);
++    manualOnYear(db, "Fake Album Holder", 2001, "ranked", 3);
++    const review = item(db);
++
++    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
++
++    expect(result).toMatchObject({ ok: false, code: "rank_taken", holder: { title: "Fake Album Holder" } });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2004, placement: "ranked", rank: 1 });
++    expect(getImportReviewItem(db, review.id)!.status).toBe("open");
++    expect(listImportReviewItems(db, "open")).toHaveLength(1);
++  });
++
++  it("can move an album that already holds the rank in the row's year", () => {
++    const db = memoryDb();
++    const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
++    addYearEntry(db, { albumId: album.id, year: 2001, placement: "ranked", rank: 3 });
++    const review = item(db, { sourceDecadeRank: null });
++    expect(resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true }).ok).toBe(true);
++  });
++});
+diff --git a/lib/import/resolve.ts b/lib/import/resolve.ts
+new file mode 100644
+index 0000000..dbf1e5e
+--- /dev/null
++++ b/lib/import/resolve.ts
+@@ -0,0 +1,176 @@
++import type { DatabaseSync } from "node:sqlite";
++import { createAlbum, findAlbumByCatalogId, getAlbum } from "../db/albums.ts";
++import { decadeOf, insertIntoDecadeBySourceRank, type DecadeInsertResult } from "../db/decade-lists.ts";
++import { getImportReviewItem, resolveImportReviewItem, skipImportReviewItem } from "../db/import-review.ts";
++import { transaction } from "../db/transaction.ts";
++import {
++  DataError,
++  type CatalogCandidate,
++  type DecadeListEntry,
++  type ImportReviewItem,
++} from "../db/types.ts";
++import {
++  addYearEntry,
++  findRankHolder,
++  getYearEntryByAlbum,
++  moveYearEntry,
++  setSourceDecadeRank,
++} from "../db/year-entries.ts";
++
++/** What the user picked for a review item. */
++export type ResolveChoice =
++  | {
++      kind: "catalog";
++      album: CatalogCandidate;
++      /** The album is already on another year page: move its year entry to this row's year and placement. */
++      moveHere?: boolean;
++    }
++  | { kind: "manual" };
++
++export type ResolveFailure =
++  | { ok: false; code: "not_found" | "not_open"; message: string }
++  /** The row's rank is used in its year; `holder` names the album that has it. The item stays open. */
++  | { ok: false; code: "rank_taken"; message: string; holder: { albumId: number; title: string; artist: string } }
++  /** The chosen album is on a year page already; offer "Move it here" (`moveHere: true`). */
++  | { ok: false; code: "album_on_year_page"; message: string; albumId: number; year: number }
++  | { ok: false; code: "invalid"; message: string };
++
++export type ResolveSuccess = {
++  ok: true;
++  albumId: number;
++  /** The year the album was on before "Move it here". */
++  movedFromYear: number | null;
++  /** Null when the row has no decade rank. */
++  decade: DecadeInsertResult | null;
++  /** Decade list entries the move removed because the album stopped being eligible. */
++  removedDecadeEntries: DecadeListEntry[];
++  item: ImportReviewItem;
++};
++
++export type ResolveResult = ResolveSuccess | ResolveFailure;
++
++/** Thrown inside the transaction to roll it back and report a failure without changing anything. */
++class Rollback extends Error {
++  failure: ResolveFailure;
++
++  constructor(failure: ResolveFailure) {
++    super(failure.message);
++    this.failure = failure;
++  }
++}
++
++function openItem(db: DatabaseSync, itemId: number): ImportReviewItem {
++  const item = getImportReviewItem(db, itemId);
++  if (!item) throw new Rollback({ ok: false, code: "not_found", message: `Import review item ${itemId} does not exist.` });
++  if (item.status !== "open") {
++    throw new Rollback({ ok: false, code: "not_open", message: `This item is already ${item.status}.` });
++  }
++  return item;
++}
++
++function rankTaken(db: DatabaseSync, item: ImportReviewItem, albumId: number): Rollback {
++  const held = getAlbum(db, albumId)!;
++  return new Rollback({
++    ok: false,
++    code: "rank_taken",
++    message: `Rank ${item.sourceRank} in ${item.source.year} is held by ${held.title} - ${held.artist.name}.`,
++    holder: { albumId, title: held.title, artist: held.artist.name },
++  });
++}
++
++/**
++ * Applies the user's choice to an open review item in one transaction: creates or reuses the album, adds the
++ * row's year entry and decade list entry, and marks the item resolved. On any failure nothing changes and
++ * the item stays open.
++ */
++export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: ResolveChoice): ResolveResult {
++  try {
++    return transaction(db, (): ResolveSuccess => {
++      const item = openItem(db, itemId);
++      const existing = choice.kind === "catalog" ? findAlbumByCatalogId(db, choice.album.catalogId) : undefined;
++      const entry = existing ? getYearEntryByAlbum(db, existing.id) : undefined;
++      if (existing && entry && choice.kind === "catalog" && !choice.moveHere) {
++        throw new Rollback({
++          ok: false,
++          code: "album_on_year_page",
++          message: `${existing.title} is already on the ${entry.year} year page.`,
++          albumId: existing.id,
++          year: entry.year,
++        });
++      }
++      const holder = item.sourceRank === null ? undefined : findRankHolder(db, item.source.year, item.sourceRank);
++      if (holder !== undefined && holder !== existing?.id) throw rankTaken(db, item, holder);
++
++      let albumId: number;
++      let movedFromYear: number | null = null;
++      let removedDecadeEntries: DecadeListEntry[] = [];
++      if (existing && entry) {
++        albumId = existing.id;
++        movedFromYear = entry.year;
++        removedDecadeEntries = moveYearEntry(db, albumId, item.source.year, {
++          placement: item.sourcePlacement,
++          rank: item.sourceRank,
++        }).removedDecadeEntries;
++        if (item.sourceDecadeRank !== null) setSourceDecadeRank(db, albumId, item.sourceDecadeRank);
++      } else {
++        albumId =
++          existing?.id ??
++          (choice.kind === "catalog"
++            ? createAlbum(db, {
++                title: choice.album.title,
++                artist: { name: choice.album.artist, catalogId: choice.album.artistId ?? null },
++                catalogId: choice.album.catalogId,
++                releaseYear: choice.album.releaseYear,
++                coverUrl: choice.album.coverUrl,
++              })
++            : createAlbum(db, {
++                title: item.source.title,
++                artist: { name: item.source.artist },
++                releaseYear: item.source.year,
++              })
++          ).id;
++        addYearEntry(db, {
++          albumId,
++          year: item.source.year,
++          placement: item.sourcePlacement,
++          rank: item.sourceRank,
++          source: item.source,
++          sourceDecadeRank: item.sourceDecadeRank,
++        });
++      }
++
++      const decade =
++        item.sourceDecadeRank === null || item.sourcePlacement === "listed"
++          ? null
++          : insertIntoDecadeBySourceRank(db, albumId, decadeOf(item.source.year));
++      return {
++        ok: true,
++        albumId,
++        movedFromYear,
++        decade,
++        removedDecadeEntries,
++        item: resolveImportReviewItem(db, itemId, albumId),
++      };
++    });
++  } catch (error) {
++    if (error instanceof Rollback) return error.failure;
++    if (error instanceof DataError) return { ok: false, code: "invalid", message: error.message };
++    throw error;
++  }
++}
++
++/** Marks an open review item skipped. Nothing is added. */
++export function skipReviewItem(
++  db: DatabaseSync,
++  itemId: number,
++): { ok: true; item: ImportReviewItem } | ResolveFailure {
++  try {
++    return transaction(db, () => {
++      openItem(db, itemId);
++      return { ok: true as const, item: skipImportReviewItem(db, itemId) };
++    });
++  } catch (error) {
++    if (error instanceof Rollback) return error.failure;
++    throw error;
++  }
++}
+diff --git a/lib/import/rows.test.ts b/lib/import/rows.test.ts
+new file mode 100644
+index 0000000..88dce9b
+--- /dev/null
++++ b/lib/import/rows.test.ts
+@@ -0,0 +1,163 @@
++import { describe, expect, it } from "vitest";
++import { isBlankRow, isHonorableMention, mapRow, prepareRows } from "./rows.ts";
++import { rawRow } from "./test-support.ts";
++
++describe("mapRow placement", () => {
++  const cases = [
++    { name: "ranked", raw: { rank: 4 }, placement: "ranked", rank: 4, decadeRank: null },
++    { name: "ranked with a decade rank", raw: { rank: 4, decadeRank: 7 }, placement: "ranked", rank: 4, decadeRank: 7 },
++    { name: "honorable mention", raw: { honorableMention: 1 }, placement: "honorable_mention", rank: null, decadeRank: null },
++    { name: "honorable mention with a decade rank", raw: { honorableMention: 1, decadeRank: 25 }, placement: "honorable_mention", rank: null, decadeRank: 25 },
++    { name: "listed", raw: {}, placement: "listed", rank: null, decadeRank: null },
++    { name: "rank 10", raw: { rank: 10 }, placement: "ranked", rank: 10, decadeRank: null },
++    { name: "numbers written as text", raw: { year: "2001", rank: "3", decadeRank: "9" }, placement: "ranked", rank: 3, decadeRank: 9 },
++  ];
++  it.each(cases)("maps $name", ({ raw, placement, rank, decadeRank }) => {
++    const result = mapRow(rawRow(raw));
++    expect(result).toMatchObject({ ok: true, row: { placement, rank, decadeRank } });
++  });
++
++  it("trims the key and keeps it as written", () => {
++    const result = mapRow(rawRow({ album: "  Fake Album One ", artist: " Fake Artist A  ", year: 2001 }));
++    expect(result).toMatchObject({ ok: true, row: { key: { title: "Fake Album One", artist: "Fake Artist A", year: 2001 } } });
++  });
++
++  it("lets the honorable mention flag win over a rank, and says so", () => {
++    const result = mapRow(rawRow({ rank: 5, honorableMention: 1, decadeRank: 2 }));
++    expect(result).toMatchObject({
++      ok: true,
++      row: {
++        placement: "honorable_mention",
++        rank: null,
++        decadeRank: 2,
++        conflictingPlacement: { droppedRank: 5 },
++        droppedDecadeRank: null,
++      },
++    });
++  });
++
++  it("drops a decade rank on a listed row and says so", () => {
++    const result = mapRow(rawRow({ decadeRank: 5 }));
++    expect(result).toMatchObject({
++      ok: true,
++      row: { placement: "listed", decadeRank: null, droppedDecadeRank: "decade rank 5 on a listed album", conflictingPlacement: null },
++    });
++  });
++});
++
++describe("mapRow invalid decade rank", () => {
++  const cases = [
++    { name: "0", raw: { decadeRank: 0 }, reason: "decade rank 0 is outside 1 to 25" },
++    { name: "26", raw: { decadeRank: 26 }, reason: "decade rank 26 is outside 1 to 25" },
++    { name: "0.25", raw: { decadeRank: 0.25 }, reason: 'decade rank "0.25" is not a whole number' },
++    { name: "text", raw: { decadeRank: "top" }, reason: 'decade rank "top" is not a whole number' },
++  ];
++  it.each(cases)("keeps the row and drops a decade rank of $name", ({ raw, reason }) => {
++    expect(mapRow(rawRow({ rank: 3, ...raw }))).toMatchObject({
++      ok: true,
++      row: { placement: "ranked", rank: 3, decadeRank: null, droppedDecadeRank: reason },
++    });
++  });
++
++  it("counts the row as read and does not invalidate it", () => {
++    const prepared = prepareRows([rawRow({ decadeRank: 0.25 })]);
++    expect(prepared.invalid).toEqual([]);
++    expect(prepared.rows).toHaveLength(1);
++  });
++});
++
++describe("mapRow validation", () => {
++  const cases = [
++    { name: "a missing album", raw: { album: null }, reason: "missing album" },
++    { name: "a whitespace album", raw: { album: "   " }, reason: "missing album" },
++    { name: "a missing artist", raw: { artist: undefined }, reason: "missing artist" },
++    { name: "a missing year", raw: { year: null }, reason: "missing year" },
++    { name: "a year below 1900", raw: { year: 1899 }, reason: "year 1899 is outside 1900 to 2100" },
++    { name: "a year above 2100", raw: { year: 2101 }, reason: "year 2101 is outside 1900 to 2100" },
++    { name: "a year that is text", raw: { year: "nineteen" }, reason: 'year "nineteen" is not a whole number' },
++    { name: "a fractional year", raw: { year: 1999.5 }, reason: 'year "1999.5" is not a whole number' },
++    { name: "rank 0", raw: { rank: 0 }, reason: 'rank "0" is outside 1 to 10' },
++    { name: "rank 11", raw: { rank: 11 }, reason: 'rank "11" is outside 1 to 10' },
++    { name: "a text rank", raw: { rank: "top" }, reason: 'rank "top" is outside 1 to 10' },
++    { name: "a fractional rank", raw: { rank: 2.5 }, reason: 'rank "2.5" is outside 1 to 10' },
++    { name: "an invalid rank even with the honorable mention flag", raw: { rank: 11, honorableMention: 1 }, reason: 'rank "11" is outside 1 to 10' },
++  ];
++  it.each(cases)("rejects $name", ({ raw, reason }) => {
++    expect(mapRow(rawRow(raw))).toEqual({ ok: false, reason });
++  });
++});
++
++describe("honorable mention cell", () => {
++  const cases: [string, unknown, boolean][] = [
++    ["1", 1, true],
++    ["2", 2, true],
++    ["0", 0, false],
++    ["TRUE", true, true],
++    ["FALSE", false, false],
++    ["text x", "x", true],
++    ["text 0", "0", false],
++    ["text no", "No", false],
++    ["text false", " false ", false],
++    ["empty", null, false],
++    ["undefined", undefined, false],
++    ["empty text", "", false],
++  ];
++  it.each(cases)("reads %s", (_name, cell, expected) => {
++    expect(isHonorableMention(cell)).toBe(expected);
++  });
++});
++
++describe("blank rows", () => {
++  it("is blank when album, artist and year are all empty, whatever the other cells hold", () => {
++    expect(isBlankRow(rawRow({ album: null, artist: undefined, year: " ", rank: 3 }))).toBe(true);
++    expect(isBlankRow(rawRow({ album: null, artist: undefined, year: 2001 }))).toBe(false);
++  });
++
++  it("does not count blank rows as read", () => {
++    const prepared = prepareRows([rawRow(), rawRow({ rowNumber: 3, album: null, artist: null, year: null })]);
++    expect(prepared.rowsRead).toBe(1);
++    expect(prepared.invalid).toEqual([]);
++  });
++});
++
++describe("prepareRows duplicates", () => {
++  const first = rawRow({ rowNumber: 2 });
++
++  it("merges an exact duplicate without a note", () => {
++    const prepared = prepareRows([first, rawRow({ rowNumber: 3 })]);
++    expect(prepared.rows).toHaveLength(1);
++    expect(prepared.merged).toEqual([expect.objectContaining({ keptRowNumber: 2, difference: null })]);
++    expect(prepared.merged[0].row.rowNumber).toBe(3);
++    expect(prepared.rowsRead).toBe(2);
++  });
++
++  it("merges a case-only duplicate", () => {
++    const prepared = prepareRows([first, rawRow({ rowNumber: 3, album: "FAKE ALBUM ONE", artist: "fake artist a" })]);
++    expect(prepared.rows).toHaveLength(1);
++    expect(prepared.merged).toHaveLength(1);
++  });
++
++  const differing = [
++    { name: "placement", other: { honorableMention: 1 }, note: "rows differ, kept the first (listed), ignored (honorable mention)" },
++    { name: "rank", base: { rank: 1 }, other: { rank: 2 }, note: "rows differ, kept the first (rank 1), ignored (rank 2)" },
++    { name: "decade rank", base: { honorableMention: 1 }, other: { honorableMention: 1, decadeRank: 3 }, note: "rows differ, kept the first (honorable mention), ignored (honorable mention, decade rank 3)" },
++  ];
++  it.each(differing)("merges rows that differ in $name, first row wins, with a note", ({ base, other, note }) => {
++    const prepared = prepareRows([rawRow({ rowNumber: 2, ...base }), rawRow({ rowNumber: 3, ...other })]);
++    expect(prepared.rows).toHaveLength(1);
++    expect(prepared.rows[0].rowNumber).toBe(2);
++    expect(prepared.merged[0].difference).toBe(note);
++  });
++
++  it("does not merge rows of the same album in different years or by different artists", () => {
++    const prepared = prepareRows([first, rawRow({ rowNumber: 3, year: 2002 }), rawRow({ rowNumber: 4, artist: "Fake Artist B" })]);
++    expect(prepared.rows).toHaveLength(3);
++    expect(prepared.merged).toEqual([]);
++  });
++
++  it("does not merge an invalid row into a valid one, and names invalid rows", () => {
++    const prepared = prepareRows([first, rawRow({ rowNumber: 3, rank: 11 })]);
++    expect(prepared.rows).toHaveLength(1);
++    expect(prepared.invalid).toEqual([{ rowNumber: 3, album: "Fake Album One", reason: 'rank "11" is outside 1 to 10' }]);
++  });
++});
+diff --git a/lib/import/rows.ts b/lib/import/rows.ts
+new file mode 100644
+index 0000000..7901593
+--- /dev/null
++++ b/lib/import/rows.ts
+@@ -0,0 +1,133 @@
++import type { Placement } from "../db/types.ts";
++import type { ImportRow, RawRow } from "./types.ts";
++
++export type InvalidRow = { rowNumber: number; album: string; reason: string };
++
++/** A row folded into an earlier row with the same key (ignoring case). `difference` is set when they disagreed. */
++export type MergedRow = { row: ImportRow; keptRowNumber: number; difference: string | null };
++
++export type PreparedRows = {
++  /** Rows to import, duplicates merged, in sheet order. */
++  rows: ImportRow[];
++  /** Rows that are not blank: imported rows, merged duplicates and invalid rows. */
++  rowsRead: number;
++  invalid: InvalidRow[];
++  merged: MergedRow[];
++};
++
++function text(cell: unknown): string {
++  return cell === null || cell === undefined ? "" : String(cell).trim();
++}
++
++export function isBlankRow(raw: RawRow): boolean {
++  return text(raw.album) === "" && text(raw.artist) === "" && text(raw.year) === "";
++}
++
++/** A whole number from a number cell or numeric text; null when the cell is empty; NaN when it is something else. */
++function wholeNumber(cell: unknown): number | null {
++  const value = text(cell);
++  if (value === "") return null;
++  if (typeof cell === "number") return Number.isInteger(cell) ? cell : NaN;
++  return /^\d+$/.test(value) ? Number(value) : NaN;
++}
++
++/** The sheet marks an honorable mention with 1, TRUE, or any text but 0, no or false. */
++export function isHonorableMention(cell: unknown): boolean {
++  if (typeof cell === "boolean") return cell;
++  if (typeof cell === "number") return cell !== 0 && !Number.isNaN(cell);
++  const value = text(cell).toLowerCase();
++  return !["", "0", "no", "false"].includes(value);
++}
++
++export type MapResult = { ok: true; row: ImportRow } | { ok: false; reason: string };
++
++/** Validates a non-blank row and decides how it is imported. */
++export function mapRow(raw: RawRow): MapResult {
++  const title = text(raw.album);
++  const artist = text(raw.artist);
++  if (title === "") return { ok: false, reason: "missing album" };
++  if (artist === "") return { ok: false, reason: "missing artist" };
++  if (text(raw.year) === "") return { ok: false, reason: "missing year" };
++
++  const year = wholeNumber(raw.year);
++  if (year === null || Number.isNaN(year)) return { ok: false, reason: `year "${text(raw.year)}" is not a whole number` };
++  if (year < 1900 || year > 2100) return { ok: false, reason: `year ${year} is outside 1900 to 2100` };
++
++  const rank = wholeNumber(raw.rank);
++  if (rank !== null && (Number.isNaN(rank) || rank < 1 || rank > 10)) {
++    return { ok: false, reason: `rank "${text(raw.rank)}" is outside 1 to 10` };
++  }
++  // A bad decade rank costs the row only its decade rank: it is dropped and named, the row is still imported.
++  const rawDecadeRank = wholeNumber(raw.decadeRank);
++  let decadeRank: number | null = null;
++  let droppedDecadeRank: string | null = null;
++  if (rawDecadeRank !== null) {
++    if (Number.isNaN(rawDecadeRank)) droppedDecadeRank = `decade rank "${text(raw.decadeRank)}" is not a whole number`;
++    else if (rawDecadeRank < 1 || rawDecadeRank > 25) droppedDecadeRank = `decade rank ${rawDecadeRank} is outside 1 to 25`;
++    else decadeRank = rawDecadeRank;
++  }
++
++  const honorableMention = isHonorableMention(raw.honorableMention);
++  const placement: Placement = honorableMention ? "honorable_mention" : rank !== null ? "ranked" : "listed";
++  if (decadeRank !== null && placement === "listed") {
++    droppedDecadeRank = `decade rank ${decadeRank} on a listed album`;
++    decadeRank = null;
++  }
++
++  return {
++    ok: true,
++    row: {
++      rowNumber: raw.rowNumber,
++      key: { title, artist, year },
++      placement,
++      rank: placement === "ranked" ? rank : null,
++      decadeRank,
++      conflictingPlacement: honorableMention && rank !== null ? { droppedRank: rank } : null,
++      droppedDecadeRank,
++    },
++  };
++}
++
++function describePlacement(row: ImportRow): string {
++  const base =
++    row.placement === "ranked" ? `rank ${row.rank}` : row.placement === "honorable_mention" ? "honorable mention" : "listed";
++  return row.decadeRank === null ? base : `${base}, decade rank ${row.decadeRank}`;
++}
++
++function duplicateKey(row: ImportRow): string {
++  return JSON.stringify([row.key.title.toLowerCase(), row.key.artist.toLowerCase(), row.key.year]);
++}
++
++/** Reads the rows: skips blanks, validates, and folds rows with the same key (ignoring case) into the first. */
++export function prepareRows(raw: RawRow[]): PreparedRows {
++  const rows: ImportRow[] = [];
++  const invalid: InvalidRow[] = [];
++  const merged: MergedRow[] = [];
++  const firstByKey = new Map<string, ImportRow>();
++  let rowsRead = 0;
++
++  for (const rawRow of raw) {
++    if (isBlankRow(rawRow)) continue;
++    rowsRead++;
++    const result = mapRow(rawRow);
++    if (!result.ok) {
++      invalid.push({ rowNumber: rawRow.rowNumber, album: text(rawRow.album), reason: result.reason });
++      continue;
++    }
++    const first = firstByKey.get(duplicateKey(result.row));
++    if (first) {
++      const differs = describePlacement(first) !== describePlacement(result.row);
++      merged.push({
++        row: result.row,
++        keptRowNumber: first.rowNumber,
++        difference: differs
++          ? `rows differ, kept the first (${describePlacement(first)}), ignored (${describePlacement(result.row)})`
++          : null,
++      });
++      continue;
++    }
++    firstByKey.set(duplicateKey(result.row), result.row);
++    rows.push(result.row);
++  }
++  return { rows, rowsRead, invalid, merged };
++}
+diff --git a/lib/import/run.test.ts b/lib/import/run.test.ts
+new file mode 100644
+index 0000000..aeab598
+--- /dev/null
++++ b/lib/import/run.test.ts
+@@ -0,0 +1,313 @@
++// @vitest-environment node
++import type { DatabaseSync } from "node:sqlite";
++import { describe, expect, it, vi } from "vitest";
++import type { CatalogAlbum } from "../catalog/types.ts";
++import { listAlbums } from "../db/albums.ts";
++import { MAX_DECADE_LIST, getDecadeList, listDecadeLists } from "../db/decade-lists.ts";
++import { listImportReviewItems, skipImportReviewItem } from "../db/import-review.ts";
++import { memoryDb } from "../db/test-db.ts";
++import { listAllYearEntries } from "../db/year-entries.ts";
++import { readAlbumsSheet } from "./read-sheet.ts";
++import { prepareRows } from "./rows.ts";
++import { MAX_CONSECUTIVE_FAILURES, PROGRESS_EVERY, RETRY_DELAYS_MS, runImport, type RunDeps } from "./run.ts";
++import { formatSummary } from "./summary.ts";
++import { FIXTURE, FIXTURE_CATALOG, catalogAlbum, rawRow } from "./test-support.ts";
++import type { CatalogSearch, RawRow } from "./types.ts";
++
++function fakeDeps(catalog: CatalogAlbum[], over: Partial<RunDeps> = {}) {
++  const search = vi.fn<CatalogSearch>(async () => catalog);
++  const sleep = vi.fn<RunDeps["sleep"]>(async () => {});
++  return { search, sleep, deps: { search, sleep, ...over } satisfies RunDeps };
++}
++
++/** Raw rows for albums that the catalog (built by `catalogFor`) matches exactly. */
++function simpleRows(count: number, over: (i: number) => Partial<RawRow> = () => ({})): RawRow[] {
++  return Array.from({ length: count }, (_, i) =>
++    rawRow({ rowNumber: i + 2, album: `Fake Album ${i + 1}`, artist: `Fake Artist ${i + 1}`, year: 2001, ...over(i) }),
++  );
++}
++
++function catalogFor(rows: RawRow[]): CatalogAlbum[] {
++  return rows.map((row, i) => catalogAlbum(`cat-${i}`, String(row.album), String(row.artist), Number(row.year)));
++}
++
++function snapshot(db: DatabaseSync) {
++  const strip = <T extends Record<string, unknown>>(item: T) => ({ ...item, createdAt: 0, updatedAt: 0 });
++  return JSON.stringify({
++    albums: listAlbums(db),
++    years: listAllYearEntries(db).map(strip),
++    decades: listDecadeLists(db),
++    review: listImportReviewItems(db).map(strip),
++  });
++}
++
++describe("importing the fixture spreadsheet", () => {
++  async function importFixture(db: DatabaseSync, catalog = FIXTURE_CATALOG) {
++    const prepared = prepareRows(await readAlbumsSheet(FIXTURE));
++    const { search, deps } = fakeDeps(catalog);
++    const summary = await runImport(db, prepared, deps);
++    return { summary, search };
++  }
++
++  it("imports each kind of row and reports what happened", async () => {
++    const db = memoryDb();
++    const { summary, search } = await importFixture(db);
++
++    expect(summary).toMatchObject({
++      rowsRead: 18,
++      imported: 10,
++      review: { no_match: 1, ambiguous: 1, duplicate_album: 1, rank_taken: 1 },
++      alreadyImported: 0,
++      notReached: 0,
++      aborted: false,
++      openReviewItems: 4,
++      decadeLists: [{ decade: 2000, entries: 3 }],
++      decadeListFull: [],
++    });
++    expect(summary.invalid.map((row) => [row.rowNumber, row.reason])).toEqual([
++      [15, "year 1850 is outside 1900 to 2100"],
++      [20, "missing artist"],
++    ]);
++    expect(summary.merged.map((m) => [m.row.rowNumber, m.keptRowNumber, m.difference])).toEqual([
++      [8, 5, null],
++      [10, 9, "rows differ, kept the first (listed), ignored (honorable mention)"],
++    ]);
++    expect(summary.conflictingPlacement.map((row) => row.key.title)).toEqual(["Fake Album Five"]);
++    expect(summary.droppedDecadeRank.map((row) => [row.key.title, row.droppedDecadeRank])).toEqual([["Fake Album Eleven", "decade rank 5 on a listed album"]]);
++    expect(search).toHaveBeenCalledTimes(14);
++  });
++
++  it("writes year entries, shared artists and the decade list in sheet order", async () => {
++    const db = memoryDb();
++    await importFixture(db);
++
++    const byTitle = new Map(listAlbums(db).map((album) => [album.title, album]));
++    const placements = listAllYearEntries(db).map((entry) => {
++      const album = [...byTitle.values()].find((a) => a.id === entry.albumId)!;
++      return `${entry.year} ${album.title} ${entry.placement}${entry.rank === null ? "" : ` ${entry.rank}`}`;
++    });
++    expect(placements).toEqual([
++      "2001 Fake Album One ranked 1",
++      "2001 Fake Album Two ranked 2",
++      "2001 Fake Album Three honorable_mention",
++      "2001 Fake Album Five honorable_mention",
++      "2001 Fake Album Four listed",
++      "2002 Fake Album Nine ranked 2",
++      "2002 Fake Album Six listed",
++      "2003 Fake Album Eleven listed",
++      "2004 Fake Album Seventeen ranked 1",
++      "2004 Fake Album Fourteen listed",
++    ]);
++    // One and Two share their artist; the collaboration is one artist.
++    expect(byTitle.get("Fake Album One")!.artist.id).toBe(byTitle.get("Fake Album Two")!.artist.id);
++    expect(new Set(listAlbums(db).map((a) => a.artist.id)).size).toBe(9);
++    // Decade ranks in the sheet: Two 1, Five 2, One 3.
++    expect(getDecadeList(db, 2000).map((entry) => [...byTitle.values()].find((a) => a.id === entry.albumId)!.title)).toEqual([
++      "Fake Album Two",
++      "Fake Album Five",
++      "Fake Album One",
++    ]);
++    expect(listAllYearEntries(db).every((entry) => entry.source !== null)).toBe(true);
++  });
++
++  it("sends the typo, ambiguous, duplicate and repeated-rank rows to review with reasons", async () => {
++    const db = memoryDb();
++    await importFixture(db);
++    expect(listImportReviewItems(db).map((item) => [item.source.title, item.source.year, item.reason, item.reasonDetail])).toEqual([
++      ["Fake Albm Seven", 2002, "no_match", null],
++      ["Fake Album Ten", 2002, "rank_taken", "Fake Album Nine - Fake Artist H"],
++      ["Fake Album Thirteen", 2003, "ambiguous", null],
++      ["Fake Album Fourteen", 2005, "duplicate_album", "2004"],
++    ]);
++  });
++
++  it("changes nothing and calls the catalog not at all when run again", async () => {
++    const db = memoryDb();
++    await importFixture(db);
++    const before = snapshot(db);
++
++    const { summary, search } = await importFixture(db);
++
++    expect(search).not.toHaveBeenCalled();
++    expect(snapshot(db)).toBe(before);
++    expect(summary).toMatchObject({ imported: 0, alreadyImported: 14, review: { no_match: 0, ambiguous: 0, duplicate_album: 0, rank_taken: 0 }, openReviewItems: 4 });
++    expect(summary.conflictingPlacement).toEqual([]);
++  });
++
++  it("keeps a skipped review item skipped when run again", async () => {
++    const db = memoryDb();
++    await importFixture(db);
++    const typo = listImportReviewItems(db).find((item) => item.reason === "no_match")!;
++    skipImportReviewItem(db, typo.id);
++
++    const { search } = await importFixture(db);
++
++    expect(search).not.toHaveBeenCalled();
++    expect(listImportReviewItems(db, "skipped").map((item) => item.id)).toEqual([typo.id]);
++    expect(listImportReviewItems(db, "open")).toHaveLength(3);
++  });
++
++  it("processes a row whose key is new when the sheet changed", async () => {
++    const db = memoryDb();
++    await importFixture(db);
++    const prepared = prepareRows([rawRow({ album: "Fake Album Nine", artist: "Fake Artist H", year: 2009 })]);
++    const { search, deps } = fakeDeps(FIXTURE_CATALOG);
++    const summary = await runImport(db, prepared, deps);
++    expect(search).toHaveBeenCalledTimes(1);
++    expect(summary.review.duplicate_album).toBe(1); // Nine is on 2002 already
++  });
++
++  it("prints the summary the spec describes", async () => {
++    const db = memoryDb();
++    const { summary } = await importFixture(db);
++    expect(formatSummary(summary)).toBe(
++      [
++        "Rows read              18",
++        "Imported               10   (matched automatically)",
++        "Sent to review         4    (no match 1, ambiguous 1, duplicate album match 1, rank taken 1)",
++        "Merged duplicates      2    Fake Album Four - Fake Artist C (2001)",
++        "                            fake album six - FAKE ARTIST E (2002): rows differ, kept the first (listed), ignored (honorable mention)",
++        "Conflicting placement  1    Fake Album Five - Fake Artist D (2001): rank 3 and honorable mention, imported as honorable mention",
++        "Decade rank dropped    1    Fake Album Eleven - Fake Artist J (2003): decade rank 5 on a listed album",
++        "Decade list full       0",
++        "Already imported       0",
++        "Invalid, skipped       2    row 15 Fake Album Twelve: year 1850 is outside 1900 to 2100",
++        "                            row 20 Fake Album Eighteen: missing artist",
++        "Not reached            0    re-run to retry",
++        "Decade lists                2000s 3 (entries now on each list)",
++        "Open review items      4    see /import",
++      ].join("\n"),
++    );
++  });
++});
++
++describe("decade lists", () => {
++  it("matches the sheet's decade ranks whatever order the rows import in", async () => {
++    const ranks = [4, 1, 5, 3, 2];
++    const rows = simpleRows(5, (i) => ({ honorableMention: 1, decadeRank: ranks[i], year: 2001 + i }));
++    const db = memoryDb();
++    const { deps } = fakeDeps(catalogFor(rows));
++    await runImport(db, prepareRows(rows), deps);
++
++    const titles = new Map(listAlbums(db).map((album) => [album.id, album.title]));
++    expect(getDecadeList(db, 2000).map((entry) => titles.get(entry.albumId))).toEqual([
++      "Fake Album 2", // rank 1
++      "Fake Album 5", // rank 2
++      "Fake Album 4", // rank 3
++      "Fake Album 1", // rank 4
++      "Fake Album 3", // rank 5
++    ]);
++  });
++
++  it("leaves a full list alone and names the album that did not fit", async () => {
++    const rows = simpleRows(MAX_DECADE_LIST + 1, (i) => ({
++      honorableMention: 1,
++      decadeRank: Math.min(i + 1, MAX_DECADE_LIST),
++      year: 2000 + (i % 10),
++    }));
++    const db = memoryDb();
++    const { deps } = fakeDeps(catalogFor(rows));
++    const summary = await runImport(db, prepareRows(rows), deps);
++
++    expect(summary.imported).toBe(MAX_DECADE_LIST + 1);
++    expect(getDecadeList(db, 2000)).toHaveLength(MAX_DECADE_LIST);
++    expect(summary.decadeListFull.map((row) => row.key.title)).toEqual([`Fake Album ${MAX_DECADE_LIST + 1}`]);
++    expect(summary.decadeLists).toEqual([{ decade: 2000, entries: MAX_DECADE_LIST }]);
++    expect(formatSummary(summary)).toContain(`Decade list full       1    Fake Album 26 - Fake Artist 26 (2005): not added to the decade list`);
++  });
++});
++
++describe("catalog errors", () => {
++  it("retries after 5 and 15 seconds, then leaves the row untouched and counts it as not reached", async () => {
++    const rows = simpleRows(2);
++    const catalog = catalogFor(rows);
++    const db = memoryDb();
++    const { search, sleep, deps } = fakeDeps(catalog);
++    search.mockImplementation(async (query) => {
++      if (query.startsWith("Fake Album 1 ")) throw new Error("busy");
++      return catalog;
++    });
++
++    const summary = await runImport(db, prepareRows(rows), deps);
++
++    expect(RETRY_DELAYS_MS).toEqual([5000, 15000]);
++    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([5000, 15000]);
++    expect(search.mock.calls.filter(([q]) => q.startsWith("Fake Album 1 "))).toHaveLength(3);
++    expect(summary).toMatchObject({ imported: 1, notReached: 1, aborted: false });
++    expect(listAllYearEntries(db).map((entry) => entry.source?.title)).toEqual(["Fake Album 2"]);
++    expect(listImportReviewItems(db)).toEqual([]);
++
++    // The next run, with the catalog back, picks the row up and skips the one already imported.
++    const again = fakeDeps(catalog);
++    const second = await runImport(db, prepareRows(rows), again.deps);
++    expect(second).toMatchObject({ imported: 1, alreadyImported: 1, notReached: 0 });
++    expect(again.search).toHaveBeenCalledTimes(1);
++  });
++
++  it("imports the row when a retry succeeds", async () => {
++    const rows = simpleRows(1);
++    const { search, sleep, deps } = fakeDeps(catalogFor(rows));
++    search.mockRejectedValueOnce(new Error("timeout"));
++    const db = memoryDb();
++
++    const summary = await runImport(db, prepareRows(rows), deps);
++
++    expect(sleep.mock.calls).toEqual([[5000]]);
++    expect(summary).toMatchObject({ imported: 1, notReached: 0 });
++  });
++
++  it("reports each failed attempt", async () => {
++    const rows = simpleRows(1);
++    const onCatalogError = vi.fn();
++    const { search, deps } = fakeDeps(catalogFor(rows), { onCatalogError });
++    search.mockRejectedValue(new Error("busy"));
++    await runImport(memoryDb(), prepareRows(rows), deps);
++    expect(onCatalogError).toHaveBeenCalledTimes(3);
++  });
++
++  it("stops after ten failed rows in a row and counts the rest as not reached", async () => {
++    const rows = simpleRows(15);
++    const { search, sleep, deps } = fakeDeps(catalogFor(rows));
++    search.mockRejectedValue(new Error("down"));
++    const db = memoryDb();
++
++    const summary = await runImport(db, prepareRows(rows), deps);
++
++    expect(MAX_CONSECUTIVE_FAILURES).toBe(10);
++    expect(summary).toMatchObject({ aborted: true, notReached: 15, imported: 0 });
++    expect(search).toHaveBeenCalledTimes(30); // 10 rows, 3 tries each
++    expect(sleep).toHaveBeenCalledTimes(20);
++    expect(formatSummary(summary)).toContain("Stopped early");
++    expect(listAllYearEntries(db)).toEqual([]);
++  });
++
++  it("does not stop when successes break up the failures", async () => {
++    const rows = simpleRows(21);
++    const catalog = catalogFor(rows);
++    const { search, deps } = fakeDeps(catalog);
++    search.mockImplementation(async (query) => {
++      const n = Number(/^Fake Album (\d+) /.exec(query)![1]);
++      if (n !== 10 && n !== 11 && n !== 21) throw new Error("down");
++      return catalog;
++    });
++
++    const summary = await runImport(memoryDb(), prepareRows(rows), deps);
++
++    expect(summary.aborted).toBe(false);
++    expect(summary).toMatchObject({ imported: 3, notReached: 18 });
++  });
++});
++
++describe("progress", () => {
++  it("reports every 25 rows", async () => {
++    const rows = simpleRows(60);
++    const onProgress = vi.fn();
++    const { deps } = fakeDeps(catalogFor(rows), { onProgress });
++    await runImport(memoryDb(), prepareRows(rows), deps);
++    expect(PROGRESS_EVERY).toBe(25);
++    expect(onProgress.mock.calls).toEqual([
++      [25, 60],
++      [50, 60],
++    ]);
++  });
++});
+diff --git a/lib/import/run.ts b/lib/import/run.ts
+new file mode 100644
+index 0000000..e925cc3
+--- /dev/null
++++ b/lib/import/run.ts
+@@ -0,0 +1,120 @@
++import type { DatabaseSync } from "node:sqlite";
++import { listDecadeLists } from "../db/decade-lists.ts";
++import { findImportReviewItem, listImportReviewItems } from "../db/import-review.ts";
++import type { ReviewReason } from "../db/types.ts";
++import { findYearEntryBySource } from "../db/year-entries.ts";
++import { matchRow } from "./match.ts";
++import type { InvalidRow, MergedRow, PreparedRows } from "./rows.ts";
++import type { CatalogSearch, ImportRow } from "./types.ts";
++import { writeRow, type RowResult } from "./write-row.ts";
++
++/** Waits before the first and second retry of a catalog search that failed. */
++export const RETRY_DELAYS_MS = [5000, 15000];
++export const MAX_CONSECUTIVE_FAILURES = 10;
++export const PROGRESS_EVERY = 25;
++
++export type RunDeps = {
++  search: CatalogSearch;
++  sleep: (ms: number) => Promise<void>;
++  /** Called after every `PROGRESS_EVERY` rows. */
++  onProgress?: (done: number, total: number) => void;
++  /** Called for each catalog failure that is retried or given up on. */
++  onCatalogError?: (row: ImportRow, error: unknown) => void;
++};
++
++export type ImportSummary = {
++  rowsRead: number;
++  imported: number;
++  review: Record<ReviewReason, number>;
++  merged: MergedRow[];
++  conflictingPlacement: ImportRow[];
++  droppedDecadeRank: ImportRow[];
++  alreadyImported: number;
++  invalid: InvalidRow[];
++  notReached: number;
++  /** Rows imported but left off a decade list because it already had 25 albums. */
++  decadeListFull: ImportRow[];
++  /** Entries now on each decade list in the database, oldest decade first. */
++  decadeLists: { decade: number; entries: number }[];
++  /** Open review items in the database, from this run or an earlier one. */
++  openReviewItems: number;
++  /** The run stopped after too many catalog failures in a row. */
++  aborted: boolean;
++};
++
++async function searchWithRetries(row: ImportRow, deps: RunDeps) {
++  for (let attempt = 0; ; attempt++) {
++    try {
++      return { ok: true as const, outcome: await matchRow(row, deps.search) };
++    } catch (error) {
++      deps.onCatalogError?.(row, error);
++      if (attempt >= RETRY_DELAYS_MS.length) return { ok: false as const };
++      await deps.sleep(RETRY_DELAYS_MS[attempt]);
++    }
++  }
++}
++
++function countDecadeLists(db: DatabaseSync): ImportSummary["decadeLists"] {
++  const counts = new Map<number, number>();
++  for (const entry of listDecadeLists(db)) counts.set(entry.decade, (counts.get(entry.decade) ?? 0) + 1);
++  return [...counts].map(([decade, entries]) => ({ decade, entries })).sort((a, b) => a.decade - b.decade);
++}
++
++/** Imports the prepared rows one at a time, each in its own transaction, and returns what happened. */
++export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: RunDeps): Promise<ImportSummary> {
++  const summary: ImportSummary = {
++    rowsRead: prepared.rowsRead,
++    imported: 0,
++    review: { no_match: 0, ambiguous: 0, duplicate_album: 0, rank_taken: 0 },
++    merged: prepared.merged,
++    conflictingPlacement: [],
++    droppedDecadeRank: [],
++    alreadyImported: 0,
++    invalid: prepared.invalid,
++    notReached: 0,
++    decadeListFull: [],
++    decadeLists: [],
++    openReviewItems: 0,
++    aborted: false,
++  };
++
++  let failuresInARow = 0;
++  const { rows } = prepared;
++  for (const [index, row] of rows.entries()) {
++    if (failuresInARow >= MAX_CONSECUTIVE_FAILURES) {
++      summary.aborted = true;
++      summary.notReached += rows.length - index;
++      break;
++    }
++
++    if (findYearEntryBySource(db, row.key) || findImportReviewItem(db, row.key)) {
++      summary.alreadyImported++;
++    } else {
++      const searched = await searchWithRetries(row, deps);
++      if (!searched.ok) {
++        failuresInARow++;
++        summary.notReached++;
++      } else {
++        failuresInARow = 0;
++        record(summary, row, writeRow(db, row, searched.outcome));
++      }
++    }
++
++    if ((index + 1) % PROGRESS_EVERY === 0) deps.onProgress?.(index + 1, rows.length);
++  }
++
++  summary.decadeLists = countDecadeLists(db);
++  summary.openReviewItems = listImportReviewItems(db, "open").length;
++  return summary;
++}
++
++function record(summary: ImportSummary, row: ImportRow, result: RowResult): void {
++  if (row.conflictingPlacement) summary.conflictingPlacement.push(row);
++  if (row.droppedDecadeRank !== null) summary.droppedDecadeRank.push(row);
++  if (result.kind === "review") {
++    summary.review[result.reason]++;
++  } else {
++    summary.imported++;
++    if (result.decade === "full") summary.decadeListFull.push(row);
++  }
++}
+diff --git a/lib/import/summary.ts b/lib/import/summary.ts
+new file mode 100644
+index 0000000..5eaf680
+--- /dev/null
++++ b/lib/import/summary.ts
+@@ -0,0 +1,76 @@
++import type { ImportSummary } from "./run.ts";
++import { describeKey } from "./types.ts";
++
++const LABEL_WIDTH = 23;
++
++function line(label: string, count: number | string, note = ""): string {
++  return `${label.padEnd(LABEL_WIDTH)}${String(count).padEnd(5)}${note}`.trimEnd();
++}
++
++function listed(label: string, items: { name: string; note: string }[], note = ""): string[] {
++  if (items.length === 0) return [line(label, 0, note)];
++  const [first, ...rest] = items;
++  const entry = ({ name, note: detail }: { name: string; note: string }) => (detail ? `${name}: ${detail}` : name);
++  return [
++    line(label, items.length, entry(first)),
++    ...rest.map((item) => `${" ".repeat(LABEL_WIDTH + 5)}${entry(item)}`),
++  ];
++}
++
++/** The text the script prints at the end of a run. */
++export function formatSummary(summary: ImportSummary): string {
++  const { review } = summary;
++  const reviewTotal = review.no_match + review.ambiguous + review.duplicate_album + review.rank_taken;
++  const lines = [
++    line("Rows read", summary.rowsRead),
++    line("Imported", summary.imported, "(matched automatically)"),
++    line(
++      "Sent to review",
++      reviewTotal,
++      `(no match ${review.no_match}, ambiguous ${review.ambiguous}, duplicate album match ${review.duplicate_album}, rank taken ${review.rank_taken})`,
++    ),
++    ...listed(
++      "Merged duplicates",
++      summary.merged.map(({ row, difference }) => ({ name: describeKey(row.key), note: difference ?? "" })),
++    ),
++    ...listed(
++      "Conflicting placement",
++      summary.conflictingPlacement.map((row) => ({
++        name: describeKey(row.key),
++        note: `rank ${row.conflictingPlacement?.droppedRank} and honorable mention, imported as honorable mention`,
++      })),
++    ),
++    ...listed(
++      "Decade rank dropped",
++      summary.droppedDecadeRank.map((row) => ({
++        name: describeKey(row.key),
++        note: row.droppedDecadeRank ?? "",
++      })),
++    ),
++    ...listed(
++      "Decade list full",
++      summary.decadeListFull.map((row) => ({ name: describeKey(row.key), note: "not added to the decade list" })),
++    ),
++    line("Already imported", summary.alreadyImported),
++    ...listed(
++      "Invalid, skipped",
++      summary.invalid.map((row) => ({
++        name: `row ${row.rowNumber}${row.album ? ` ${row.album}` : ""}`,
++        note: row.reason,
++      })),
++    ),
++    line("Not reached", summary.notReached, "re-run to retry"),
++    line(
++      "Decade lists",
++      "",
++      summary.decadeLists.length === 0
++        ? "none yet"
++        : `${summary.decadeLists.map(({ decade, entries }) => `${decade}s ${entries}`).join(", ")} (entries now on each list)`,
++    ),
++    line("Open review items", summary.openReviewItems, summary.openReviewItems > 0 ? "see /import" : ""),
++  ];
++  if (summary.aborted) {
++    lines.push("", "Stopped early: the catalog failed on 10 rows in a row. Try again later; the run carries on where it stopped.");
++  }
++  return lines.join("\n");
++}
+diff --git a/lib/import/test-support.ts b/lib/import/test-support.ts
+new file mode 100644
+index 0000000..5485c31
+--- /dev/null
++++ b/lib/import/test-support.ts
+@@ -0,0 +1,61 @@
++import { join } from "node:path";
++import type { CatalogAlbum } from "../catalog/types.ts";
++import type { ImportRow, RawRow } from "./types.ts";
++
++/** A made-up catalog album. `id` becomes the catalog id, `artistId` the artist credit's id. */
++export function catalogAlbum(
++  id: string,
++  title: string,
++  artist: string,
++  year: number | null,
++  artistId: string | null = `artist-${artist}`,
++): CatalogAlbum {
++  return { catalogId: id, title, artist, artistId, year, coverUrl: `https://covers.test/${id}` };
++}
++
++export function rawRow(over: Partial<RawRow> = {}): RawRow {
++  return {
++    rowNumber: 2,
++    album: "Fake Album One",
++    artist: "Fake Artist A",
++    year: 2001,
++    rank: null,
++    honorableMention: null,
++    decadeRank: null,
++    ...over,
++  };
++}
++
++export function importRow(over: Partial<ImportRow> = {}): ImportRow {
++  return {
++    rowNumber: 2,
++    key: { title: "Fake Album One", artist: "Fake Artist A", year: 2001 },
++    placement: "listed",
++    rank: null,
++    decadeRank: null,
++    conflictingPlacement: null,
++    droppedDecadeRank: null,
++    ...over,
++  };
++}
++
++/** The catalog of made-up albums the fixture spreadsheet's rows match against. */
++export const FIXTURE_CATALOG: CatalogAlbum[] = [
++  catalogAlbum("cat-one", "Fake Album One", "Fake Artist A", 2001, "art-a"),
++  catalogAlbum("cat-two", "Fake Album Two", "Fake Artist A", 2001, "art-a"),
++  catalogAlbum("cat-three", "Fake Album Three", "Fake Artist B", 2001, "art-b"),
++  catalogAlbum("cat-four", "Fake Album Four", "Fake Artist C", 2001, "art-c"),
++  catalogAlbum("cat-five", "Fake Album Five", "Fake Artist D", 2001, "art-d"),
++  catalogAlbum("cat-six", "Fake Album Six", "Fake Artist E", 2002, "art-e"),
++  catalogAlbum("cat-seven", "Fake Album Seven", "Fake Artist F", 2002, "art-f"),
++  catalogAlbum("cat-nine", "Fake Album Nine", "Fake Artist H", 2002, "art-h"),
++  catalogAlbum("cat-ten", "Fake Album Ten", "Fake Artist I", 2002, "art-i"),
++  catalogAlbum("cat-eleven", "Fake Album Eleven", "Fake Artist J", 2003, "art-j"),
++  catalogAlbum("cat-thirteen-a", "Fake Album Thirteen", "Fake Artist L", 1990, "art-l"),
++  catalogAlbum("cat-thirteen-b", "Fake Album Thirteen", "Fake Artist L", 2010, "art-l"),
++  catalogAlbum("cat-fourteen", "Fake Album Fourteen", "Fake Artist M", 2004, "art-m"),
++  catalogAlbum("cat-seventeen", "Fake Album Seventeen", "Fake Artist N & Fake Artist O", 2004, "art-n+art-o"),
++];
++
++/** The committed fixture spreadsheet of made-up rows (see fixtures/make-fixture.ts). */
++export const FIXTURE = join(import.meta.dirname, "fixtures", "albums.xlsx");
+diff --git a/lib/import/types.ts b/lib/import/types.ts
+new file mode 100644
+index 0000000..372dd79
+--- /dev/null
++++ b/lib/import/types.ts
+@@ -0,0 +1,35 @@
++import type { CatalogAlbum } from "../catalog/types.ts";
++import type { Placement, SourceRowKey } from "../db/types.ts";
++
++/** One data row of the Albums sheet, cell values as read (nothing validated yet). */
++export type RawRow = {
++  /** The row's number in the sheet, counting the header as row 1. */
++  rowNumber: number;
++  album: unknown;
++  artist: unknown;
++  year: unknown;
++  rank: unknown;
++  honorableMention: unknown;
++  decadeRank: unknown;
++};
++
++/** A validated row, ready to match and write. */
++export type ImportRow = {
++  rowNumber: number;
++  key: SourceRowKey;
++  placement: Placement;
++  rank: number | null;
++  decadeRank: number | null;
++  /** The sheet gave both a rank and the honorable mention flag; the flag won and the rank was dropped. */
++  conflictingPlacement: { droppedRank: number } | null;
++  /** Why the row's decade rank was dropped (listed row, not a whole number, outside 1 to 25); null when it was kept or absent. */
++  droppedDecadeRank: string | null;
++};
++
++/** Searches the catalog; rejects when the catalog can't answer. Tests pass a fake. */
++export type CatalogSearch = (query: string) => Promise<CatalogAlbum[]>;
++
++/** "Album - Artist (year)", how the summary names a row. */
++export function describeKey(key: SourceRowKey): string {
++  return `${key.title} - ${key.artist} (${key.year})`;
++}
+diff --git a/lib/import/write-row.test.ts b/lib/import/write-row.test.ts
+new file mode 100644
+index 0000000..04a5043
+--- /dev/null
++++ b/lib/import/write-row.test.ts
+@@ -0,0 +1,177 @@
++import { describe, expect, it } from "vitest";
++import { findAlbumByCatalogId, listAlbums } from "../db/albums.ts";
++import { MAX_DECADE_LIST, getDecadeList } from "../db/decade-lists.ts";
++import { listImportReviewItems } from "../db/import-review.ts";
++import { memoryDb } from "../db/test-db.ts";
++import { getYearEntryByAlbum, listAllYearEntries } from "../db/year-entries.ts";
++import { createAlbum } from "../db/albums.ts";
++import { chooseMatch } from "./match.ts";
++import { catalogAlbum, importRow } from "./test-support.ts";
++import { writeRow } from "./write-row.ts";
++
++const ONE = catalogAlbum("cat-one", "Fake Album One", "Fake Artist A", 2001, "art-a");
++const TWO = catalogAlbum("cat-two", "Fake Album Two", "Fake Artist A", 2001, "art-a");
++const key = (title: string, year = 2001) => ({ title, artist: "Fake Artist A", year });
++
++function accept(album = ONE) {
++  return { kind: "accepted" as const, album };
++}
++
++describe("writeRow accepted rows", () => {
++  it("creates the album and artist from the catalog, and the year entry with the source key", () => {
++    const db = memoryDb();
++    const row = importRow({ key: key("Fake Album One"), placement: "ranked", rank: 2 });
++
++    const result = writeRow(db, row, accept());
++
++    expect(result).toMatchObject({ kind: "imported", decade: "none" });
++    const album = findAlbumByCatalogId(db, "cat-one")!;
++    expect(album).toMatchObject({
++      title: "Fake Album One",
++      releaseYear: 2001,
++      coverUrl: "https://covers.test/cat-one",
++      artist: { name: "Fake Artist A", catalogId: "art-a" },
++    });
++    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({
++      year: 2001,
++      placement: "ranked",
++      rank: 2,
++      source: key("Fake Album One"),
++      sourceDecadeRank: null,
++    });
++    expect(listImportReviewItems(db)).toEqual([]);
++  });
++
++  it("uses the sheet's year, not the catalog's", () => {
++    const db = memoryDb();
++    writeRow(db, importRow({ key: key("Fake Album One", 2005) }), accept());
++    expect(getYearEntryByAlbum(db, findAlbumByCatalogId(db, "cat-one")!.id)!.year).toBe(2005);
++  });
++
++  it("shares one artist between albums with the same catalog artist id", () => {
++    const db = memoryDb();
++    writeRow(db, importRow({ key: key("Fake Album One") }), accept(ONE));
++    writeRow(db, importRow({ key: key("Fake Album Two") }), accept(TWO));
++    const [a, b] = listAlbums(db);
++    expect(a.artist.id).toBe(b.artist.id);
++  });
++
++  it("keeps a collaboration's joined artist id as one artist", () => {
++    const db = memoryDb();
++    const collab = catalogAlbum("cat-c", "Fake Collab", "Fake Artist N & Fake Artist O", 2004, "art-n+art-o");
++    writeRow(db, importRow({ key: { title: "Fake Collab", artist: "Fake Artist N & Fake Artist O", year: 2004 } }), accept(collab));
++    expect(findAlbumByCatalogId(db, "cat-c")!.artist).toMatchObject({ name: "Fake Artist N & Fake Artist O", catalogId: "art-n+art-o" });
++  });
++
++  it("reuses an album that exists without a year entry", () => {
++    const db = memoryDb();
++    const existing = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
++    const result = writeRow(db, importRow({ key: key("Fake Album One") }), accept());
++    expect(result).toMatchObject({ kind: "imported", albumId: existing.id });
++    expect(listAlbums(db)).toHaveLength(1);
++    expect(getYearEntryByAlbum(db, existing.id)).toBeDefined();
++  });
++
++  it("stores the source decade rank and puts a ranked or honorable mention album on its decade list", () => {
++    const db = memoryDb();
++    const result = writeRow(db, importRow({ key: key("Fake Album One"), placement: "honorable_mention", decadeRank: 4 }), accept());
++    const album = findAlbumByCatalogId(db, "cat-one")!;
++    expect(result).toMatchObject({ kind: "imported", decade: "inserted" });
++    expect(getYearEntryByAlbum(db, album.id)!.sourceDecadeRank).toBe(4);
++    expect(getDecadeList(db, 2000).map((e) => e.albumId)).toEqual([album.id]);
++  });
++
++  it("leaves an album off a full decade list but still imports it", () => {
++    const db = memoryDb();
++    for (let i = 1; i <= MAX_DECADE_LIST; i++) {
++      writeRow(
++        db,
++        importRow({ key: key(`Filler ${i}`), placement: "honorable_mention", decadeRank: i }),
++        accept(catalogAlbum(`f-${i}`, `Filler ${i}`, "Fake Artist A", 2001, "art-a")),
++      );
++    }
++    const result = writeRow(db, importRow({ key: key("Fake Album One"), placement: "honorable_mention", decadeRank: 3 }), accept());
++    expect(result).toMatchObject({ kind: "imported", decade: "full" });
++    expect(getDecadeList(db, 2000)).toHaveLength(MAX_DECADE_LIST);
++    expect(getYearEntryByAlbum(db, findAlbumByCatalogId(db, "cat-one")!.id)).toBeDefined();
++  });
++});
++
++describe("writeRow review items", () => {
++  it("sends a duplicate album match to review, naming the year, and creates nothing", () => {
++    const db = memoryDb();
++    writeRow(db, importRow({ key: key("Fake Album One", 2001) }), accept());
++
++    const result = writeRow(db, importRow({ key: key("Fake Album One", 2002), placement: "honorable_mention" }), accept());
++
++    expect(result).toEqual({ kind: "review", reason: "duplicate_album" });
++    expect(listAllYearEntries(db)).toHaveLength(1);
++    expect(listAlbums(db)).toHaveLength(1);
++    const [item] = listImportReviewItems(db);
++    expect(item).toMatchObject({
++      source: key("Fake Album One", 2002),
++      sourcePlacement: "honorable_mention",
++      reason: "duplicate_album",
++      reasonDetail: "2001",
++      status: "open",
++    });
++    expect(item.candidates).toEqual([expect.objectContaining({ catalogId: "cat-one", artistId: "art-a" })]);
++  });
++
++  it("sends a taken rank to review, naming the album that holds it, and creates no album", () => {
++    const db = memoryDb();
++    writeRow(db, importRow({ key: key("Fake Album One"), placement: "ranked", rank: 2 }), accept(ONE));
++
++    const result = writeRow(db, importRow({ key: key("Fake Album Two"), placement: "ranked", rank: 2, decadeRank: 1 }), accept(TWO));
++
++    expect(result).toEqual({ kind: "review", reason: "rank_taken" });
++    expect(findAlbumByCatalogId(db, "cat-two")).toBeUndefined();
++    const [item] = listImportReviewItems(db);
++    expect(item).toMatchObject({
++      reason: "rank_taken",
++      reasonDetail: "Fake Album One - Fake Artist A",
++      sourceRank: 2,
++      sourceDecadeRank: 1,
++    });
++    expect(item.candidates[0].catalogId).toBe("cat-two");
++  });
++
++  it("allows the same rank in another year", () => {
++    const db = memoryDb();
++    writeRow(db, importRow({ key: key("Fake Album One", 2001), placement: "ranked", rank: 2 }), accept(ONE));
++    const result = writeRow(db, importRow({ key: key("Fake Album Two", 2002), placement: "ranked", rank: 2 }), accept(TWO));
++    expect(result.kind).toBe("imported");
++  });
++
++  it("sends no match and ambiguous rows to review with their candidates", () => {
++    const db = memoryDb();
++    const typo = importRow({ key: key("Fake Albm One"), placement: "ranked", rank: 1 });
++    const cases = [
++      { row: typo, outcome: chooseMatch(typo, [ONE, TWO]), reason: "no_match", candidates: ["cat-one", "cat-two"] },
++      {
++        row: importRow({ key: key("Fake Album Two") }),
++        outcome: chooseMatch(importRow({ key: key("Fake Album Two", 2030) }), [
++          catalogAlbum("x", "Fake Album Two", "Fake Artist A", 1990),
++          catalogAlbum("y", "Fake Album Two", "Fake Artist A", 2010),
++        ]),
++        reason: "ambiguous",
++        candidates: ["x", "y"],
++      },
++    ];
++    for (const { row, outcome, reason, candidates } of cases) {
++      expect(writeRow(db, row, outcome)).toEqual({ kind: "review", reason });
++      const item = listImportReviewItems(db).find((i) => i.source.title === row.key.title)!;
++      expect(item).toMatchObject({ reason, reasonDetail: null });
++      expect(item.candidates.map((c) => c.catalogId)).toEqual(candidates);
++    }
++    expect(listAlbums(db)).toEqual([]);
++    expect(listAllYearEntries(db)).toEqual([]);
++  });
++
++  it("writes nothing when a step fails partway", () => {
++    const db = memoryDb();
++    const row = importRow({ key: key("Fake Album One"), placement: "ranked", rank: 11 }); // invalid rank fails after the album insert
++    expect(() => writeRow(db, row, accept())).toThrow();
++    expect(listAlbums(db)).toEqual([]);
++  });
++});
+diff --git a/lib/import/write-row.ts b/lib/import/write-row.ts
+new file mode 100644
+index 0000000..3be3b3a
+--- /dev/null
++++ b/lib/import/write-row.ts
+@@ -0,0 +1,80 @@
++import type { DatabaseSync } from "node:sqlite";
++import { createAlbum, findAlbumByCatalogId, getAlbum } from "../db/albums.ts";
++import { decadeOf, insertIntoDecadeBySourceRank } from "../db/decade-lists.ts";
++import { createImportReviewItem } from "../db/import-review.ts";
++import { transaction } from "../db/transaction.ts";
++import type { CatalogCandidate, ReviewReason } from "../db/types.ts";
++import { addYearEntry, findRankHolder, getYearEntryByAlbum } from "../db/year-entries.ts";
++import { toCandidate, type MatchOutcome } from "./match.ts";
++import type { ImportRow } from "./types.ts";
++
++export type DecadeOutcome = "none" | "inserted" | "already_listed" | "full";
++
++export type RowResult =
++  | { kind: "imported"; albumId: number; decade: DecadeOutcome }
++  | { kind: "review"; reason: ReviewReason };
++
++function review(
++  db: DatabaseSync,
++  row: ImportRow,
++  reason: ReviewReason,
++  candidates: CatalogCandidate[],
++  reasonDetail: string | null = null,
++): RowResult {
++  createImportReviewItem(db, {
++    source: row.key,
++    sourcePlacement: row.placement,
++    sourceRank: row.rank,
++    sourceDecadeRank: row.decadeRank,
++    reason,
++    reasonDetail,
++    candidates,
++  });
++  return { kind: "review", reason };
++}
++
++/**
++ * Writes one matched row in its own transaction: the album and artist (shared by catalog artist id), the
++ * year entry with the sheet row as its source and its decade list entry; or a review item saying why not.
++ */
++export function writeRow(db: DatabaseSync, row: ImportRow, outcome: MatchOutcome): RowResult {
++  return transaction(db, () => {
++    if (outcome.kind !== "accepted") return review(db, row, outcome.kind, outcome.candidates);
++
++    const catalog = outcome.album;
++    const candidate = toCandidate(catalog);
++    const existing = findAlbumByCatalogId(db, catalog.catalogId);
++    const onYear = existing ? getYearEntryByAlbum(db, existing.id) : undefined;
++    if (onYear) return review(db, row, "duplicate_album", [candidate], String(onYear.year));
++
++    if (row.rank !== null) {
++      const holder = findRankHolder(db, row.key.year, row.rank);
++      if (holder !== undefined) {
++        const held = getAlbum(db, holder)!;
++        return review(db, row, "rank_taken", [candidate], `${held.title} - ${held.artist.name}`);
++      }
++    }
++
++    const album =
++      existing ??
++      createAlbum(db, {
++        title: catalog.title,
++        artist: { name: catalog.artist, catalogId: catalog.artistId },
++        catalogId: catalog.catalogId,
++        releaseYear: catalog.year,
++        coverUrl: catalog.coverUrl,
++      });
++    addYearEntry(db, {
++      albumId: album.id,
++      year: row.key.year,
++      placement: row.placement,
++      rank: row.rank,
++      source: row.key,
++      sourceDecadeRank: row.decadeRank,
++    });
++
++    if (row.decadeRank === null) return { kind: "imported", albumId: album.id, decade: "none" };
++    const inserted = insertIntoDecadeBySourceRank(db, album.id, decadeOf(row.key.year));
++    return { kind: "imported", albumId: album.id, decade: inserted.status };
++  });
++}
+diff --git a/package-lock.json b/package-lock.json
+index 6823faa..a4a45e8 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -11,6 +11,7 @@
+         "next": "^16.4.6",
+         "react": "^19.3.1",
+         "react-dom": "^19.3.1",
++        "read-excel-file": "^9.3.20",
+         "server-only": "^0.0.1"
+       },
+       "devDependencies": {
+@@ -24,7 +25,8 @@
+         "eslint-config-next": "^16.4.6",
+         "jsdom": "^31.0.1",
+         "typescript": "~6.0.3",
+-        "vitest": "^5.1.1"
++        "vitest": "^5.1.1",
++        "write-excel-file": "^4.1.1"
+       },
+       "engines": {
+         "node": ">=24"
+@@ -4163,6 +4165,12 @@
+         "reusify": "^1.0.4"
+       }
+     },
++    "node_modules/fflate": {
++      "version": "0.8.3",
++      "resolved": "https://registry.npmjs.org/fflate/-/fflate-0.8.3.tgz",
++      "integrity": "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==",
++      "license": "MIT"
++    },
+     "node_modules/file-entry-cache": {
+       "version": "11.1.5",
+       "resolved": "https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-11.1.5.tgz",
+@@ -4444,6 +4452,12 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/graceful-fs": {
++      "version": "4.2.12",
++      "resolved": "https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.12.tgz",
++      "integrity": "sha512-iuyGF2E4oafQfPsRrG2wtY2ILupMhvtdrhzrxB+0VcjsPpSPttpfYdjnGFGsTi5MaJFjI1jOKHPQ6UTbTj9TAw==",
++      "license": "BlueOak-1.0.0"
++    },
+     "node_modules/has-bigints": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/has-bigints/-/has-bigints-1.1.0.tgz",
+@@ -5798,6 +5812,12 @@
+         "semver": "bin/semver.js"
+       }
+     },
++    "node_modules/node-int64": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/node-int64/-/node-int64-0.4.0.tgz",
++      "integrity": "sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==",
++      "license": "MIT"
++    },
+     "node_modules/node-releases": {
+       "version": "2.0.65",
+       "resolved": "https://registry.npmjs.org/node-releases/-/node-releases-2.0.65.tgz",
+@@ -6247,6 +6267,21 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/read-excel-file": {
++      "version": "9.3.20",
++      "resolved": "https://registry.npmjs.org/read-excel-file/-/read-excel-file-9.3.20.tgz",
++      "integrity": "sha512-vRWkVDwHBzlrc2ic4AdQq43fZLpm/7iAD0vW6Ejmkw66hW90BxZ7zXhLmGSOeNSGKDG6c8Wu9WVecJ1qcpM6XQ==",
++      "license": "MIT",
++      "dependencies": {
++        "fflate": "^0.8.3",
++        "saxen": "^11.1.0",
++        "unzipper-esm": "^0.13.3",
++        "worker-f": "^0.1.12"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/reflect.getprototypeof": {
+       "version": "1.0.10",
+       "resolved": "https://registry.npmjs.org/reflect.getprototypeof/-/reflect.getprototypeof-1.0.10.tgz",
+@@ -6451,6 +6486,15 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/saxen": {
++      "version": "11.2.0",
++      "resolved": "https://registry.npmjs.org/saxen/-/saxen-11.2.0.tgz",
++      "integrity": "sha512-2bG564AAJcm/3vyZC0Uhs/mACrH+4AHMaKHKAB2M5xMqomUZa27FQ7MYaQGFKVcJk/MVzSEQ34A8QZWW+eiWEw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 20.12"
++      }
++    },
+     "node_modules/saxes": {
+       "version": "6.0.0",
+       "resolved": "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz",
+@@ -7232,6 +7276,19 @@
+         "@unrs/resolver-binding-win32-x64-msvc": "1.13.0"
+       }
+     },
++    "node_modules/unzipper-esm": {
++      "version": "0.13.3",
++      "resolved": "https://registry.npmjs.org/unzipper-esm/-/unzipper-esm-0.13.3.tgz",
++      "integrity": "sha512-LUO6VZ6fCzkDbdMev0/fOhoIeVGKaOkTIOoYxVLE0SQjfvmAHK+oywl7lfhloSZIsdGJ25mJ18Mtd9CyTASjrA==",
++      "license": "MIT",
++      "dependencies": {
++        "graceful-fs": "^4.2.2",
++        "node-int64": "^0.4.0"
++      },
++      "engines": {
++        "node": ">=8.0.0"
++      }
++    },
+     "node_modules/update-browserslist-db": {
+       "version": "1.4.0",
+       "resolved": "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.4.0.tgz",
+@@ -7668,6 +7725,28 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/worker-f": {
++      "version": "0.1.25",
++      "resolved": "https://registry.npmjs.org/worker-f/-/worker-f-0.1.25.tgz",
++      "integrity": "sha512-H0JI9LVt7/5He3fR81CrPAOPqKcL/++Ah0C64C9/E9vyj2cLgUta7KT/fidjyGbKm5lqhESt+KCglLlcqNDW9Q==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/write-excel-file": {
++      "version": "4.1.1",
++      "resolved": "https://registry.npmjs.org/write-excel-file/-/write-excel-file-4.1.1.tgz",
++      "integrity": "sha512-MUnCnNtQrcZek832ZcU24uU0rSphFmKPD1DvIjXOlygVb93CV7Tme6H3jUTkxsMmjB2W7HIzERzjqTi5kui71A==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fflate": "^0.8.2"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/xml-name-validator": {
+       "version": "5.0.0",
+       "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
+diff --git a/package.json b/package.json
+index 38ea258..aa6c2b8 100644
+--- a/package.json
++++ b/package.json
+@@ -12,12 +12,15 @@
+     "test": "vitest run",
+     "lint": "eslint .",
+     "typecheck": "tsc --noEmit",
+-    "db:migrate": "node scripts/migrate.ts"
++    "db:migrate": "node scripts/migrate.ts",
++    "import": "node --conditions=react-server scripts/import.ts",
++    "import:fixture": "node lib/import/fixtures/make-fixture.ts"
+   },
+   "dependencies": {
+     "next": "^16.4.6",
+     "react": "^19.3.1",
+     "react-dom": "^19.3.1",
++    "read-excel-file": "^9.3.20",
+     "server-only": "^0.0.1"
+   },
+   "devDependencies": {
+@@ -31,6 +34,7 @@
+     "eslint-config-next": "^16.4.6",
+     "jsdom": "^31.0.1",
+     "typescript": "~6.0.3",
+-    "vitest": "^5.1.1"
++    "vitest": "^5.1.1",
++    "write-excel-file": "^4.1.1"
+   }
+ }
+diff --git a/scripts/import.ts b/scripts/import.ts
+new file mode 100644
+index 0000000..d96eeb5
+--- /dev/null
++++ b/scripts/import.ts
+@@ -0,0 +1,51 @@
++// Imports the Albums sheet of a spreadsheet: `npm run import -- "/path/to/Best Albums.xlsx"`.
++// Run through `node --conditions=react-server`, which makes the `server-only` marker package resolve to its
++// empty module, so the catalog client loads outside Next.js. See the README.
++import { createMusicBrainzClient } from "../lib/catalog/musicbrainz.ts";
++import { getConfig } from "../lib/config.ts";
++import { openDatabase } from "../lib/db/connection.ts";
++import { ImportInputError, readAlbumsSheet } from "../lib/import/read-sheet.ts";
++import { prepareRows } from "../lib/import/rows.ts";
++import { runImport } from "../lib/import/run.ts";
++import { formatSummary } from "../lib/import/summary.ts";
++
++const path = process.argv[2];
++if (!path || process.argv.length > 3) {
++  console.error('Usage: npm run import -- "/path/to/Best Albums.xlsx"');
++  process.exit(1);
++}
++
++const { databasePath, musicbrainzUserAgent } = getConfig();
++const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
++const client = createMusicBrainzClient({
++  fetch: (input, init) => fetch(input, init),
++  now: Date.now,
++  sleep,
++  userAgent: () => musicbrainzUserAgent,
++});
++
++let db: ReturnType<typeof openDatabase> | undefined;
++try {
++  // Read the file before opening the database, so a bad path or sheet leaves no database file behind.
++  const prepared = prepareRows(await readAlbumsSheet(path));
++  db = openDatabase(databasePath);
++  console.log(`Importing ${prepared.rows.length} rows from ${path} into ${databasePath}`);
++  const summary = await runImport(db, prepared, {
++    search: (query) => client.searchReleaseGroups(query),
++    sleep,
++    onProgress: (done, total) => console.log(`Processed ${done} of ${total} rows`),
++    onCatalogError: (row, error) =>
++      console.error(`Catalog error on row ${row.rowNumber}: ${error instanceof Error ? error.message : String(error)}`),
++  });
++  console.log(`\n${formatSummary(summary)}`);
++  process.exitCode = summary.aborted ? 1 : 0;
++} catch (error) {
++  if (error instanceof ImportInputError) {
++    console.error(error.message);
++    process.exitCode = 1;
++  } else {
++    throw error;
++  }
++} finally {
++  db?.close();
++}

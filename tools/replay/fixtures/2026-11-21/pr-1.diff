@@ -1,0 +1,123 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..8919082
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1 @@
++.agent-team/
+diff --git a/docs/agents/project.md b/docs/agents/project.md
+new file mode 100644
+index 0000000..9145d5e
+--- /dev/null
++++ b/docs/agents/project.md
+@@ -0,0 +1,110 @@
++# Project config (album-ranker)
++
++The one place for repo-specific facts. The agent-team skills read this file instead of hardcoding them. `TODO(<owner>)` marks a value not decided yet; an agent that needs one must not guess (stop with `BLOCKED:`).
++
++Scripts read the first backticked token in each Value cell. Keep the backticks around the real value, and keep notes free of extra backticks in the cells marked below.
++
++## Identity
++
++| Key | Value |
++|---|---|
++| Product name | album-ranker |
++| Tracker (`linear`, `github` or `jira`) | `github` |
++| Tracker scope (`<TEAM>`) | `dbeallor/album-ranker` |
++| Issue identifier prefix (`<PREFIX>`) | `ALBUM` |
++| Retired issue prefixes (GitHub tracker only) | `none`. After a prefix rename on the GitHub tracker, one backticked list of `PREFIX<N` pairs, oldest first (for example `OLD<406`): issues numbered below N keep the old prefix, later ones use the current one. On Linear and Jira a key change renames every issue in the tracker, so keep `none` |
++| Approver | dbeallor. Approves specs and merges only |
++| Approval risk tolerance (`strict`, `balanced` or `permissive`) | `strict`. Which approvals the team takes without asking: `strict` none, `balanced` Low risk only, `permissive` Low and Medium. High always waits for you |
++| Review after conflict resolution (`off` or `on`) | `off`. Whether a conflict resolution is reviewed again before it can merge. `off`: reviews from before the resolution stand, and a merge you already approved goes ahead on the resolved head without asking again. `on`: code and security review run on the resolved head, and you approve it again |
++| No Hands (`off` or `on`) | `off`. Whether you may start a No Hands run: the Chief of Staff approves specs and merges itself, at any risk level, until the Backlog is empty or a limit below is hit. Reviews, CI and merge gates still run; changes to the files that decide approvals still wait for you |
++| No Hands ticket cap | `10`. Tickets one No Hands run may start |
++| No Hands cost cap (USD) | `200`. API-equivalent spend of the run's tickets, from `agent_usage.py` |
++
++### Choosing a tracker
++
++Set the `Tracker` row to `linear`, `github` or `jira`. A missing row or a `TODO(...)` value means `linear`. Operations and adapters: [trackers/README.md](~/.collective-wisdom/docs/agents/trackers/README.md).
++
++- `github`: no extra rows. Tickets are GitHub issues in the `Repo` below, and `Issue identifier prefix` is any short prefix (for example `GH`). The `~/.collective-wisdom/scripts/gh.sh` wrapper does every call.
++- `jira`: untested. Add the rows listed in [trackers/jira.md](~/.collective-wisdom/docs/agents/trackers/jira.md) § project.md rows to the table above and fill them in.
++
++## Git and GitHub
++
++| Key | Value |
++|---|---|
++| Branch pattern | `{feat,infra}/<prefix>-N-short-title` (`<prefix>` is the issue prefix in lower case; the heads are in braces, the first is the default for a new branch, and a plain head such as `work/<prefix>-N-short-title` means that one head) |
++| Merge target branch | `main`. The branch every PR merges into. The root checkout stays on it. Unset means `main` |
++| Repo (`<owner>/<repo>`) | `dbeallor/album-ranker` (<https://github.com/dbeallor/album-ranker>) |
++| Require teammate approval (`on` or `off`) | `off`. When on, merge_pr.py also needs an approving GitHub review on the current head from an owner, member or collaborator other than the PR author. A missing row means off |
++| GitHub CLI | `~/.collective-wisdom/scripts/gh.sh` only, never bare `gh`. Setup: [github-auth.md](~/.collective-wisdom/docs/agents/github-auth.md) |
++| Commits | Conventional: `feat:`, `fix:`, `docs:`, `infra:` |
++
++## Commands
++
++| Key | Value |
++|---|---|
++| Test | `none yet` |
++| Lint | TODO(dbeallor) |
++| Typecheck | TODO(dbeallor) |
++| Required CI checks | none (no CI yet) |
++| Agent-team script tests | `python3 -I -m pytest -q scripts` (needs `pytest`, e.g. `uvx pytest -q scripts`) |
++| Docs index listing | `python3 ~/.collective-wisdom/scripts/docs_index.py` (generates one table of every spec, plan and as-built under `docs/superpowers/`) |
++| Release notes listing | `python3 ~/.collective-wisdom/scripts/release_notes.py` (prints the `## Release note` sections of merged PRs and any `docs/superpowers/release-notes/*.md` notes, newest first) |
++| Test database | none (or how to create the per-ticket test database; never test or migrate against the dev database) |
++| Migration heads check | none (or the command, e.g. a migration tool's heads listing) |
++| Migrations directory | none (or a path in backticks; scripts read the first backticked path, so keep any note free of backticks. Clash checks expect files named NNN_name.py there) |
++
++## Review
++
++| Key | Value |
++|---|---|
++| Review mode (`agents` or `ci`) | `agents`. `ci` uses the review bot in CI instead of the code and security reviewer agents. A missing row means `agents` |
++| CI review bot login (`ci` mode only) | none (or the bot's GitHub login in backticks; keep any note free of other backticks, since scripts read the first one) |
++| CI review skill (`ci` mode only, optional) | none (or the name of a globally installed skill to follow when replying to the bot's findings) |
++
++## Repo invariants
++
++Skills and the Chief of Staff restate these in every child task.
++
++- The root checkout stays on the merge target branch. Branch work happens in a worktree: `.worktrees/<short-name>/`, or the one T3 Code created under `~/.t3/worktrees/`.
++- Never push to the merge target branch; push only the ticket's own branch (a head from the Branch pattern row).
++- Never commit `.env`, API keys or tokens.
++- none yet
++
++## Areas and labels
++
++- Area labels: none yet. Type labels: `Feature`, `Improvement`, `Bug`. Team labels `agent` and `agent-skip` are managed by the Chief of Staff and the approver.
++- Areas (path boundaries per role): none yet.
++
++## Product rules
++
++- Brand in the interface: none yet.
++- none yet
++
++## Security overlays
++
++Extra checks for the security review, on top of OWASP and "no secrets in repo".
++
++- none yet
++
++## Docs
++
++| Key | Value |
++|---|---|
++| Specs / plans / as-built | `docs/superpowers/specs/`, `docs/superpowers/plans/`, `docs/superpowers/as-built/` |
++| Index | Generated by `python3 ~/.collective-wisdom/scripts/docs_index.py` from `specs/`, `plans/` and `as-built/`; nothing to edit by hand. Layout in [`docs/superpowers/README.md`](~/.collective-wisdom/docs/superpowers/README.md) |
++| Publish release notes (`on` or `off`) | `off`. With `on`, each PR body has a `## Release note` section and every merge publishes all notes to `RELEASE_NOTES.md` on the `release-notes` branch (`https://github.com/<owner>/<repo>/blob/release-notes/RELEASE_NOTES.md`, `Repo` above); older notes stay in `docs/superpowers/release-notes/`. `~/.collective-wisdom/scripts/merge_pr.py` is then the one writer of that branch, through the GitHub API after a merge; no agent, skill or other script writes it, by push or by API. A missing row reads as `on`. Layout in [`docs/superpowers/README.md`](~/.collective-wisdom/docs/superpowers/README.md) |
++
++## Docs check
++
++Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agents/documenter.md)).
++
++- Living docs to search: `README.md`, `AGENTS.md`, `docs/agents/`, `.claude/skills/`.
++- Extra checks: none.
++
++## Environments and deploy
++
++- none yet
++
++## Models
++
++Defaults live in `chief-of-staff/models.md` § Models, with the values in `cos_models.py`. They are defaults, not repo rules; change them by ticket and PR.

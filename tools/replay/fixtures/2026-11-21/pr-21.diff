@@ -1,0 +1,1273 @@
+diff --git a/README.md b/README.md
+index 7213fe9..b1ba4fa 100644
+--- a/README.md
++++ b/README.md
+@@ -16,6 +16,12 @@ Open <http://localhost:3000/search> and type an album or artist. Results come fr
+ 
+ MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
+ 
++## Matchups
++
++Open <http://localhost:3000/matchups> to answer "which of these two do you like more?" for two albums from different years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
++
++Ratings are never stored. Every request replays the year placements (ranked over lower ranked and over honorable mentions, year by year) and then your matchup answers, oldest first, as Elo with K = 32 from 1500. Only ranked and honorable mention albums are rated and served. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md).
++
+ Checks:
+ 
+ - `npm test`
+diff --git a/app/matchups/actions.ts b/app/matchups/actions.ts
+new file mode 100644
+index 0000000..2b509a8
+--- /dev/null
++++ b/app/matchups/actions.ts
+@@ -0,0 +1,16 @@
++"use server";
++
++import { getDb } from "@/lib/db/server";
++import * as service from "@/lib/matchups-service";
++
++export async function answerMatchup(albumAId: number, albumBId: number, result: "a" | "b" | "tie", avoid: string[]) {
++  return service.answerMatchup(getDb(), albumAId, albumBId, result, avoid);
++}
++
++export async function skipMatchup(albumAId: number, albumBId: number, avoid: string[]) {
++  return service.skipMatchup(getDb(), albumAId, albumBId, avoid);
++}
++
++export async function undoMatchup(avoid: string[]) {
++  return service.undoMatchup(getDb(), avoid);
++}
+diff --git a/app/matchups/page.tsx b/app/matchups/page.tsx
+new file mode 100644
+index 0000000..d8339f5
+--- /dev/null
++++ b/app/matchups/page.tsx
+@@ -0,0 +1,22 @@
++import { connection } from "next/server";
++import { MatchupScreen } from "@/components/matchup-screen";
++import { getDb } from "@/lib/db/server";
++import { loadMatchupState } from "@/lib/ratings";
++import { answerMatchup, skipMatchup, undoMatchup } from "./actions";
++
++export default async function MatchupsPage() {
++  await connection(); // read the database per request, not at build time
++  const { pair, count } = loadMatchupState(getDb(), new Set(), Math.random);
++
++  return (
++    <main>
++      <h1>Matchups</h1>
++      <MatchupScreen
++        initial={{ pair, count, lastAnswer: null, canUndo: count > 0 }}
++        answerAction={answerMatchup}
++        skipAction={skipMatchup}
++        undoAction={undoMatchup}
++      />
++    </main>
++  );
++}
+diff --git a/app/page.tsx b/app/page.tsx
+index c97da1e..a219e30 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -7,6 +7,9 @@ export default function Home() {
+       <p>
+         <Link href="/search">Search albums</Link>
+       </p>
++      <p>
++        <Link href="/matchups">Matchups</Link>
++      </p>
+     </main>
+   );
+ }
+diff --git a/components/cover.tsx b/components/cover.tsx
+index b8c664d..d8ecb19 100644
+--- a/components/cover.tsx
++++ b/components/cover.tsx
+@@ -4,11 +4,11 @@ import { useState } from "react";
+ 
+ const SIZE = 125;
+ 
+-/** Album cover that falls back to a grey square when the image fails to load. */
+-export function Cover({ src, alt }: { src: string; alt: string }) {
++/** Album cover that falls back to a grey square when there is no image or it fails to load. */
++export function Cover({ src, alt }: { src: string | null; alt: string }) {
+   const [failed, setFailed] = useState(false);
+ 
+-  if (failed) {
++  if (failed || src === null) {
+     return (
+       <div
+         role="img"
+diff --git a/components/matchup-screen.test.tsx b/components/matchup-screen.test.tsx
+new file mode 100644
+index 0000000..a09b3dd
+--- /dev/null
++++ b/components/matchup-screen.test.tsx
+@@ -0,0 +1,114 @@
++import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { pairKey } from "@/lib/elo/pick";
++import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
++import type { AlbumCard } from "@/lib/ratings";
++import { MatchupScreen } from "./matchup-screen";
++
++const card = (id: number, title: string, year: number): AlbumCard => ({
++  id,
++  title,
++  artist: `Artist ${id}`,
++  year,
++  coverUrl: null,
++});
++const pairOf = (a: AlbumCard, b: AlbumCard) => ({ a, b });
++
++const one = card(1, "Album One", 1964);
++const two = card(2, "Album Two", 1959);
++const three = card(3, "Album Three", 1971);
++const four = card(4, "Album Four", 1985);
++
++const initial: MatchupView = { pair: pairOf(one, two), count: 0, lastAnswer: null, canUndo: false };
++
++function setup(actions: {
++  answer?: MatchupActionResult;
++  skip?: MatchupActionResult;
++  undo?: MatchupActionResult;
++  start?: MatchupView;
++}) {
++  const answerAction = vi.fn(async () => actions.answer!);
++  const skipAction = vi.fn(async () => actions.skip!);
++  const undoAction = vi.fn(async () => actions.undo!);
++  render(
++    <MatchupScreen
++      initial={actions.start ?? initial}
++      answerAction={answerAction}
++      skipAction={skipAction}
++      undoAction={undoAction}
++    />,
++  );
++  return { answerAction, skipAction, undoAction };
++}
++
++describe("matchup screen", () => {
++  afterEach(cleanup);
++
++  it("shows the pair, the counter and a disabled Undo at zero", () => {
++    setup({});
++    expect(screen.getByText("Album One")).toBeDefined();
++    expect(screen.getByText("Album Two")).toBeDefined();
++    expect(screen.getByText("0 matchups played")).toBeDefined();
++    expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(true);
++  });
++
++  it.each([
++    { name: "picking the left album", button: () => screen.getAllByRole("button", { name: "I like this more" })[0], result: "a" },
++    { name: "picking the right album", button: () => screen.getAllByRole("button", { name: "I like this more" })[1], result: "b" },
++    { name: "a tie", button: () => screen.getByRole("button", { name: "Tie" }), result: "tie" },
++  ])("$name sends the answer and shows the next pair, the counter and the line", async ({ button, result }) => {
++    const { answerAction } = setup({
++      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "Album One 1500 → 1516" }, canUndo: true },
++    });
++    fireEvent.click(button());
++
++    expect(await screen.findByText("Album Three")).toBeDefined();
++    expect(answerAction).toHaveBeenCalledWith(1, 2, result, []);
++    expect(screen.getByText("Album One 1500 → 1516")).toBeDefined();
++    expect(screen.getByText("1 matchups played")).toBeDefined();
++    expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(false);
++  });
++
++  it("skip shows the next pair, and sends the skipped pair as avoided on the next call", async () => {
++    const { skipAction, answerAction } = setup({
++      skip: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: false },
++      answer: { pair: pairOf(one, two), count: 1, lastAnswer: { text: "line" }, canUndo: true },
++    });
++    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
++
++    expect(await screen.findByText("Album Three")).toBeDefined();
++    expect(skipAction).toHaveBeenCalledWith(1, 2, []);
++
++    fireEvent.click(screen.getByRole("button", { name: "Tie" }));
++    await screen.findByText("Album One");
++    expect(answerAction).toHaveBeenCalledWith(3, 4, "tie", [pairKey(1, 2)]);
++  });
++
++  it("undo serves the undone pair again and shows the line", async () => {
++    const { undoAction } = setup({
++      start: { pair: pairOf(three, four), count: 1, lastAnswer: null, canUndo: true },
++      undo: { pair: pairOf(one, two), count: 0, lastAnswer: { text: "Undone: Album One 1516 → 1500" }, canUndo: false },
++    });
++    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
++
++    expect(await screen.findByText("Album One")).toBeDefined();
++    expect(undoAction).toHaveBeenCalledWith([]);
++    expect(screen.getByText("Undone: Album One 1516 → 1500")).toBeDefined();
++    expect(screen.getByText("0 matchups played")).toBeDefined();
++    await waitFor(() => expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(true));
++  });
++
++  it("shows an error and keeps the current pair when an action fails", async () => {
++    setup({ answer: { error: "Those two albums can't be compared." } });
++    fireEvent.click(screen.getByRole("button", { name: "Tie" }));
++
++    expect((await screen.findByRole("alert")).textContent).toBe("Those two albums can't be compared.");
++    expect(screen.getByText("Album One")).toBeDefined();
++  });
++
++  it("says so, with a link home, when no pair is possible", () => {
++    setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false } });
++    expect(screen.getByText(/no two albums from different years/)).toBeDefined();
++    expect(screen.getByRole("link", { name: "Back to home" }).getAttribute("href")).toBe("/");
++  });
++});
+diff --git a/components/matchup-screen.tsx b/components/matchup-screen.tsx
+new file mode 100644
+index 0000000..eac011e
+--- /dev/null
++++ b/components/matchup-screen.tsx
+@@ -0,0 +1,115 @@
++"use client";
++
++import Link from "next/link";
++import { useState } from "react";
++import { Cover } from "@/components/cover";
++import { pairKey } from "@/lib/elo/pick";
++import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
++import type { AlbumCard } from "@/lib/ratings";
++
++type Answer = "a" | "b" | "tie";
++
++type Props = {
++  initial: MatchupView;
++  answerAction: (albumAId: number, albumBId: number, result: Answer, avoid: string[]) => Promise<MatchupActionResult>;
++  skipAction: (albumAId: number, albumBId: number, avoid: string[]) => Promise<MatchupActionResult>;
++  undoAction: (avoid: string[]) => Promise<MatchupActionResult>;
++};
++
++function Card({ album, onPick, disabled }: { album: AlbumCard; onPick: () => void; disabled: boolean }) {
++  return (
++    <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
++      <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} />
++      <div>
++        <strong>{album.title}</strong>
++      </div>
++      <div>{album.artist}</div>
++      <div>{album.year}</div>
++      <button type="button" onClick={onPick} disabled={disabled}>
++        I like this more
++      </button>
++    </div>
++  );
++}
++
++export function MatchupScreen({ initial, answerAction, skipAction, undoAction }: Props) {
++  const [view, setView] = useState(initial);
++  const [avoid, setAvoid] = useState<string[]>([]);
++  const [error, setError] = useState<string | null>(null);
++  const [busy, setBusy] = useState(false);
++
++  async function run(call: () => Promise<MatchupActionResult>, onDone?: () => void) {
++    setBusy(true);
++    try {
++      const result = await call();
++      if ("error" in result) {
++        setError(result.error);
++      } else {
++        setError(null);
++        onDone?.();
++        // A skip returns no line of its own, so the previous answer's line stays.
++        setView((current) => ({ ...result, lastAnswer: result.lastAnswer ?? current.lastAnswer }));
++      }
++    } catch {
++      setError("Something went wrong. Try again.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  const { pair } = view;
++
++  return (
++    <div>
++      {error && <p role="alert">{error}</p>}
++      {view.lastAnswer && <p>{view.lastAnswer.text}</p>}
++
++      {pair ? (
++        <div>
++          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
++            <Card
++              key={pair.a.id}
++              album={pair.a}
++              disabled={busy}
++              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "a", avoid))}
++            />
++            <Card
++              key={pair.b.id}
++              album={pair.b}
++              disabled={busy}
++              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "b", avoid))}
++            />
++          </div>
++          <p style={{ display: "flex", gap: 8, justifyContent: "center" }}>
++            <button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid))}>
++              Tie
++            </button>
++            <button
++              type="button"
++              disabled={busy}
++              onClick={() =>
++                run(
++                  () => skipAction(pair.a.id, pair.b.id, avoid),
++                  () => setAvoid((current) => [...current, pairKey(pair.a.id, pair.b.id)]),
++                )
++              }
++            >
++              Skip
++            </button>
++          </p>
++        </div>
++      ) : (
++        <p>
++          There are no two albums from different years to compare yet. <Link href="/">Back to home</Link>
++        </p>
++      )}
++
++      <p>
++        <button type="button" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
++          Undo
++        </button>
++      </p>
++      <p>{view.count} matchups played</p>
++    </div>
++  );
++}
+diff --git a/docs/superpowers/as-built/2026-11-21-album-7-elo-matchup.md b/docs/superpowers/as-built/2026-11-21-album-7-elo-matchup.md
+new file mode 100644
+index 0000000..b8ddf0b
+--- /dev/null
++++ b/docs/superpowers/as-built/2026-11-21-album-7-elo-matchup.md
+@@ -0,0 +1,12 @@
++# As-built: Elo rating engine and matchup screen
++
++**Shipped:** in PR #21
++**Ticket:** ALBUM-7
++**Spec:** [2026-11-21-album-7-elo-matchup.md](../specs/2026-11-21-album-7-elo-matchup.md)
++
++## Differs from the spec
++
++- The spec says the last-answer line shows the ratings going back after an undo. Shipped: it reads "Undone: <title> 1500 → 1484, ...", or just "Undone." when an album no longer has a card or rating.
++- The spec says undo serves the undone pair again. Shipped: it does so only while both albums are still rated and in different years; otherwise it serves a fresh pair.
++- The spec says a skip serves the next pair. Shipped: the previous answer's line stays on screen after a skip.
++- The spec calls `lib/ratings.ts` a "server-only loader". Shipped: it does not import `server-only`, so tests can import it. The database is only reached through `getDb()` in `app/matchups/actions.ts` and the page.
+diff --git a/docs/superpowers/plans/2026-11-21-album-7-elo-matchup.md b/docs/superpowers/plans/2026-11-21-album-7-elo-matchup.md
+new file mode 100644
+index 0000000..06de257
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-21-album-7-elo-matchup.md
+@@ -0,0 +1,30 @@
++# ALBUM-7 Elo engine and matchup screen: plan
++
++**Spec:** [2026-11-21-album-7-elo-matchup.md](../specs/2026-11-21-album-7-elo-matchup.md)
++
++Run `npm install` first (no node_modules in the worktree). Read the relevant guides in `node_modules/next/dist/docs/` before touching pages or server actions (Next here has breaking changes; `searchParams` is async; server-only modules import `server-only`). Use `lib/db/test-db.ts` (`memoryDb`, `seedAlbums`) for DB tests; never open the file DB.
++
++## Task 1: engine (`lib/elo/`, pure, no `server-only`, no db import)
++- `elo.ts`: constants `START_RATING=1500`, `K=32`; `expectedScore(a,b)`; `applyResult(ratingA, ratingB, result: "a"|"b"|"tie")` returning new pair.
++- `replay.ts`: `computeRatings({ entries, matchups })` where entries are `{albumId, year, placement, rank}` and matchups `{id, albumAId, albumBId, result, createdAt}`; returns `{ ratings: Map<albumId, number>, used: matchups actually replayed }`. Implied results per spec (year ascending; rank order; then honorable mentions by album id); explicit matchups sorted by createdAt then id; skip those with an unrated album.
++- `artist-score.ts`: `artistScore(ratings: number[])` (undefined for none), and a decade variant taking albums with year.
++- `pick.ts`: `pickMatchup({ albums:[{id,year,rating}], matchups (used only), avoid: Set of pair keys, random: () => number })` returning `{a,b} | undefined`, per spec § Matchup picking (fewest matchups, random among ties via `random`, passes over albums with no unplayed opponent, closest rating, lower id tiebreak, fallback to played pairs, avoid list, undefined when impossible). Export `pairKey(idA,idB)`.
++- Tests (table-driven, fixed inputs) as listed in the spec § Tests: Elo update, implied results/replay order, determinism, unrated matchup skipped, undo-equals-previous, artist score, picking rules.
++
++## Task 2: loader and actions
++- `lib/ratings.ts` (`server-only`-free so tests can import; takes `db`): `loadRatings(db)` reading `listAllYearEntries`, `listMatchups` and returning ratings + used matchups; `loadMatchupState(db, avoid, random)` returning `{ pair: {a: AlbumCard, b: AlbumCard} | null, count, ratings }` where AlbumCard has id, title, artist name, year, coverUrl.
++- `app/matchups/actions.ts` (`"use server"`, uses `getDb()`): `answerMatchup(albumAId, albumBId, result, avoid)`, `skipMatchup(a, b, avoid)`, `undoMatchup(avoid)`. Each returns the next state `{ pair, count, lastAnswer: {text} | null, canUndo }` or `{ error }`. `answerMatchup` re-checks both albums are rated and in different years, else error and nothing stored. Undo uses `undoLastMatchup`, then returns the undone pair as the next pair. Put the logic in plain functions taking `db` (e.g. `lib/matchups-service.ts`) so action tests use an in-memory db; the `"use server"` file only wraps them with `getDb()`. Validate inputs (integers, result enum).
++- Tests against an in-memory db: answer moves both ratings; undo restores exactly and re-serves the pair; same-year, listed and unknown-album pairs refused with nothing stored.
++
++## Task 3: screen
++- `app/matchups/page.tsx`: server component loading the first state with `getDb()`; renders client component `components/matchup-screen.tsx` with initial state and the three actions as props (so the component test passes mocks).
++- Client component: two cards (`Cover`, title, artist, year) side by side, "I like this more" under each, "Tie", "Skip", "Undo" (disabled when `canUndo` false), "N matchups played", last-answer line, error message in `role="alert"`, "no pair" message with a link home. Skipped pairs kept in component state as pair keys sent to the actions as `avoid`.
++- Extend `components/cover.tsx` only if needed for a missing cover URL (placeholder).
++- Link to `/matchups` from `app/page.tsx` (keep the "Album ranker" heading; `app/page.test.tsx` must pass).
++- One component test with mocked actions: pick, tie, skip, undo render next pair/counter/line; undo disabled at zero.
++
++## Task 4: docs
++- README: a short "Matchups" note. `docs/stack.md` only if it lists routes or modules.
++
++## Verify
++`npm test`, `npm run lint`, `npm run typecheck`, `npm run build`. Never commit `.env`, `data/` or SQLite files.
+diff --git a/docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md b/docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md
+new file mode 100644
+index 0000000..47fa979
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md
+@@ -0,0 +1,122 @@
++# Elo rating engine and matchup screen
++
++**Status:** Shipped
++**Date:** 2026-11-21
++**Shipped:** in PR #21, with differences: [as-built](../as-built/2026-11-21-album-7-elo-matchup.md)
++**Ticket:** [ALBUM-7](https://github.com/dbeallor/album-ranker/issues/7), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
++**Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Scoring: head-to-head Elo, [data model and storage](2026-11-21-album-4-data-model-storage.md)
++
++## Goal
++
++Turn the stored inputs (year placements and matchup answers) into one Elo rating per album, and give the user a screen that asks "which of these two do you like more?" across years. Ratings and artist scores are computed by replay on every request and never stored. There is one algorithm and no settings.
++
++## Rating engine
++
++Pure functions in `lib/elo/`, with no database, React or `server-only` import, so they test with plain fixtures. A thin server-only loader (`lib/ratings.ts`) reads the year entries and matchups from the database and calls them.
++
++### Elo update
++
++- Every rated album starts at `1500`. `K = 32`. Both are constants in code.
++- `expected_A = 1 / (1 + 10 ^ ((rating_B - rating_A) / 400))`.
++- `score_A` is 1 for a win, 0.5 for a tie, 0 for a loss. `delta = K × (score_A - expected_A)`; A gains `delta`, B loses it.
++- Ratings are kept as unrounded numbers. Screens round them for display.
++
++### Who is rated
++
++Only albums with a `ranked` or `honorable_mention` year entry. A `listed` album, or an album with no year entry, has no rating, is not in the result and is never served on the matchup screen.
++
++### Implied results
++
++Derived from the year entries on every replay, never stored:
++
++- Within a year, each ranked album beats every album ranked below it, and every ranked album beats every honorable mention.
++- Honorable mentions don't play each other. Listed albums don't play.
++- Rank gaps don't matter: rank 1 and rank 4 with no 2 or 3 is one implied result.
++
++### Replay order
++
++1. Implied results, year by year ascending. Within a year, ranked albums in rank order (rank 1 first), each against the ranked albums below it in rank order, then against the year's honorable mentions in album id order.
++2. Explicit matchup answers, oldest first (created at, then id). A matchup whose album A or album B has no rating is skipped; its row stays, so placing the album again brings the answer back. A matchup between two albums now in the same year still counts.
++
++The same inputs always give the same ratings.
++
++### Artist score
++
++`(sum of ratings + 1500) / (album count + 1)` over the artist's rated albums. The per-decade version uses only the artist's albums whose year entry is in that decade. An artist with no rated albums (overall or in that decade) has no score. These are functions only; the artist and decade pages that show them are #8 and #9.
++
++## Matchup picking
++
++A pure function that takes the rated albums (id, year, rating), the explicit matchups, the pairs to avoid this session and a random number source (so tests pass a fixed one).
++
++1. **Pairs** are unordered: A against B is the same pair as B against A. "Already played" means an explicit matchup exists for the pair, whatever its result.
++2. **First album:** the rated album with the fewest explicit matchups (counting only matchups that the replay used), random among ties. Albums with no unplayed opponent in another year are passed over in favour of the next fewest.
++3. **Opponent:** a rated album from a different year whose pair with the first album is not played and not avoided this session, with the closest rating. A tie on rating goes to the lower album id.
++4. **Left or right:** the first album is album A, shown on the left.
++5. **When every cross-year pair has been played or avoided:** fall back to the closest-rated cross-year pair for the first album, played or not, so the user can keep going. The acceptance rule "never a pair already played while an unplayed pair exists" still holds, because the fallback runs only when none exists.
++6. **No pair possible:** fewer than two rated albums in different years. The screen says so and links to the home page.
++
++Picking reads the whole set each time. At the MVP's size (about 670 rated albums, a few thousand answers) the replay and the pick take milliseconds, so there is no cache.
++
++## Matchup screen
++
++A new route, `/matchups`, linked from the home page.
++
++- **Layout:** two album covers side by side, each with title, artist and year. The existing `Cover` component, with the placeholder for an album with no cover URL. On a narrow screen the two cards still sit side by side, each half the width.
++- **Answers:** a button under each cover ("I like this more"), a "Tie" button and a "Skip" button between them.
++- **Picking or tie:** records the matchup, recomputes ratings and serves the next pair. A line above the pair shows the last answer's effect, for example "Getz / Gilberto 1500 → 1516, Kind of Blue 1500 → 1484".
++- **Skip:** records nothing and serves the next pair. The skipped pair goes on a list kept in the page's state and is avoided until the page is reloaded.
++- **Undo:** deletes the newest matchup (whatever session it came from) and serves that pair again so the user can answer it differently. Undo works repeatedly, one answer at a time, and is disabled when no matchups exist. The last-answer line shows the ratings going back.
++- **Counter:** "N matchups played", the total number of explicit matchups stored.
++- **Server side:** the page is a server component that loads the first pair. Answer, skip and undo are server actions that return the next state (pair, counter, last-answer line). The answer action checks that both album ids are rated and in different years before recording; anything else is refused with a message and nothing is stored.
++- **Errors:** a failed action shows a message and keeps the current pair on screen.
++
++## Tests
++
++Table-driven unit tests with fixed inputs, one per rule:
++
++- **Elo update:** 1500 v 1500, A wins: 1516 and 1484. 1500 v 1500 tie: no change. Unequal ratings, win, loss and tie, against hand-worked numbers.
++- **Implied results:** a fixture year with ranks 1, 2 and 4, two honorable mentions and a listed album gives exactly ranked over lower ranked and ranked over honorable mention, in the replay order above, and nothing else.
++- **Replay:** the same inputs twice give the same ratings; explicit answers apply after implied ones; a matchup with an unrated album is skipped; deleting the last answer and replaying gives the previous ratings exactly.
++- **Artist score:** 1600 and 1700 give (1600 + 1700 + 1500) / 3 = 1600; one album; no rated albums; the decade version leaves out other decades.
++- **Picking:** never two albums from the same year, never a listed album, never a played pair while an unplayed one exists, never an avoided (skipped) pair while another exists; the fewest-matchups album goes first; closest rating wins; the fallback when every pair is played; no pair possible.
++- **Screen:** a component test of the client part with the server actions mocked: picking, tie, skip and undo call the right action and render the next pair, the counter and the last-answer line; undo is disabled at zero.
++- **Server actions:** against an in-memory database, an answer moves both ratings and undo restores them; a same-year or listed pair is refused.
++
++## Acceptance
++
++From the ticket:
++
++- Two new albums at 1500, A wins: A is 1516, B is 1484. A tie between 1500 and 1500 changes nothing. Replaying the same inputs twice gives the same ratings.
++- On a fixture year with no explicit matchups, the replay plays exactly the implied results: ranked over lower ranked, ranked over honorable mention, nothing else.
++- Answering a matchup changes both ratings. Undo restores the previous ratings exactly.
++- The screen never serves two albums from the same year, a listed album, or a pair already played while an unplayed pair exists.
++- An artist with albums rated 1600 and 1700 has a score of (1600 + 1700 + 1500) / 3 = 1600.
++- Unit tests cover each function with fixed inputs; the screen is covered by a component test.
++
++## Out of scope
++
++- Other scoring algorithms, a settings screen, points tables or year weights.
++- Artist and decade pages that show the results (#8, #9).
++- Importing the spreadsheet (#10), and adding albums to years (#6). Until #6 lands, the screen only has albums that tests or a script put in the database.
++- Storing or caching ratings.
++- Keyboard shortcuts for answering.
++
++## Calls I made
++
++Surprising first.
++
++- **Undo serves the undone pair again**, so the user can re-answer it. The ticket only says undo deletes the last answer.
++- **Undo reaches back past this session.** It deletes the newest matchup in the database, as the data layer's undo does, and can be pressed repeatedly.
++- **The screen shows the last answer's rating change** ("1500 → 1516"), so the user can see the ratings update. It does not show ratings on the cards before answering, to avoid nudging the choice.
++- **Skipped pairs are avoided until the page reloads**, per the MVP spec. The ticket says only that a skip serves the next pair.
++- **When every cross-year pair has been played, the screen serves played pairs again** (closest rating) instead of saying "done". The ticket doesn't say what happens then.
++- **"Fewest explicit matchups" counts only matchups the replay used**: answers against an album that is now unrated or listed don't count.
++- **An album with no unplayed opponent is passed over** for the next fewest-matchups album, so the first pick never forces a replayed pair while an unplayed one exists elsewhere.
++- **Closest-rating ties go to the lower album id**, not random, to keep tests simple. Only the first album is random.
++- **The first album is shown on the left** and stored as album A.
++- **The answer action re-checks the pair** (both rated, different years) rather than trusting the browser.
++- **No cache.** Ratings are replayed on every request.
++- **Engine in `lib/elo/` with no `server-only`**, plus a server-only loader in `lib/ratings.ts`.
++- **Counter is the all-time total** of stored matchups, not this session's.
++- **Button labels:** "I like this more", "Tie", "Skip", "Undo".
++- **The screen's test is a component test**, not end-to-end; the repo has no browser test setup yet.
+diff --git a/lib/elo/artist-score.test.ts b/lib/elo/artist-score.test.ts
+new file mode 100644
+index 0000000..d6eba27
+--- /dev/null
++++ b/lib/elo/artist-score.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++import { artistScore, decadeArtistScore } from "./artist-score";
++
++describe("artistScore", () => {
++  it.each([
++    { name: "1600 and 1700", ratings: [1600, 1700], expected: 1600 },
++    { name: "one album", ratings: [1700], expected: 1600 },
++    { name: "no rated albums", ratings: [], expected: undefined },
++  ])("$name", ({ ratings, expected }) => {
++    expect(artistScore(ratings)).toBe(expected);
++  });
++});
++
++describe("decadeArtistScore", () => {
++  const albums = [
++    { year: 1969, rating: 1600 },
++    { year: 1960, rating: 1700 },
++    { year: 1970, rating: 1900 },
++  ];
++
++  it.each([
++    { name: "leaves out other decades", decade: 1960, expected: 1600 },
++    { name: "a decade with no albums", decade: 1980, expected: undefined },
++  ])("$name", ({ decade, expected }) => {
++    expect(decadeArtistScore(albums, decade)).toBe(expected);
++  });
++});
+diff --git a/lib/elo/artist-score.ts b/lib/elo/artist-score.ts
+new file mode 100644
+index 0000000..daf555f
+--- /dev/null
++++ b/lib/elo/artist-score.ts
+@@ -0,0 +1,12 @@
++import { START_RATING } from "./elo";
++
++/** `(sum of ratings + 1500) / (album count + 1)`, or undefined for an artist with no rated albums. */
++export function artistScore(ratings: number[]): number | undefined {
++  if (ratings.length === 0) return undefined;
++  return (ratings.reduce((sum, rating) => sum + rating, 0) + START_RATING) / (ratings.length + 1);
++}
++
++/** The score over the albums whose year is in the decade (1960 means 1960 to 1969). */
++export function decadeArtistScore(albums: { year: number; rating: number }[], decade: number): number | undefined {
++  return artistScore(albums.filter((album) => Math.floor(album.year / 10) * 10 === decade).map((album) => album.rating));
++}
+diff --git a/lib/elo/elo.test.ts b/lib/elo/elo.test.ts
+new file mode 100644
+index 0000000..bdf5dd2
+--- /dev/null
++++ b/lib/elo/elo.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++import { applyResult, expectedScore, type EloResult } from "./elo";
++
++describe("expectedScore", () => {
++  it.each([
++    { name: "equal ratings", a: 1500, b: 1500, expected: 0.5 },
++    { name: "A 200 above B", a: 1700, b: 1500, expected: 0.7597469 },
++    { name: "A 200 below B", a: 1500, b: 1700, expected: 0.2402531 },
++  ])("$name", ({ a, b, expected }) => {
++    expect(expectedScore(a, b)).toBeCloseTo(expected, 6);
++  });
++});
++
++describe("applyResult", () => {
++  it.each<{ name: string; a: number; b: number; result: EloResult; newA: number; newB: number }>([
++    { name: "1500 v 1500, A wins", a: 1500, b: 1500, result: "a", newA: 1516, newB: 1484 },
++    { name: "1500 v 1500, B wins", a: 1500, b: 1500, result: "b", newA: 1484, newB: 1516 },
++    { name: "1500 v 1500, tie", a: 1500, b: 1500, result: "tie", newA: 1500, newB: 1500 },
++    { name: "favourite 1600 v 1400 wins", a: 1600, b: 1400, result: "a", newA: 1607.6881, newB: 1392.3119 },
++    { name: "favourite 1600 v 1400 loses", a: 1600, b: 1400, result: "b", newA: 1575.6881, newB: 1424.3119 },
++    { name: "favourite 1600 v 1400 ties", a: 1600, b: 1400, result: "tie", newA: 1591.6881, newB: 1408.3119 },
++  ])("$name", ({ a, b, result, newA, newB }) => {
++    const next = applyResult(a, b, result);
++    expect(next.a).toBeCloseTo(newA, 3);
++    expect(next.b).toBeCloseTo(newB, 3);
++  });
++});
+diff --git a/lib/elo/elo.ts b/lib/elo/elo.ts
+new file mode 100644
+index 0000000..7bab887
+--- /dev/null
++++ b/lib/elo/elo.ts
+@@ -0,0 +1,16 @@
++export const START_RATING = 1500;
++export const K = 32;
++
++export type EloResult = "a" | "b" | "tie";
++
++/** Chance that A beats B. */
++export function expectedScore(ratingA: number, ratingB: number): number {
++  return 1 / (1 + 10 ** ((ratingB - ratingA) / 400));
++}
++
++/** The new ratings after A plays B. A gains what B loses. Ratings stay unrounded. */
++export function applyResult(ratingA: number, ratingB: number, result: EloResult): { a: number; b: number } {
++  const score = result === "a" ? 1 : result === "tie" ? 0.5 : 0;
++  const delta = K * (score - expectedScore(ratingA, ratingB));
++  return { a: ratingA + delta, b: ratingB - delta };
++}
+diff --git a/lib/elo/pick.test.ts b/lib/elo/pick.test.ts
+new file mode 100644
+index 0000000..bd7a187
+--- /dev/null
++++ b/lib/elo/pick.test.ts
+@@ -0,0 +1,93 @@
++import { describe, expect, it } from "vitest";
++import { pairKey, pickMatchup, type PickAlbum } from "./pick";
++
++const album = (id: number, year: number, rating = 1500): PickAlbum => ({ id, year, rating });
++const played = (a: number, b: number) => ({ albumAId: a, albumBId: b });
++const fixed = (value: number) => () => value;
++
++describe("pairKey", () => {
++  it("is the same either way round", () => {
++    expect(pairKey(3, 7)).toBe(pairKey(7, 3));
++    expect(pairKey(3, 7)).not.toBe(pairKey(3, 8));
++  });
++});
++
++describe("pickMatchup", () => {
++  it.each([
++    { name: "no albums", albums: [] },
++    { name: "one album", albums: [album(1, 2000)] },
++    { name: "two albums from the same year", albums: [album(1, 2000), album(2, 2000)] },
++  ])("returns nothing when no pair is possible: $name", ({ albums }) => {
++    expect(pickMatchup({ albums, matchups: [], avoid: new Set(), random: fixed(0) })).toBeUndefined();
++  });
++
++  it("never pairs two albums from the same year", () => {
++    const albums = [album(1, 2000), album(2, 2000), album(3, 2001), album(4, 2001)];
++    for (const random of [0, 0.3, 0.6, 0.99]) {
++      const pair = pickMatchup({ albums, matchups: [], avoid: new Set(), random: fixed(random) })!;
++      const years = [pair.a, pair.b].map((id) => albums.find((a) => a.id === id)!.year);
++      expect(years[0]).not.toBe(years[1]);
++    }
++  });
++
++  it("never serves a played pair while an unplayed one exists", () => {
++    const albums = [album(1, 2000), album(2, 2001), album(3, 2002)];
++    for (const random of [0, 0.5, 0.99]) {
++      const pair = pickMatchup({ albums, matchups: [played(1, 2)], avoid: new Set(), random: fixed(random) })!;
++      expect(pairKey(pair.a, pair.b)).not.toBe(pairKey(1, 2));
++    }
++  });
++
++  it("never serves an avoided pair while another exists", () => {
++    const albums = [album(1, 2000), album(2, 2001), album(3, 2002)];
++    const avoid = new Set([pairKey(1, 2), pairKey(1, 3)]);
++    for (const random of [0, 0.5, 0.99]) {
++      const pair = pickMatchup({ albums, matchups: [], avoid, random: fixed(random) })!;
++      expect(pairKey(pair.a, pair.b)).toBe(pairKey(2, 3));
++    }
++  });
++
++  it("starts with the album that has the fewest matchups", () => {
++    const albums = [album(1, 2000), album(2, 2001), album(3, 2002)];
++    const pair = pickMatchup({ albums, matchups: [played(1, 2)], avoid: new Set(), random: fixed(0) })!;
++    expect(pair.a).toBe(3);
++  });
++
++  it.each([
++    { random: 0, first: 1 },
++    { random: 0.5, first: 2 },
++    { random: 0.99, first: 3 },
++  ])("chooses randomly among ties: random $random picks album $first", ({ random, first }) => {
++    const albums = [album(3, 2002), album(1, 2000), album(2, 2001)];
++    expect(pickMatchup({ albums, matchups: [], avoid: new Set(), random: fixed(random) })!.a).toBe(first);
++  });
++
++  it("passes over an album with no unplayed opponent for the next fewest", () => {
++    // Album 1 has no matchups but every opponent is avoided; album 3 is next.
++    const albums = [album(1, 2000), album(2, 2001), album(3, 2001), album(4, 2002)];
++    const avoid = new Set([pairKey(1, 2), pairKey(1, 3), pairKey(1, 4)]);
++    const pair = pickMatchup({ albums, matchups: [played(2, 4)], avoid, random: fixed(0) });
++    expect(pair).toEqual({ a: 3, b: 4 });
++  });
++
++  it.each([
++    { name: "the closest rating", ratings: [1500, 1520, 1480, 1600], expected: 2 },
++    { name: "the lower id on a rating tie", ratings: [1500, 1550, 1450, 1600], expected: 2 },
++  ])("picks the opponent with $name", ({ ratings, expected }) => {
++    const albums = ratings.map((rating, i) => album(i + 1, 2000 + i, rating));
++    // Make album 1 the first album: the others each have one matchup against each other.
++    const matchups = [played(2, 3), played(3, 4), played(2, 4)];
++    expect(pickMatchup({ albums, matchups, avoid: new Set(), random: fixed(0) })).toEqual({ a: 1, b: expected });
++  });
++
++  it("falls back to the closest-rated opponent, played or not, when every pair is played", () => {
++    const albums = [album(1, 2000, 1500), album(2, 2001, 1510), album(3, 2002, 1505)];
++    const matchups = [played(1, 2), played(1, 3), played(2, 3)];
++    expect(pickMatchup({ albums, matchups, avoid: new Set(), random: fixed(0) })).toEqual({ a: 1, b: 3 });
++  });
++
++  it("falls back the same way when every unplayed pair is avoided", () => {
++    const albums = [album(1, 2000, 1500), album(2, 2001, 1510)];
++    expect(pickMatchup({ albums, matchups: [], avoid: new Set([pairKey(1, 2)]), random: fixed(0) })).toEqual({ a: 1, b: 2 });
++  });
++});
+diff --git a/lib/elo/pick.ts b/lib/elo/pick.ts
+new file mode 100644
+index 0000000..6afd169
+--- /dev/null
++++ b/lib/elo/pick.ts
+@@ -0,0 +1,58 @@
++export type PickAlbum = { id: number; year: number; rating: number };
++export type PickMatchup = { albumAId: number; albumBId: number };
++
++/** An unordered pair as a string, the same for (a, b) and (b, a). */
++export function pairKey(idA: number, idB: number): string {
++  return idA < idB ? `${idA}-${idB}` : `${idB}-${idA}`;
++}
++
++/**
++ * Picks two albums from different years. The first album has the fewest matchups (random among ties,
++ * skipping albums with no unplayed opponent); its opponent is the closest-rated unplayed, unavoided one
++ * (lower id on a tie). When no unplayed pair exists, falls back to the closest-rated opponent, played or not.
++ * `matchups` are the ones the replay used. Returns undefined when no two albums are from different years.
++ */
++export function pickMatchup(input: {
++  albums: PickAlbum[];
++  matchups: PickMatchup[];
++  avoid: Set<string>;
++  random: () => number;
++}): { a: number; b: number } | undefined {
++  const albums = [...input.albums].sort((x, y) => x.id - y.id);
++  const played = new Set(input.matchups.map((m) => pairKey(m.albumAId, m.albumBId)));
++  const counts = new Map<number, number>();
++  for (const { albumAId, albumBId } of input.matchups) {
++    counts.set(albumAId, (counts.get(albumAId) ?? 0) + 1);
++    counts.set(albumBId, (counts.get(albumBId) ?? 0) + 1);
++  }
++
++  const opponentsOf = (album: PickAlbum) => albums.filter((other) => other.year !== album.year);
++  const closest = (album: PickAlbum, candidates: PickAlbum[]) =>
++    candidates.reduce((best, other) => {
++      const gap = Math.abs(other.rating - album.rating);
++      const bestGap = Math.abs(best.rating - album.rating);
++      return gap < bestGap || (gap === bestGap && other.id < best.id) ? other : best;
++    });
++  const unplayedOpponents = (album: PickAlbum) =>
++    opponentsOf(album).filter((other) => {
++      const key = pairKey(album.id, other.id);
++      return !played.has(key) && !input.avoid.has(key);
++    });
++
++  const chooseFirst = (pool: PickAlbum[]) => {
++    const fewest = Math.min(...pool.map((album) => counts.get(album.id) ?? 0));
++    const ties = pool.filter((album) => (counts.get(album.id) ?? 0) === fewest);
++    return ties[Math.min(Math.floor(input.random() * ties.length), ties.length - 1)];
++  };
++
++  const withUnplayed = albums.filter((album) => unplayedOpponents(album).length > 0);
++  if (withUnplayed.length > 0) {
++    const first = chooseFirst(withUnplayed);
++    return { a: first.id, b: closest(first, unplayedOpponents(first)).id };
++  }
++
++  const withOpponents = albums.filter((album) => opponentsOf(album).length > 0);
++  if (withOpponents.length === 0) return undefined;
++  const first = chooseFirst(withOpponents);
++  return { a: first.id, b: closest(first, opponentsOf(first)).id };
++}
+diff --git a/lib/elo/replay.test.ts b/lib/elo/replay.test.ts
+new file mode 100644
+index 0000000..4df6064
+--- /dev/null
++++ b/lib/elo/replay.test.ts
+@@ -0,0 +1,107 @@
++import { describe, expect, it } from "vitest";
++import { applyResult } from "./elo";
++import { computeRatings, impliedResults, type ReplayEntry, type ReplayMatchup } from "./replay";
++
++const ranked = (albumId: number, year: number, rank: number): ReplayEntry => ({ albumId, year, placement: "ranked", rank });
++const mention = (albumId: number, year: number): ReplayEntry => ({
++  albumId,
++  year,
++  placement: "honorable_mention",
++  rank: null,
++});
++const listed = (albumId: number, year: number): ReplayEntry => ({ albumId, year, placement: "listed", rank: null });
++const matchup = (id: number, albumAId: number, albumBId: number, result: ReplayMatchup["result"], createdAt = "2026-01-01T00:00:00.000Z"): ReplayMatchup => ({
++  id,
++  albumAId,
++  albumBId,
++  result,
++  createdAt,
++});
++
++describe("impliedResults", () => {
++  it("plays ranked over lower ranked and over honorable mentions, and nothing else", () => {
++    // Ranks 1, 2 and 4 (a gap), mentions 6 and 5 (listed out of id order), and a listed album.
++    const entries = [mention(6, 2000), ranked(4, 2000, 4), listed(7, 2000), ranked(1, 2000, 1), mention(5, 2000), ranked(2, 2000, 2)];
++    expect(impliedResults(entries).map((r) => [r.winnerId, r.loserId])).toEqual([
++      [1, 2],
++      [1, 4],
++      [1, 5],
++      [1, 6],
++      [2, 4],
++      [2, 5],
++      [2, 6],
++      [4, 5],
++      [4, 6],
++    ]);
++  });
++
++  it("goes year by year, ascending, and never across years", () => {
++    const entries = [ranked(3, 2001, 1), ranked(4, 2001, 2), ranked(1, 1999, 1), ranked(2, 1999, 2)];
++    expect(impliedResults(entries).map((r) => [r.winnerId, r.loserId])).toEqual([
++      [1, 2],
++      [3, 4],
++    ]);
++  });
++});
++
++describe("computeRatings", () => {
++  const entries = [ranked(1, 2000, 1), ranked(2, 2000, 2), ranked(3, 2001, 1), mention(4, 2001), listed(5, 2001)];
++
++  it("rates ranked and honorable mention albums only, from the implied results", () => {
++    const { ratings, used } = computeRatings({ entries, matchups: [] });
++    expect([...ratings.keys()].sort()).toEqual([1, 2, 3, 4]);
++    expect(ratings.get(1)).toBeCloseTo(1516);
++    expect(ratings.get(2)).toBeCloseTo(1484);
++    expect(ratings.get(3)).toBeCloseTo(1516);
++    expect(ratings.get(4)).toBeCloseTo(1484);
++    expect(used).toEqual([]);
++  });
++
++  it("gives the same ratings for the same inputs", () => {
++    const matchups = [matchup(1, 1, 3, "b"), matchup(2, 2, 4, "tie")];
++    expect(computeRatings({ entries, matchups })).toEqual(computeRatings({ entries, matchups }));
++  });
++
++  it("applies explicit answers after the implied ones, oldest first", () => {
++    const matchups = [
++      matchup(2, 2, 3, "a", "2026-01-02T00:00:00.000Z"),
++      matchup(1, 1, 3, "b", "2026-01-02T00:00:00.000Z"),
++      matchup(3, 1, 2, "tie", "2026-01-01T00:00:00.000Z"),
++    ];
++    const r = new Map([[1, 1516], [2, 1484], [3, 1516], [4, 1484]]);
++    const play = (a: number, b: number, result: "a" | "b" | "tie") => {
++      const next = applyResult(r.get(a)!, r.get(b)!, result);
++      r.set(a, next.a);
++      r.set(b, next.b);
++    };
++    play(1, 2, "tie"); // oldest
++    play(1, 3, "b"); // same time, lower id
++    play(2, 3, "a");
++
++    const { ratings, used } = computeRatings({ entries, matchups });
++    for (const [id, rating] of r) expect(ratings.get(id)).toBeCloseTo(rating, 9);
++    expect(used.map((m) => m.id)).toEqual([3, 1, 2]);
++  });
++
++  it("skips a matchup with an unrated album, and does not count it as used", () => {
++    const matchups = [matchup(1, 1, 5, "a"), matchup(2, 1, 99, "b")];
++    const withMatchups = computeRatings({ entries, matchups });
++    expect(withMatchups.ratings).toEqual(computeRatings({ entries, matchups: [] }).ratings);
++    expect(withMatchups.used).toEqual([]);
++  });
++
++  it("brings a skipped matchup back once the album is rated", () => {
++    const matchups = [matchup(1, 1, 5, "a")];
++    const placed = computeRatings({ entries: [...entries.slice(0, 4), mention(5, 2001)], matchups });
++    expect(placed.used).toHaveLength(1);
++  });
++
++  it("gives the previous ratings exactly after the last answer is deleted", () => {
++    const first = matchup(1, 1, 3, "b", "2026-01-01T00:00:00.000Z");
++    const second = matchup(2, 2, 4, "a", "2026-01-02T00:00:00.000Z");
++    const before = computeRatings({ entries, matchups: [first] });
++    const after = computeRatings({ entries, matchups: [first, second] });
++    expect(after.ratings).not.toEqual(before.ratings);
++    expect(computeRatings({ entries, matchups: [first, second].slice(0, 1) }).ratings).toEqual(before.ratings);
++  });
++});
+diff --git a/lib/elo/replay.ts b/lib/elo/replay.ts
+new file mode 100644
+index 0000000..1b97af1
+--- /dev/null
++++ b/lib/elo/replay.ts
+@@ -0,0 +1,76 @@
++import { applyResult, START_RATING, type EloResult } from "./elo";
++
++export type ReplayEntry = {
++  albumId: number;
++  year: number;
++  placement: "ranked" | "honorable_mention" | "listed";
++  rank: number | null;
++};
++
++export type ReplayMatchup = {
++  id: number;
++  albumAId: number;
++  albumBId: number;
++  result: EloResult;
++  createdAt: string;
++};
++
++export type ImpliedResult = { winnerId: number; loserId: number };
++
++/**
++ * The results a year's placements imply, in replay order: years ascending; within a year each ranked album
++ * (rank 1 first) beats the ranked albums below it, then the honorable mentions (album id order).
++ * Honorable mentions and listed albums don't play each other.
++ */
++export function impliedResults(entries: ReplayEntry[]): ImpliedResult[] {
++  const years = [...new Set(entries.map((entry) => entry.year))].sort((a, b) => a - b);
++  const results: ImpliedResult[] = [];
++  for (const year of years) {
++    const inYear = entries.filter((entry) => entry.year === year);
++    const ranked = inYear
++      .filter((entry) => entry.placement === "ranked")
++      .sort((a, b) => a.rank! - b.rank!);
++    const mentions = inYear
++      .filter((entry) => entry.placement === "honorable_mention")
++      .sort((a, b) => a.albumId - b.albumId);
++    ranked.forEach((winner, i) => {
++      for (const loser of [...ranked.slice(i + 1), ...mentions]) {
++        results.push({ winnerId: winner.albumId, loserId: loser.albumId });
++      }
++    });
++  }
++  return results;
++}
++
++/**
++ * Replays the implied results, then the explicit matchups oldest first (created at, then id), from 1500.
++ * A matchup with an unrated album is skipped, so `used` lists only the matchups that counted.
++ */
++export function computeRatings(input: { entries: ReplayEntry[]; matchups: ReplayMatchup[] }): {
++  ratings: Map<number, number>;
++  used: ReplayMatchup[];
++} {
++  const ratings = new Map<number, number>();
++  for (const entry of input.entries) {
++    if (entry.placement !== "listed") ratings.set(entry.albumId, START_RATING);
++  }
++
++  const play = (aId: number, bId: number, result: EloResult) => {
++    const next = applyResult(ratings.get(aId)!, ratings.get(bId)!, result);
++    ratings.set(aId, next.a);
++    ratings.set(bId, next.b);
++  };
++
++  for (const { winnerId, loserId } of impliedResults(input.entries)) play(winnerId, loserId, "a");
++
++  const sorted = [...input.matchups].sort(
++    (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0) || a.id - b.id,
++  );
++  const used: ReplayMatchup[] = [];
++  for (const matchup of sorted) {
++    if (!ratings.has(matchup.albumAId) || !ratings.has(matchup.albumBId)) continue;
++    play(matchup.albumAId, matchup.albumBId, matchup.result);
++    used.push(matchup);
++  }
++  return { ratings, used };
++}
+diff --git a/lib/matchups-service.test.ts b/lib/matchups-service.test.ts
+new file mode 100644
+index 0000000..fac9e2c
+--- /dev/null
++++ b/lib/matchups-service.test.ts
+@@ -0,0 +1,103 @@
++import type { DatabaseSync } from "node:sqlite";
++import { beforeEach, describe, expect, it } from "vitest";
++import { countMatchups, listMatchups } from "./db/matchups";
++import { addYearEntry } from "./db/year-entries";
++import { memoryDb, seedAlbums } from "./db/test-db";
++import { answerMatchup, skipMatchup, undoMatchup, type MatchupView } from "./matchups-service";
++import { loadMatchupState, loadRatings } from "./ratings";
++
++const random = () => 0;
++
++function asView(result: ReturnType<typeof answerMatchup>): MatchupView {
++  if ("error" in result) throw new Error(result.error);
++  return result;
++}
++
++describe("matchup actions", () => {
++  let db: DatabaseSync;
++  let ids: number[];
++
++  beforeEach(() => {
++    db = memoryDb();
++    ids = seedAlbums(db, 6);
++    // 0 and 1 in 2000, 2 in 2001, 3 a honorable mention in 2002, 4 listed in 2003, 5 has no year entry.
++    addYearEntry(db, { albumId: ids[0], year: 2000, placement: "ranked", rank: 1 });
++    addYearEntry(db, { albumId: ids[1], year: 2000, placement: "ranked", rank: 2 });
++    addYearEntry(db, { albumId: ids[2], year: 2001, placement: "ranked", rank: 1 });
++    addYearEntry(db, { albumId: ids[3], year: 2002, placement: "honorable_mention" });
++    addYearEntry(db, { albumId: ids[4], year: 2003, placement: "listed" });
++  });
++
++  it("an answer moves both ratings and counts the matchup", () => {
++    const before = loadRatings(db).ratings;
++    const next = asView(answerMatchup(db, ids[0], ids[2], "b", [], random));
++
++    const after = loadRatings(db).ratings;
++    expect(after.get(ids[0])).toBeLessThan(before.get(ids[0])!);
++    expect(after.get(ids[2])).toBeGreaterThan(before.get(ids[2])!);
++    expect(next.count).toBe(1);
++    expect(next.canUndo).toBe(true);
++    expect(next.lastAnswer!.text).toMatch(/^Album 1 \d+ → \d+, Album 3 \d+ → \d+$/);
++  });
++
++  it("undo restores the ratings exactly and serves the undone pair again", () => {
++    const before = loadRatings(db).ratings;
++    answerMatchup(db, ids[0], ids[2], "a", [], random);
++    answerMatchup(db, ids[1], ids[3], "tie", [], random);
++
++    const first = asView(undoMatchup(db, [], random));
++    expect(first.pair!.a.id).toBe(ids[1]);
++    expect(first.pair!.b.id).toBe(ids[3]);
++    expect(first.count).toBe(1);
++
++    const second = asView(undoMatchup(db, [], random));
++    expect([second.pair!.a.id, second.pair!.b.id]).toEqual([ids[0], ids[2]]);
++    expect(second.count).toBe(0);
++    expect(second.canUndo).toBe(false);
++    expect(second.lastAnswer!.text).toMatch(/^Undone: /);
++    expect(loadRatings(db).ratings).toEqual(before);
++  });
++
++  it("undo with nothing stored is an error", () => {
++    expect(undoMatchup(db, [], random)).toEqual({ error: "There is nothing to undo." });
++  });
++
++  it("skip stores nothing and serves another pair", () => {
++    const first = loadMatchupState(db, new Set(), random).pair!;
++    const next = asView(skipMatchup(db, first.a.id, first.b.id, [], random));
++
++    expect(countMatchups(db)).toBe(0);
++    expect(next.lastAnswer).toBeNull();
++    expect([next.pair!.a.id, next.pair!.b.id].sort()).not.toEqual([first.a.id, first.b.id].sort());
++  });
++
++  it.each([
++    { name: "same year", a: 0, b: 1 },
++    { name: "a listed album", a: 0, b: 4 },
++    { name: "an album with no year entry", a: 0, b: 5 },
++    { name: "an unknown album", a: 0, b: -1 },
++    { name: "the same album twice", a: 0, b: 0 },
++  ])("refuses $name and stores nothing", ({ a, b }) => {
++    const pick = (i: number) => (i < 0 ? 9999 : ids[i]);
++    expect(answerMatchup(db, pick(a), pick(b), "a", [], random)).toHaveProperty("error");
++    expect(listMatchups(db)).toEqual([]);
++  });
++
++  it.each([
++    { name: "a non-integer id", a: 1.5, result: "a" },
++    { name: "an unknown result", a: 1, result: "draw" },
++  ])("refuses $name", ({ a, result }) => {
++    expect(answerMatchup(db, a, 2, result, [], random)).toHaveProperty("error");
++    expect(countMatchups(db)).toBe(0);
++  });
++
++  it("never serves a listed or unplaced album", () => {
++    const served = new Set<number>();
++    for (const value of [0, 0.3, 0.6, 0.99]) {
++      const { pair } = loadMatchupState(db, new Set(), () => value);
++      served.add(pair!.a.id).add(pair!.b.id);
++    }
++    expect(served.has(ids[4])).toBe(false);
++    expect(served.has(ids[5])).toBe(false);
++  });
++});
+diff --git a/lib/matchups-service.ts b/lib/matchups-service.ts
+new file mode 100644
+index 0000000..c22faaa
+--- /dev/null
++++ b/lib/matchups-service.ts
+@@ -0,0 +1,122 @@
++import type { DatabaseSync } from "node:sqlite";
++import { DataError, type MatchupResult } from "./db/types";
++import { listAllYearEntries } from "./db/year-entries";
++import { countMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
++import { pairKey } from "./elo/pick";
++import { loadAlbumCard, loadMatchupState, loadRatings, type AlbumCard } from "./ratings";
++
++export type MatchupView = {
++  pair: { a: AlbumCard; b: AlbumCard } | null;
++  /** Every matchup ever stored, not only this session's. */
++  count: number;
++  lastAnswer: { text: string } | null;
++  canUndo: boolean;
++};
++
++export type MatchupActionResult = MatchupView | { error: string };
++
++const RESULTS: MatchupResult[] = ["a", "b", "tie"];
++const PAIR_KEY = /^\d+-\d+$/;
++const MAX_AVOID = 100_000;
++
++function isId(value: unknown): value is number {
++  return Number.isInteger(value) && (value as number) > 0;
++}
++
++/** Keeps only well-formed pair keys, since the browser can send anything. */
++function parseAvoid(avoid: unknown): Set<string> {
++  if (!Array.isArray(avoid)) return new Set();
++  return new Set(avoid.slice(0, MAX_AVOID).filter((key): key is string => typeof key === "string" && PAIR_KEY.test(key)));
++}
++
++function view(db: DatabaseSync, avoid: Set<string>, random: () => number, lastAnswer: MatchupView["lastAnswer"]): MatchupView {
++  const { pair, count } = loadMatchupState(db, avoid, random);
++  return { pair, count, lastAnswer, canUndo: count > 0 };
++}
++
++function round(rating: number): number {
++  return Math.round(rating);
++}
++
++/** "Title 1500 → 1516, Other 1500 → 1484", or null when either album has no rating on one side. */
++function changeText(
++  before: Map<number, number>,
++  after: Map<number, number>,
++  albums: { id: number; title: string }[],
++  prefix = "",
++): string | null {
++  const parts: string[] = [];
++  for (const { id, title } of albums) {
++    const was = before.get(id);
++    const now = after.get(id);
++    if (was === undefined || now === undefined) return null;
++    parts.push(`${title} ${round(was)} → ${round(now)}`);
++  }
++  return prefix + parts.join(", ");
++}
++
++export function answerMatchup(
++  db: DatabaseSync,
++  albumAId: unknown,
++  albumBId: unknown,
++  result: unknown,
++  avoid: unknown,
++  random: () => number = Math.random,
++): MatchupActionResult {
++  if (!isId(albumAId) || !isId(albumBId) || albumAId === albumBId || !RESULTS.includes(result as MatchupResult)) {
++    return { error: "That answer wasn't valid. Try again." };
++  }
++  const before = loadRatings(db).ratings;
++  const entries = listAllYearEntries(db);
++  const yearOf = (id: number) => entries.find((entry) => entry.albumId === id)?.year;
++  if (!before.has(albumAId) || !before.has(albumBId) || yearOf(albumAId) === yearOf(albumBId)) {
++    return { error: "Those two albums can't be compared. Skip them or reload the page." };
++  }
++
++  try {
++    recordMatchup(db, { albumAId, albumBId, result: result as MatchupResult });
++  } catch (error) {
++    if (error instanceof DataError) return { error: error.message };
++    throw error;
++  }
++
++  const after = loadRatings(db).ratings;
++  const a = loadAlbumCard(db, albumAId)!;
++  const b = loadAlbumCard(db, albumBId)!;
++  return view(db, parseAvoid(avoid), random, { text: changeText(before, after, [a, b])! });
++}
++
++/** Records nothing. The skipped pair is avoided from now on, so the next pair is a different one. */
++export function skipMatchup(
++  db: DatabaseSync,
++  albumAId: unknown,
++  albumBId: unknown,
++  avoid: unknown,
++  random: () => number = Math.random,
++): MatchupActionResult {
++  if (!isId(albumAId) || !isId(albumBId) || albumAId === albumBId) {
++    return { error: "That pair wasn't valid. Reload the page." };
++  }
++  const avoided = parseAvoid(avoid).add(pairKey(albumAId, albumBId));
++  return view(db, avoided, random, null);
++}
++
++/** Deletes the newest matchup and serves its pair again, so the user can answer it differently. */
++export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => number = Math.random): MatchupActionResult {
++  const before = loadRatings(db).ratings;
++  const undone = undoLastMatchup(db);
++  if (!undone) return { error: "There is nothing to undo." };
++
++  const after = loadRatings(db).ratings;
++  const a = loadAlbumCard(db, undone.albumAId);
++  const b = loadAlbumCard(db, undone.albumBId);
++  const text = a && b ? changeText(before, after, [a, b], "Undone: ") : null;
++  const lastAnswer = { text: text ?? "Undone." };
++
++  if (a && b && after.has(a.id) && after.has(b.id) && a.year !== b.year) {
++    const count = countMatchups(db);
++    return { pair: { a, b }, count, lastAnswer, canUndo: count > 0 };
++  }
++  // One of the albums has lost its placement since, so the pair can't be asked again.
++  return view(db, parseAvoid(avoid), random, lastAnswer);
++}
+diff --git a/lib/ratings.ts b/lib/ratings.ts
+new file mode 100644
+index 0000000..23ba560
+--- /dev/null
++++ b/lib/ratings.ts
+@@ -0,0 +1,43 @@
++import type { DatabaseSync } from "node:sqlite";
++import { getAlbum } from "./db/albums";
++import { listMatchups, countMatchups } from "./db/matchups";
++import { listAllYearEntries } from "./db/year-entries";
++import { pickMatchup } from "./elo/pick";
++import { computeRatings, type ReplayMatchup } from "./elo/replay";
++
++export type AlbumCard = {
++  id: number;
++  title: string;
++  artist: string;
++  year: number;
++  coverUrl: string | null;
++};
++
++/** Ratings are replayed from the stored year entries and matchups on every call, never stored. */
++export function loadRatings(db: DatabaseSync): { ratings: Map<number, number>; used: ReplayMatchup[] } {
++  return computeRatings({ entries: listAllYearEntries(db), matchups: listMatchups(db) });
++}
++
++export function loadAlbumCard(db: DatabaseSync, albumId: number): AlbumCard | undefined {
++  const album = getAlbum(db, albumId);
++  const entry = listAllYearEntries(db).find((e) => e.albumId === albumId);
++  if (!album || !entry) return undefined;
++  return { id: album.id, title: album.title, artist: album.artist.name, year: entry.year, coverUrl: album.coverUrl };
++}
++
++/** The next pair to ask about (or null when none is possible), the stored matchup total and the ratings. */
++export function loadMatchupState(
++  db: DatabaseSync,
++  avoid: Set<string>,
++  random: () => number,
++): { pair: { a: AlbumCard; b: AlbumCard } | null; count: number; ratings: Map<number, number> } {
++  const entries = listAllYearEntries(db);
++  const { ratings, used } = computeRatings({ entries, matchups: listMatchups(db) });
++  const years = new Map(entries.map((entry) => [entry.albumId, entry.year]));
++  const albums = [...ratings].map(([id, rating]) => ({ id, rating, year: years.get(id)! }));
++
++  const picked = pickMatchup({ albums, matchups: used, avoid, random });
++  const a = picked && loadAlbumCard(db, picked.a);
++  const b = picked && loadAlbumCard(db, picked.b);
++  return { pair: a && b ? { a, b } : null, count: countMatchups(db), ratings };
++}
