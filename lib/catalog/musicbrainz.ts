@@ -45,7 +45,7 @@ export function buildQuery(text: string): string {
     .join(" AND ");
 }
 
-type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { name?: unknown } };
+type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { id?: unknown; name?: unknown } };
 
 function joinArtistCredit(credit: unknown): string {
   if (!Array.isArray(credit)) {
@@ -60,6 +60,16 @@ function joinArtistCredit(credit: unknown): string {
     })
     .join("")
     .trim();
+}
+
+function joinArtistIds(credit: unknown): string | null {
+  if (!Array.isArray(credit)) {
+    return null;
+  }
+  const ids = (credit as ArtistCredit[]).flatMap((part) =>
+    typeof part.artist?.id === "string" && part.artist.id !== "" ? [part.artist.id] : [],
+  );
+  return ids.length > 0 ? ids.join("+") : null;
 }
 
 function parseYear(date: unknown): number | null {
@@ -94,6 +104,7 @@ export function mapReleaseGroups(body: unknown): CatalogAlbum[] {
       catalogId: id,
       title,
       artist: joinArtistCredit((group as { "artist-credit"?: unknown })["artist-credit"]),
+      artistId: joinArtistIds((group as { "artist-credit"?: unknown })["artist-credit"]),
       year: parseYear((group as { "first-release-date"?: unknown })["first-release-date"]),
       coverUrl: `${COVER_URL}/${id}/front-250`,
     });
