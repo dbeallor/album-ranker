@@ -1,0 +1,239 @@
+/*
+ * Design tokens, dark theme and base styles. This is the only file in the app that may contain
+ * raw colors. Everything else uses var(--...). Component layout lives in components/ui/*.module.css.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Color (light) */
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #efeff3;
+  --color-text: #17181c;
+  --color-text-muted: #5b6070;
+  --color-border: #dfe0e6;
+  --color-border-strong: #757a8a;
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-text: #ffffff;
+  --color-accent-soft: #eceefe;
+  --color-danger: #b42318;
+  --color-danger-text: #ffffff;
+  --color-danger-soft: #fef0ee;
+  --color-success: #067647;
+  --color-success-soft: #e8f7ef;
+  --color-focus: #4f46e5;
+  --color-shadow: rgb(23 24 28 / 0.12);
+
+  /* Type */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 650;
+  --leading: 1.5;
+
+  /* Space */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* Other */
+  --shadow-sm: 0 1px 2px var(--color-shadow);
+  --shadow-md: 0 8px 24px var(--color-shadow);
+  --focus-ring: 2px solid var(--color-focus);
+  --focus-offset: 2px;
+  --content-width: 1040px;
+  --control-height: 44px;
+  --header-height: 3.5rem;
+  --gutter: var(--space-4);
+  --duration: 120ms;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: var(--space-5);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f1115;
+    --color-surface: #181b21;
+    --color-surface-sunken: #12141a;
+    --color-text: #ececf1;
+    --color-text-muted: #a0a6b4;
+    --color-border: #2b2f39;
+    --color-border-strong: #737a8c;
+    --color-accent: #a5b4fc;
+    --color-accent-hover: #c7d2fe;
+    --color-accent-text: #0f1115;
+    --color-accent-soft: #252a4a;
+    --color-danger: #f97066;
+    --color-danger-text: #0f1115;
+    --color-danger-soft: #3b1c1b;
+    --color-success: #47cd89;
+    --color-success-soft: #12291f;
+    --color-focus: #a5b4fc;
+    --color-shadow: rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading);
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+figure,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--weight-bold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+h4 {
+  font-size: var(--text-base);
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Base elements */
+
+a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+@media (hover: hover) {
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  vertical-align: middle;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+small {
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

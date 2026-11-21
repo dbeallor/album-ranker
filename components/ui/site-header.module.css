@@ -1,0 +1,85 @@
+.header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Sticky only where the header is one row; on phones the wrapped nav would eat the screen. */
+@media (min-width: 640px) {
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  max-width: var(--content-width);
+  min-height: var(--header-height);
+  margin: 0 auto;
+  padding: var(--space-1) var(--gutter);
+}
+
+@media (min-width: 640px) {
+  .inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+  }
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--control-height);
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  text-decoration: none;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  margin-inline: calc(var(--space-2) * -1);
+}
+
+.link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  transition: color var(--duration) ease;
+}
+
+.link[aria-current="page"] {
+  color: var(--color-text);
+}
+
+.link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-1);
+  left: var(--space-3);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+
+@media (hover: hover) {
+  .link:hover {
+    color: var(--color-text);
+  }
+}
