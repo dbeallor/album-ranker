@@ -1,7 +1,8 @@
 # Record browser events on any local app or preview
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #32, with differences: [as-built](../as-built/2026-11-21-album-30-record-local-previews.md)
 **Ticket:** [ALBUM-30](https://github.com/dbeallor/album-ranker/issues/30)
 **Follows:** [browser event log](2026-11-21-album-19-browser-event-log.md), [local previews](2026-11-21-album-20-local-previews.md)
 
