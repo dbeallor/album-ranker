@@ -7,6 +7,9 @@ export default function Home() {
       <p>
         <Link href="/search">Search albums</Link>
       </p>
+      <p>
+        <Link href="/matchups">Matchups</Link>
+      </p>
     </main>
   );
 }
