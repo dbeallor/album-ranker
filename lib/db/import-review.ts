@@ -5,6 +5,7 @@ import {
   type CatalogCandidate,
   type ImportReviewItem,
   type Placement,
+  type ReviewReason,
   type ReviewStatus,
   type SourceRowKey,
 } from "./types";
@@ -22,6 +23,8 @@ function toItem(row: Row): ImportReviewItem {
     sourcePlacement: row.source_placement as Placement,
     sourceRank: row.source_rank as number | null,
     sourceDecadeRank: row.source_decade_rank as number | null,
+    reason: row.reason as ReviewReason,
+    reasonDetail: row.reason_detail as string | null,
     candidates: JSON.parse(row.candidates as string) as CatalogCandidate[],
     status: row.status as ReviewStatus,
     resolvedAlbumId: row.resolved_album_id as number | null,
@@ -35,6 +38,8 @@ export type CreateImportReviewItemInput = {
   sourcePlacement: Placement;
   sourceRank?: number | null;
   sourceDecadeRank?: number | null;
+  reason?: ReviewReason;
+  reasonDetail?: string | null;
   candidates: CatalogCandidate[];
 };
 
@@ -55,8 +60,8 @@ export function createImportReviewItem(db: DatabaseSync, input: CreateImportRevi
       .prepare(
         `INSERT INTO import_review_items
            (source_title, source_artist, source_year, source_placement, source_rank, source_decade_rank,
-            candidates, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+            reason, reason_detail, candidates, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
       )
       .run(
         input.source.title,
@@ -65,6 +70,8 @@ export function createImportReviewItem(db: DatabaseSync, input: CreateImportRevi
         input.sourcePlacement,
         input.sourceRank ?? null,
         input.sourceDecadeRank ?? null,
+        input.reason ?? "no_match",
+        input.reasonDetail ?? null,
         JSON.stringify(input.candidates),
         stamp,
         stamp,

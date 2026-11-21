@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addYearEntry,
+  findRankHolder,
   getYearEntryByAlbum,
   listAllYearEntries,
   listYear,
@@ -99,5 +100,45 @@ describe("year entries", () => {
     expect(errorCode(() => addYearEntry(db, { albumId: b, year: 2000, placement: "listed", source }))).toBe(
       "invalid_input",
     );
+  });
+
+  const decadeRanks: { name: string; sourceDecadeRank: number | null | undefined; code: string | null }[] = [
+    { name: "a source decade rank of 1", sourceDecadeRank: 1, code: null },
+    { name: "a source decade rank of 25", sourceDecadeRank: 25, code: null },
+    { name: "no source decade rank", sourceDecadeRank: undefined, code: null },
+    { name: "a source decade rank of 0", sourceDecadeRank: 0, code: "invalid_input" },
+    { name: "a source decade rank of 26", sourceDecadeRank: 26, code: "invalid_input" },
+    { name: "a fractional source decade rank", sourceDecadeRank: 1.5, code: "invalid_input" },
+  ];
+  it.each(decadeRanks)("handles $name", ({ sourceDecadeRank, code }) => {
+    const db = memoryDb();
+    const [a] = seedAlbums(db, 1);
+    const add = () => addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank });
+    if (code === null) {
+      expect(add().sourceDecadeRank).toBe(sourceDecadeRank ?? null);
+      expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(sourceDecadeRank ?? null);
+    } else {
+      expect(errorCode(add)).toBe(code);
+      expect(listAllYearEntries(db)).toEqual([]);
+    }
+  });
+
+  it("keeps the source decade rank when the entry changes or the year is rewritten", () => {
+    const db = memoryDb();
+    const [a] = seedAlbums(db, 1);
+    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank: 7 });
+    updateYearEntry(db, a, { placement: "honorable_mention" });
+    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(7);
+    setYearPlacements(db, 1999, { ranked: [], honorableMentions: [a], listed: [] });
+    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(7);
+  });
+
+  it("finds the album holding a rank in a year", () => {
+    const db = memoryDb();
+    const [a] = seedAlbums(db, 1);
+    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 4 });
+    expect(findRankHolder(db, 1999, 4)).toBe(a);
+    expect(findRankHolder(db, 1999, 5)).toBeUndefined();
+    expect(findRankHolder(db, 2000, 4)).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 export type Placement = "ranked" | "honorable_mention" | "listed";
 export type MatchupResult = "a" | "b" | "tie";
 export type ReviewStatus = "open" | "resolved" | "skipped";
+export type ReviewReason = "no_match" | "ambiguous" | "duplicate_album" | "rank_taken";
 
 export type DataErrorCode =
   | "album_has_year_entry"
@@ -50,6 +51,8 @@ export type YearEntry = {
   placement: Placement;
   rank: number | null;
   source: SourceRowKey | null;
+  /** Rank on the decade list in the imported sheet, so later insertions find their place. */
+  sourceDecadeRank: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -83,6 +86,9 @@ export type ImportReviewItem = {
   sourcePlacement: Placement;
   sourceRank: number | null;
   sourceDecadeRank: number | null;
+  reason: ReviewReason;
+  /** The year or album the reason names, for the review page. */
+  reasonDetail: string | null;
   candidates: CatalogCandidate[];
   status: ReviewStatus;
   resolvedAlbumId: number | null;

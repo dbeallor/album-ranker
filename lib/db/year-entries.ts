@@ -33,6 +33,7 @@ function toEntry(row: Row): YearEntry {
     placement: row.placement as Placement,
     rank: row.rank as number | null,
     source,
+    sourceDecadeRank: row.source_decade_rank as number | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -77,6 +78,12 @@ function assertAlbumExists(db: DatabaseSync, albumId: number): void {
   }
 }
 
+/** The album that holds this rank in this year, if any. */
+export function findRankHolder(db: DatabaseSync, year: number, rank: number): number | undefined {
+  const row = db.prepare("SELECT album_id FROM year_entries WHERE year = ? AND rank = ?").get(year, rank);
+  return row ? (row.album_id as number) : undefined;
+}
+
 export function getYearEntryByAlbum(db: DatabaseSync, albumId: number): YearEntry | undefined {
   const row = db.prepare("SELECT * FROM year_entries WHERE album_id = ?").get(albumId);
   return row ? toEntry(row) : undefined;
@@ -97,6 +104,8 @@ export type AddYearEntryInput = {
   placement: Placement;
   rank?: number | null;
   source?: SourceRowKey | null;
+  /** The decade rank the imported sheet gave this album, kept for ordering later insertions. */
+  sourceDecadeRank?: number | null;
 };
 
 export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEntry {
@@ -108,6 +117,10 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
       throw new DataError("album_has_year_entry", `Album ${input.albumId} already has a year entry.`);
     }
     assertRankFree(db, input.year, rank);
+    const sourceDecadeRank = input.sourceDecadeRank ?? null;
+    if (sourceDecadeRank !== null && (!Number.isInteger(sourceDecadeRank) || sourceDecadeRank < 1 || sourceDecadeRank > 25)) {
+      throw new DataError("invalid_input", `Source decade rank must be from 1 to 25, got ${sourceDecadeRank}.`);
+    }
 
     const source = input.source ?? null;
     if (
@@ -122,8 +135,9 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
     const stamp = now();
     db.prepare(
       `INSERT INTO year_entries
-         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (album_id, year, placement, rank, source_title, source_artist, source_year, source_decade_rank,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       input.albumId,
       input.year,
@@ -132,6 +146,7 @@ export function addYearEntry(db: DatabaseSync, input: AddYearEntryInput): YearEn
       source?.title ?? null,
       source?.artist ?? null,
       source?.year ?? null,
+      sourceDecadeRank,
       stamp,
       stamp,
     );
@@ -271,8 +286,9 @@ export function setYearPlacements(
 
     const insert = db.prepare(
       `INSERT INTO year_entries
-         (album_id, year, placement, rank, source_title, source_artist, source_year, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (album_id, year, placement, rank, source_title, source_artist, source_year, source_decade_rank,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const stamp = now();
     for (const item of wanted) {
@@ -285,6 +301,7 @@ export function setYearPlacements(
         before?.source?.title ?? null,
         before?.source?.artist ?? null,
         before?.source?.year ?? null,
+        before?.sourceDecadeRank ?? null,
         before?.createdAt ?? stamp,
         stamp,
       );
