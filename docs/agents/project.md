@@ -108,7 +108,10 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
 
 ## Environments and deploy
 
-- none yet
+- Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)). Deploy: none yet (#14).
+  - Main preview: `npm run preview -- main` builds the root checkout and serves it on <http://localhost:4000>, using the root's `data/album-ranker.db`.
+  - Ticket preview: `npm run preview -- <N>` serves that ticket's worktree on port `4000 + N` (ticket 20 is <http://localhost:4020>), using `data/preview.db` in the worktree. A branch with no ticket number needs `--port <p>`.
+  - `npm run preview -- list` shows running previews; `npm run preview -- stop <main|N|all>` stops them. Point the user at the preview URL after a UI change.
 
 ## Models
 
