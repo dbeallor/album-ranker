@@ -131,7 +131,7 @@ From the ticket:
 - Artist and decade views (#8, #9).
 - Importing the spreadsheet (#10).
 - Linking a manual album to a catalog album, and editing or deleting albums.
-- End-to-end browser tests (the repo has no browser test setup).
+- End-to-end browser tests for the year page (not in this ticket; component tests cover it).
 - Undo for year edits.
 
 ## Calls I made
