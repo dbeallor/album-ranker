@@ -41,6 +41,7 @@ type StartCommand = Extract<Command, { kind: "start" }>;
 const MAIN_TIMEOUT_MS = 3 * 60_000;
 const TICKET_TIMEOUT_MS = 60_000;
 const STOP_WAIT_MS = 10_000;
+const HOST = "127.0.0.1";
 
 function unwrap<T>(result: Result<T>): T {
   if (!result.ok) {
@@ -72,7 +73,8 @@ function recordFiles(checkout: string): string[] {
 
 function readRecord(file: string): PreviewRecord | null {
   try {
-    return JSON.parse(readFileSync(file, "utf8")) as PreviewRecord;
+    const record = JSON.parse(readFileSync(file, "utf8")) as PreviewRecord;
+    return Number.isInteger(record?.pid) && record.pid > 1 ? record : null;
   } catch {
     return null;
   }
@@ -215,7 +217,7 @@ async function prepareTicketData(
       throw new Error(`--copy-main-data needs ${source}, which does not exist.`);
     }
     removeDatabase(databasePath);
-    const sourceDb = new DatabaseSync(source);
+    const sourceDb = new DatabaseSync(source, { readOnly: true });
     try {
       await backup(sourceDb, databasePath);
     } finally {
@@ -228,7 +230,11 @@ async function prepareTicketData(
 
 function warnIfRootBehind(root: Worktree): void {
   try {
-    execFileSync("git", ["-C", root.path, "fetch", "--quiet", "origin"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root.path, "fetch", "--quiet", "origin"], {
+      stdio: "pipe",
+      timeout: 15_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
     const behind = execFileSync(
       "git",
       ["-C", root.path, "rev-list", "--count", "main..origin/main"],
@@ -253,12 +259,13 @@ function tailLog(logFile: string): string {
   }
 }
 
-async function answers(port: number): Promise<boolean> {
+/** Main must answer 200; a dev server can answer 500 while a page fails to compile, which still means it is up. */
+async function answers(port: number, anyStatus: boolean): Promise<boolean> {
   try {
-    const response = await fetch(`http://localhost:${port}/`, {
+    const response = await fetch(`http://127.0.0.1:${port}/`, {
       signal: AbortSignal.timeout(5_000),
     });
-    return response.status === 200;
+    return anyStatus || response.status === 200;
   } catch {
     return false;
   }
@@ -271,6 +278,8 @@ type Launch = {
   port: number;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  /** Count any HTTP response as up (dev server) instead of requiring 200. */
+  anyStatus: boolean;
   /** Command and arguments; the first is run with `cwd` set to the checkout. */
   argv: string[];
 };
@@ -313,7 +322,7 @@ async function launch(spec: Launch): Promise<void> {
   const deadline = Date.now() + spec.timeoutMs;
   let up = false;
   while (!exited && Date.now() < deadline) {
-    if (await answers(spec.port)) {
+    if (await answers(spec.port, spec.anyStatus)) {
       up = true;
       break;
     }
@@ -325,7 +334,7 @@ async function launch(spec: Launch): Promise<void> {
       ? "The process exited before the page answered."
       : `The page did not answer within ${spec.timeoutMs / 1000} seconds.`;
     console.error(`${reason} Last log lines (${logFile}):\n${tailLog(logFile)}`);
-    await stopGroup(pid, () => exited);
+    await stopGroup(pid);
     rmSync(recordFile, { force: true });
     process.exit(1);
   }
@@ -336,10 +345,10 @@ async function launch(spec: Launch): Promise<void> {
 
 async function start(command: StartCommand): Promise<void> {
   const worktrees = listWorktrees();
-  const root = unwrap(checkRootOnMain(worktrees));
   const nextBin = (checkout: string) => join(checkout, "node_modules", ".bin", "next");
 
   if (command.target.kind === "main") {
+    const root = unwrap(checkRootOnMain(worktrees));
     await stopCheckout(root.path);
     await requirePortFree(MAIN_PORT, worktrees);
     warnIfRootBehind(root);
@@ -355,17 +364,23 @@ async function start(command: StartCommand): Promise<void> {
       port: MAIN_PORT,
       env,
       timeoutMs: MAIN_TIMEOUT_MS,
+      anyStatus: false,
       argv: [
         "sh",
         "-c",
-        '"$0" build && exec "$0" start --port "$1"',
+        '"$0" build && exec "$0" start --port "$1" --hostname "$2"',
         nextBin(root.path),
         String(MAIN_PORT),
+        HOST,
       ],
     });
     return;
   }
 
+  const root = worktrees[0];
+  if (!root) {
+    throw new Error("Could not find the root checkout in git worktree list.");
+  }
   const found = unwrap(findWorktree(worktrees, command.target as Exclude<Target, { kind: "main" }>));
   if (found.path === root.path) {
     throw new Error(`${found.path} is the root checkout; use "main" to preview it.`);
@@ -388,7 +403,8 @@ async function start(command: StartCommand): Promise<void> {
     port,
     env: { ...process.env, PORT: String(port), DATABASE_PATH: databasePath },
     timeoutMs: TICKET_TIMEOUT_MS,
-    argv: [nextBin(found.path), "dev", "--port", String(port)],
+    anyStatus: true,
+    argv: [nextBin(found.path), "dev", "--port", String(port), "--hostname", HOST],
   });
 }
 

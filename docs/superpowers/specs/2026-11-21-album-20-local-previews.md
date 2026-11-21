@@ -56,6 +56,7 @@ Before starting, in the checkout being previewed:
 - Starting a target that is already running stops it first (this is how refresh works).
 - A pid file whose process is gone counts as stopped and is cleaned up.
 - `stop` kills the preview's whole process group (`next` starts child processes), waits for it to exit, and removes the pid file.
+- Both previews bind to 127.0.0.1 only (`--hostname 127.0.0.1`), and the readiness probe uses that address, so other machines on the network can't reach them.
 - Plain `npm run dev` keeps port 3000, outside the preview range.
 
 ## Docs
