@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { createAlbum } from "./albums";
 import { openDatabase } from "./connection.ts";
 import { DataError } from "./types";
 
@@ -16,4 +17,11 @@ export function errorCode(fn: () => unknown): string {
     throw error;
   }
   throw new Error("Expected a DataError, but nothing was thrown.");
+}
+
+/** Creates `count` manual albums by distinct artists and returns their ids. */
+export function seedAlbums(db: DatabaseSync, count: number): number[] {
+  return Array.from({ length: count }, (_, i) =>
+    createAlbum(db, { title: `Album ${i + 1}`, artist: { name: `Artist ${i + 1}` } }).id,
+  );
 }
