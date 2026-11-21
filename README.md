@@ -52,6 +52,10 @@ Ratings are never stored. Every request replays the year placements (ranked over
 
 Open <http://localhost:3000/artists> to see artists ranked by score, overall or one decade at a time (1950s to 2020s). Open an artist to see their placed albums with year, placement and rating. Scores come from the replayed ratings on every request. Details are in [the ALBUM-8 spec](docs/superpowers/specs/2026-11-21-album-8-artist-views.md).
 
+## Decade lists
+
+Open <http://localhost:3000/decades> to pick a decade, then <http://localhost:3000/decades/1990> (for example) for its top 25. A decade with no list shows a suggestion built from your ratings; press Accept suggestion to save it, then reorder by drag and drop (or Move up and Move down), remove albums, or add ranked and honorable mention albums from the panel under the list. Every change saves at once, and the server refuses a 26th album. Details are in [the ALBUM-9 spec](docs/superpowers/specs/2026-11-21-album-9-decade-top-25.md).
+
 ## Import the spreadsheet
 
 `npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then writes year entries and the decade lists. Rows it can't match with confidence go to the review page.
