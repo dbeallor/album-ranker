@@ -1,3 +1,12 @@
+import Link from "next/link";
+
 export default function Home() {
-  return <h1>Album ranker</h1>;
+  return (
+    <main>
+      <h1>Album ranker</h1>
+      <p>
+        <Link href="/search">Search albums</Link>
+      </p>
+    </main>
+  );
 }
