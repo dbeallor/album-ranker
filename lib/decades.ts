@@ -14,7 +14,7 @@ function decadeOfYear(year: number): number {
   return Math.floor(year / 10) * 10;
 }
 
-/** Highest rating first, ties to the lower album id, first 25. */
+/** Highest rating first, ties to the lower album id. */
 export function sortByRating<T extends { albumId: number; rating: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.rating - a.rating || a.albumId - b.albumId);
 }

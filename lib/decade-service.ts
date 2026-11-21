@@ -62,7 +62,7 @@ export function loadDecadeView(db: DatabaseSync, decade: number): DecadeView {
   for (const entry of listAllYearEntries(db)) {
     const album = albums.get(entry.albumId);
     const rating = ratings.get(entry.albumId);
-    if (!album || rating === undefined || decadeOf(entry.year) !== decade) continue;
+    if (entry.placement === "listed" || !album || rating === undefined || decadeOf(entry.year) !== decade) continue;
     eligible.push({
       albumId: album.id,
       title: album.title,

@@ -192,6 +192,7 @@ export function DecadeList({ initial, saveAction, acceptAction }: Props) {
   }
 
   function accept() {
+    if (pendingRef.current > 0) return; // a second click while the first accept saves
     const ids = (viewRef.current.suggestion ?? []).map((row) => row.albumId);
     enqueue(() => acceptAction(decade, ids));
   }

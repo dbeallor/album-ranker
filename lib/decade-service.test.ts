@@ -70,6 +70,10 @@ describe("decade service", () => {
     expect("error" in saveDecadeList(db, 1990, [ids[0], ids[1]])).toBe(true);
     expect("error" in saveDecadeList(db, 1990, [ids[0], ids[2]])).toBe(true);
     expect(listIds(db, 1990)).toEqual([ids[0]]);
+
+    // A listed album is neither suggested nor offered in the panel.
+    const view = loadDecadeView(db, 1990);
+    expect(view.panel.map((row) => row.albumId)).not.toContain(ids[2]);
   });
 
   it("a decade with fewer than 25 eligible albums suggests and offers what it has", () => {
