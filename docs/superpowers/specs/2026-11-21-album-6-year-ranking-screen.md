@@ -1,7 +1,8 @@
 # Per-year ranking screen
 
-**Status:** Approved
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #27, with differences: [as-built](../as-built/2026-11-21-album-6-year-ranking-screen.md)
 **Ticket:** [ALBUM-6](https://github.com/dbeallor/album-ranker/issues/6), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Year ranking screen, [data model and storage](2026-11-21-album-4-data-model-storage.md), [catalog search](2026-11-21-album-5-catalog-search.md), [Elo engine and matchups](2026-11-21-album-7-elo-matchup.md)
 
