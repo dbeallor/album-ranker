@@ -17,7 +17,7 @@ Used by `replay-thread-video` while authoring (`tools/replay/story/`, `timeline/
 
 **Source and narration**
 1. Replayed from chat history, not from screen recordings. Reason: the video must be reproducible and complete.
-2. Scripted first-person voiceover explaining what the user is doing, plus caption strip. Basic TTS (`say`) is fine. Reason: a viewer must follow why each step happens.
+2. Scripted first-person voiceover explaining what the user is doing, plus caption strip. The voice is the user's cloned ElevenLabs voice by default (`TTS=say` is only the fallback). Reason: a viewer must follow why each step happens, and it is the user speaking.
 3. Complete, with the interactions as they would have played out (every command, approval, view). Reason: skipped steps made the loop unclear.
 
 **Looks like a real T3 Code recording**
@@ -50,7 +50,7 @@ Extract frames at the start of each beat and at every clock jump, approval and G
 ## Known approximations
 
 - Subagent models are not visible in T3 itself; the cards show the model from the thread history.
-- Voiceover is macOS `say`, not a human voice.
+- Voiceover is a clone of the user's voice (ElevenLabs), or macOS `say` when no key or voice id is set or with `TTS=say`.
 - Long waits are shortened; the chip shows the real clock range.
 - GitHub pages are redrawn from fixtures, not screenshots.
 - Headless Chrome drops clicks after the first on `t3code://` links, so the driver plays what T3 does with the link (`lib/dash.mjs`).

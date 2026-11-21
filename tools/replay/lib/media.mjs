@@ -1,18 +1,15 @@
-// Voiceover with the macOS `say` voice, and the ffmpeg assembly of frames and audio into the final video.
+// Voiceover timing, and the ffmpeg assembly of frames and audio into the final video.
 import fs from 'fs'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { FPS, frameList } from './recorder.mjs'
-
-const VOICE = process.env.VOICE || 'Samantha'
-const RATE = '178'
+import { synthesize } from './voice.mjs'
 
 const seconds = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString())
 
-/** Speaks `text` to an audio file in `dir` and returns its path and length in seconds. */
-export function speak(text, dir, name) {
-  const file = path.join(dir, `${name}.aiff`)
-  execFileSync('say', ['-v', VOICE, '-r', RATE, '-o', file, text])
+/** Speaks `text` and returns the audio file's path and length in seconds. */
+export async function speak(text, dir, name) {
+  const file = await synthesize(text, dir, name)
   return { file, seconds: seconds(file) }
 }
 

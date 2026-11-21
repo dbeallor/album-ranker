@@ -4,10 +4,10 @@ Replays a T3 Code chat thread (the Album Ranker "ALBUM - Chief of Staff" thread)
 
 ## Prerequisites
 
-- Node 20 or newer, then `npm ci` in this directory
+- Node 20.12 or newer, then `npm ci` in this directory
 - Google Chrome (set `CHROME_PATH` if it is not at `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`)
 - `ffmpeg` and `ffprobe` on the PATH
-- macOS `say` for the voiceover (`VOICE`, default `Samantha`)
+- Voiceover in the user's cloned ElevenLabs voice (see Voiceover); macOS `say` is the fallback (`VOICE`, default `Samantha`)
 - The collective-wisdom checkout at `~/.collective-wisdom` (dashboard page source and spec parsing)
 
 ## Run
@@ -19,11 +19,24 @@ BEATS=3,7 FINAL=$PWD/out/check.mp4 node render.mjs story/2026-11-20.mjs   # some
 node dev/dash-at.mjs 2026-11-20T23:30:00Z ship               # screenshot the dashboard at one instant
 ```
 
-`FINAL` sets the output path. Generated files (`out/`, `refs-local/`, `node_modules/`) are gitignored.
+`FINAL` sets the output path. Generated files (`out/`, `refs-local/`, `node_modules/`) and `.env` are gitignored.
+
+## Voiceover
+
+The default voice is the user's cloned ElevenLabs voice. Set `ELEVENLABS_VOICE_ID` in `.env` (copy `.env.example`; gitignored). The API key comes from `ELEVENLABS_API_KEY`, else the macOS Keychain, where you store it once with:
+
+```sh
+security add-generic-password -a "$USER" -s elevenlabs-api-key -w <key> -U
+```
+
+The key never goes in a file. Without a key or voice id the render uses macOS `say`; `TTS=say` forces that. `ELEVENLABS_MODEL` overrides the model (default `eleven_multilingual_v2`); the voice settings are constants in `lib/voice.mjs`.
+
+ElevenLabs bills per character, so synthesized audio is cached in `out/voice-cache/` keyed by provider, voice, model, settings and text. Re-renders and `BEATS` subsets reuse it; only changed narration is synthesized. Each render logs cache hits and fresh synthesis, and ends with the characters synthesized. If an ElevenLabs call fails (401 bad key, 402/429 quota, 422 bad voice id) the render stops and does not fall back to `say`.
 
 ## Layout
 
 - `render.mjs`: runs a story, speaks each beat, assembles the video
+- `lib/voice.mjs`: text to speech (ElevenLabs with cache, or `say`)
 - `story/<date>.mjs`: narration and stage actions per beat
 - `timeline/<date>.json`: tickets, sessions, stage events and commands with real UTC times
 - `fixtures/<date>/`: recorded dashboard JSON, gantt sessions, spec versions, PR data
