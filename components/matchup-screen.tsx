@@ -1,11 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Cover } from "@/components/cover";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Cluster } from "@/components/ui/cluster";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Message } from "@/components/ui/message";
+import { Stack } from "@/components/ui/stack";
 import { pairKey } from "@/lib/elo/pick";
 import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
 import type { AlbumCard } from "@/lib/ratings";
+import styles from "./matchup-screen.module.css";
 
 type Answer = "a" | "b" | "tie";
 
@@ -16,19 +22,21 @@ type Props = {
   undoAction: (avoid: string[]) => Promise<MatchupActionResult>;
 };
 
-function Card({ album, onPick, disabled }: { album: AlbumCard; onPick: () => void; disabled: boolean }) {
+const COVER = 200;
+
+function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () => void; disabled: boolean }) {
   return (
-    <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
-      <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} />
-      <div>
-        <strong>{album.title}</strong>
+    <Card className={styles.pick}>
+      <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={COVER} />
+      <div className={styles.text}>
+        <strong className={styles.title}>{album.title}</strong>
+        <span>{album.artist}</span>
+        <span className={styles.muted}>{album.year}</span>
       </div>
-      <div>{album.artist}</div>
-      <div>{album.year}</div>
-      <button type="button" onClick={onPick} disabled={disabled}>
+      <Button type="button" variant="primary" className={styles.choose} onClick={onPick} disabled={disabled}>
         I like this more
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }
 
@@ -60,31 +68,35 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
   const { pair } = view;
 
   return (
-    <div>
-      {error && <p role="alert">{error}</p>}
-      {view.lastAnswer && <p>{view.lastAnswer.text}</p>}
+    <Stack gap={5}>
+      {error && (
+        <Message tone="error" role="alert">
+          {error}
+        </Message>
+      )}
+      {view.lastAnswer && <Message tone="info">{view.lastAnswer.text}</Message>}
 
       {pair ? (
-        <div>
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-            <Card
+        <Stack gap={4}>
+          <div className={styles.pair}>
+            <AlbumPick
               key={pair.a.id}
               album={pair.a}
               disabled={busy}
               onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "a", avoid))}
             />
-            <Card
+            <AlbumPick
               key={pair.b.id}
               album={pair.b}
               disabled={busy}
               onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "b", avoid))}
             />
           </div>
-          <p style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid))}>
+          <Cluster justify="center">
+            <Button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid))}>
               Tie
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               disabled={busy}
               onClick={() =>
@@ -95,21 +107,21 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
               }
             >
               Skip
-            </button>
-          </p>
-        </div>
+            </Button>
+          </Cluster>
+        </Stack>
       ) : (
-        <p>
-          There are no two albums from different years to compare yet. <Link href="/">Back to home</Link>
-        </p>
+        <EmptyState action={<ButtonLink href="/">Back to home</ButtonLink>}>
+          There are no two albums from different years to compare yet.
+        </EmptyState>
       )}
 
-      <p>
-        <button type="button" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
+      <Cluster justify="between">
+        <Button type="button" variant="ghost" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
           Undo
-        </button>
-      </p>
-      <p>{view.count} matchups played</p>
-    </div>
+        </Button>
+        <p className={styles.muted}>{view.count} matchups played</p>
+      </Cluster>
+    </Stack>
   );
 }

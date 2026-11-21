@@ -17,10 +17,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { Cover } from "@/components/cover";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListRow } from "@/components/ui/list-row";
+import { Message } from "@/components/ui/message";
+import { Stack } from "@/components/ui/stack";
 import type { DecadeActionResult, DecadeRow, DecadeView } from "@/lib/decade-service";
 import { MAX_LIST, moveInList, sortByRating, suggestDecadeList, type DecadeMove } from "@/lib/decades";
+import styles from "./decade-list.module.css";
 
 type Action = (decade: number, albumIds: number[]) => Promise<DecadeActionResult>;
 
@@ -43,28 +49,18 @@ function withOrder(view: DecadeView, ids: number[]): DecadeView {
   return { ...view, list, panel, suggestion };
 }
 
-const rowStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: 12,
-  padding: "8px 0",
-  borderBottom: "1px solid #e5e5e5",
-};
-
-function RowDetails({ row }: { row: DecadeRow }) {
-  return (
-    <>
-      <Cover src={row.coverUrl} alt={`Cover of ${row.title}`} size={COVER} />
-      <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <strong>{row.title}</strong>
-        <div>{row.artist}</div>
-        <div>
-          {row.year} · Rating {row.rating}
-        </div>
-      </div>
-    </>
-  );
+/** The cover and text of an album row, for `ListRow`. */
+function rowContent(row: DecadeRow) {
+  return {
+    cover: <Cover src={row.coverUrl} alt={`Cover of ${row.title}`} size={COVER} />,
+    title: row.title,
+    subtitle: row.artist,
+    meta: (
+      <>
+        {row.year} · Rating {row.rating}
+      </>
+    ),
+  };
 }
 
 function SortableRow({
@@ -79,54 +75,64 @@ function SortableRow({
   onMove: (move: DecadeMove) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.albumId });
-  const style: CSSProperties = {
-    ...rowStyle,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    background: "Canvas",
-  };
 
   return (
-    <li ref={setNodeRef} style={style}>
-      <span aria-hidden>{position}.</span>
-      <button
-        type="button"
-        aria-label={`Reorder ${row.title}`}
-        style={{ touchAction: "none", cursor: "grab" }}
-        {...attributes}
-        {...listeners}
-      >
-        ⠿
-      </button>
-      <RowDetails row={row} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
+    <li
+      ref={setNodeRef}
+      className={styles.item}
+      data-dragging={isDragging || undefined}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+        opacity: isDragging ? 0.6 : 1,
+      }}
+    >
+      <div className={styles.lead}>
+        <span aria-hidden className={styles.position}>
+          {position}.
+        </span>
+        <Button
           type="button"
-          aria-label={`Move up ${row.title}`}
-          disabled={position === 1}
-          onClick={() => onMove({ kind: "up", id: row.albumId })}
+          variant="ghost"
+          size="icon"
+          className={styles.handle}
+          aria-label={`Reorder ${row.title}`}
+          {...attributes}
+          {...listeners}
         >
-          Move up
-        </button>
-        <button
-          type="button"
-          aria-label={`Move down ${row.title}`}
-          disabled={position === count}
-          onClick={() => onMove({ kind: "down", id: row.albumId })}
-        >
-          Move down
-        </button>
-        <button type="button" aria-label={`Remove ${row.title}`} onClick={() => onMove({ kind: "remove", id: row.albumId })}>
-          Remove
-        </button>
+          ⠿
+        </Button>
       </div>
+      <ListRow
+        className={styles.row}
+        {...rowContent(row)}
+        actions={
+          <>
+            <Button
+              type="button"
+              aria-label={`Move up ${row.title}`}
+              disabled={position === 1}
+              onClick={() => onMove({ kind: "up", id: row.albumId })}
+            >
+              Move up
+            </Button>
+            <Button
+              type="button"
+              aria-label={`Move down ${row.title}`}
+              disabled={position === count}
+              onClick={() => onMove({ kind: "down", id: row.albumId })}
+            >
+              Move down
+            </Button>
+            <Button type="button" aria-label={`Remove ${row.title}`} onClick={() => onMove({ kind: "remove", id: row.albumId })}>
+              Remove
+            </Button>
+          </>
+        }
+      />
     </li>
   );
-}
-
-function Section({ children }: { children: ReactNode }) {
-  return <section style={{ marginTop: 24 }}>{children}</section>;
 }
 
 export function DecadeList({ initial, saveAction, acceptAction }: Props) {
@@ -207,74 +213,96 @@ export function DecadeList({ initial, saveAction, acceptAction }: Props) {
   const full = list.length >= MAX_LIST;
 
   return (
-    <div>
-      {error && <p role="alert">{error}</p>}
+    <Stack gap={5}>
+      {error && (
+        <Message tone="error" role="alert">
+          {error}
+        </Message>
+      )}
 
       {list.length > 0 ? (
-        <>
+        <Stack as="section" gap={3} aria-labelledby="decade-list-heading">
+          <h2 id="decade-list-heading">Your top {MAX_LIST}</h2>
           <DndContext id={`decade-${decade}`} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={list.map((row) => row.albumId)} strategy={verticalListSortingStrategy}>
-              <ol aria-label={`Top ${MAX_LIST} of the ${decade}s`} style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              <ol aria-label={`Top ${MAX_LIST} of the ${decade}s`} className={styles.list}>
                 {list.map((row, index) => (
                   <SortableRow key={row.albumId} row={row} position={index + 1} count={list.length} onMove={change} />
                 ))}
               </ol>
             </SortableContext>
           </DndContext>
-          <p>
+          <p className={styles.count}>
             {list.length} of {MAX_LIST}
           </p>
-        </>
+        </Stack>
       ) : suggestion && suggestion.length > 0 ? (
-        <Section>
+        <Stack as="section" gap={3} aria-labelledby="decade-suggestion-heading">
+          <h2 id="decade-suggestion-heading">Suggested list</h2>
           <p>No list for the {decade}s yet. Here is a suggestion from your ratings.</p>
-          <ol aria-label={`Suggested top ${MAX_LIST} of the ${decade}s`} style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {suggestion.map((row, index) => (
-              <li key={row.albumId} style={rowStyle}>
-                <span aria-hidden>{index + 1}.</span>
-                <RowDetails row={row} />
-              </li>
-            ))}
+          <ol aria-label={`Suggested top ${MAX_LIST} of the ${decade}s`} className={styles.plain}>
+            {suggestion.map((row, index) => {
+              const content = rowContent(row);
+              return (
+                <ListRow
+                  as="li"
+                  key={row.albumId}
+                  {...content}
+                  cover={
+                    <div className={styles.lead}>
+                      <span aria-hidden className={styles.position}>
+                        {index + 1}.
+                      </span>
+                      {content.cover}
+                    </div>
+                  }
+                />
+              );
+            })}
           </ol>
-          <p>
-            <button type="button" onClick={accept}>
+          <div>
+            <Button type="button" variant="primary" onClick={accept}>
               Accept suggestion
-            </button>
-          </p>
-        </Section>
+            </Button>
+          </div>
+        </Stack>
       ) : (
-        <p>
+        <EmptyState>
           No ranked or honorable mention albums in the {decade}s yet. Place albums in a year first.
-        </p>
+        </EmptyState>
       )}
 
       {list.length > 0 && (
-        <Section>
-          <h2>Add from the {decade}s</h2>
+        <Stack as="section" gap={3} aria-labelledby="decade-add-heading">
+          <h2 id="decade-add-heading">Add from the {decade}s</h2>
           {panel.length === 0 ? (
-            <p>Every eligible album is on the list.</p>
+            <EmptyState>Every eligible album is on the list.</EmptyState>
           ) : (
             <>
-              {full && <p>The list is full. Remove one to add another.</p>}
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {full && <Message tone="info">The list is full. Remove one to add another.</Message>}
+              <ul className={styles.plain}>
                 {panel.map((row) => (
-                  <li key={row.albumId} style={rowStyle}>
-                    <RowDetails row={row} />
-                    <button
-                      type="button"
-                      aria-label={`Add ${row.title}`}
-                      disabled={full}
-                      onClick={() => change({ kind: "add", id: row.albumId })}
-                    >
-                      Add
-                    </button>
-                  </li>
+                  <ListRow
+                    as="li"
+                    key={row.albumId}
+                    {...rowContent(row)}
+                    actions={
+                      <Button
+                        type="button"
+                        aria-label={`Add ${row.title}`}
+                        disabled={full}
+                        onClick={() => change({ kind: "add", id: row.albumId })}
+                      >
+                        Add
+                      </Button>
+                    }
+                  />
                 ))}
               </ul>
             </>
           )}
-        </Section>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 }

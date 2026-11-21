@@ -1,9 +1,9 @@
 import { createElement } from "react";
-import type { ComponentPropsWithoutRef } from "react";
+import type { ComponentPropsWithRef } from "react";
 import { cx } from "./cx";
 import styles from "./card.module.css";
 
-type CardProps = ComponentPropsWithoutRef<"div"> & {
+type CardProps = ComponentPropsWithRef<"div"> & {
   /** The element to render. Use `li` inside a list. */
   as?: "div" | "section" | "article" | "li";
   /** `dashed` is for empty slots. A `data-over="true"` attribute styles a drop target. */
