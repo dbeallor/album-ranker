@@ -1,7 +1,8 @@
 # Album catalog search with cover art
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #17, as specified
 **Ticket:** [ALBUM-5](https://github.com/dbeallor/album-ranker/issues/5), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § MVP features 1 and § Albums versus releases; [stack](../../stack.md)
 
