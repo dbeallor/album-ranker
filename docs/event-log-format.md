@@ -29,7 +29,7 @@ JSON, UTF-8, one object:
 
 - `format`, `version`: check these first. `version` is `1`.
 - `test`: the test's full title.
-- `startedAt`: ISO time when the test's page started recording.
+- `startedAt`: ISO time of the first event, so the first event has `t: 0`.
 - `viewport`: the page size in CSS pixels, or `null` if the test did not set one.
 - `events`: the ordered log.
 
@@ -44,11 +44,13 @@ Every event has:
 | `type` | Extra fields | Meaning |
 |---|---|---|
 | `navigation` | `kind`, `url` | `kind` is `load` (a full page load, including the first), `push` or `replace` (a `history.pushState` or `replaceState` call, which includes Next.js client-side route changes) or `pop` (back or forward). `url` is the path and query string, with no origin or hash. |
-| `click` | `x`, `y`, `target` | A click. `x` and `y` are viewport pixels. A click made with the keyboard (Enter on a button) reports `x: 0, y: 0`. |
+| `click` | `x`, `y`, `target` | A click. `x` and `y` are viewport pixels. Pressing Enter in a form field makes the browser click the form's submit button, and that click reports `x: 0, y: 0`; it comes just before the `submit`. |
 | `input` | `value`, `target` | One event per `input` event on a field, holding the field's whole value after the change. Typing "getz" gives four events. Paste and autofill look the same. |
 | `submit` | `target` | A form submit. `target` is the form. |
 
 A password field's `value` is always `"***"`.
+
+Next.js calls `history.replaceState` itself, for example right after hydration, so a `replace` event with the same `url` as the page you are already on is normal. It is not a route change; the renderer can skip it.
 
 ## Target
 
