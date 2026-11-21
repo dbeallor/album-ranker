@@ -1,12 +1,22 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 export type Config = {
   databasePath: string;
+  backupDir: string;
   musicbrainzUserAgent: string;
   musicbrainzUrl: string;
 };
 
 const DEFAULT_DATABASE_PATH = "./data/album-ranker.db";
+const DEFAULT_BACKUP_DIR = join("~", ".album-ranker", "backups");
 const DEFAULT_MUSICBRAINZ_USER_AGENT = "album-ranker/0.1";
 const DEFAULT_MUSICBRAINZ_URL = "https://musicbrainz.org";
+
+/** Expands a leading `~` to the home directory. */
+function expandHome(path: string): string {
+  return path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
+}
 
 function readSetting(name: string, fallback: string, hint: string): string {
   const raw = process.env[name];
@@ -26,6 +36,9 @@ export function getConfig(): Config {
       "DATABASE_PATH",
       DEFAULT_DATABASE_PATH,
       "Set it to a file path, or unset it to use the default.",
+    ),
+    backupDir: expandHome(
+      readSetting("BACKUP_DIR", DEFAULT_BACKUP_DIR, "Set it to a folder path, or unset it to use the default."),
     ),
     musicbrainzUserAgent: readSetting(
       "MUSICBRAINZ_USER_AGENT",
