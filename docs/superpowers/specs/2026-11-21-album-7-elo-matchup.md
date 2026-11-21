@@ -1,7 +1,8 @@
 # Elo rating engine and matchup screen
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #21, as specified
 **Ticket:** [ALBUM-7](https://github.com/dbeallor/album-ranker/issues/7), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Scoring: head-to-head Elo, [data model and storage](2026-11-21-album-4-data-model-storage.md)
 
