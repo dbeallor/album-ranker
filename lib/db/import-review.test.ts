@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createImportReviewItem,
   findImportReviewItem,
+  getImportReviewItem,
   listImportReviewItems,
   resolveImportReviewItem,
   skipImportReviewItem,
@@ -43,5 +44,32 @@ describe("import review items", () => {
     expect(listImportReviewItems(db, "open")).toEqual([]);
     expect(listImportReviewItems(db, status)).toHaveLength(1);
     expect(findImportReviewItem(db, source)).toBeDefined();
+  });
+
+  const reasons = [
+    { name: "defaults to no match", extra: {}, reason: "no_match", detail: null },
+    { name: "stores ambiguous", extra: { reason: "ambiguous" as const }, reason: "ambiguous", detail: null },
+    { name: "stores a duplicate album with its year", extra: { reason: "duplicate_album" as const, reasonDetail: "1999" }, reason: "duplicate_album", detail: "1999" },
+    { name: "stores a taken rank with the album", extra: { reason: "rank_taken" as const, reasonDetail: "Kid A - Radiohead" }, reason: "rank_taken", detail: "Kid A - Radiohead" },
+  ];
+  it.each(reasons)("$name", ({ extra, reason, detail }) => {
+    const db = memoryDb();
+    const item = createImportReviewItem(db, { ...input, ...extra });
+    expect(item).toMatchObject({ reason, reasonDetail: detail });
+    expect(findImportReviewItem(db, source)).toEqual(item);
+  });
+
+  it("rejects a reason the schema does not know", () => {
+    const db = memoryDb();
+    expect(() =>
+      createImportReviewItem(db, { ...input, reason: "bogus" as unknown as "no_match" }),
+    ).toThrow(/CHECK/);
+  });
+
+  it("gets an item by id, or undefined", () => {
+    const db = memoryDb();
+    const item = createImportReviewItem(db, input);
+    expect(getImportReviewItem(db, item.id)).toEqual(item);
+    expect(getImportReviewItem(db, item.id + 1)).toBeUndefined();
   });
 });

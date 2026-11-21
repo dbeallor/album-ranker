@@ -31,8 +31,8 @@ describe("search page", () => {
     searchAlbumsMock.mockResolvedValue({
       ok: true,
       albums: [
-        { catalogId: "a", title: "Getz / Gilberto", artist: "Stan Getz", year: 1964, coverUrl: "https://example.test/a.jpg" },
-        { catalogId: "b", title: "Undated", artist: "Someone", year: null, coverUrl: "https://example.test/b.jpg" },
+        { catalogId: "a", title: "Getz / Gilberto", artist: "Stan Getz", artistId: "s", year: 1964, coverUrl: "https://example.test/a.jpg" },
+        { catalogId: "b", title: "Undated", artist: "Someone", artistId: null, year: null, coverUrl: "https://example.test/b.jpg" },
       ],
     });
     await renderPage("getz");
