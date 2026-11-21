@@ -1,7 +1,8 @@
 # Data model and storage
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #18, with differences: [as-built](../as-built/2026-11-21-album-4-data-model-storage.md)
 **Ticket:** [ALBUM-4](https://github.com/dbeallor/album-ranker/issues/4), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Data model outline, [stack and scaffold](2026-11-20-album-3-stack-scaffold.md)
 
