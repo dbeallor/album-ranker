@@ -15,6 +15,7 @@ export type SearchDeps = {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   userAgent?: () => string;
+  baseUrl?: () => string;
   log?: (message: string, detail: unknown) => void;
 };
 
@@ -30,6 +31,7 @@ export function createSearchAlbums(deps: SearchDeps = {}) {
     now,
     sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
     userAgent: deps.userAgent ?? (() => getConfig().musicbrainzUserAgent),
+    baseUrl: deps.baseUrl ?? (() => getConfig().musicbrainzUrl),
   });
 
   // A Map keeps insertion order, so the first key is the oldest entry.
