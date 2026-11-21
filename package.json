@@ -16,12 +16,18 @@
     "db:migrate": "node scripts/migrate.ts",
     "db:backup": "node scripts/backup.ts",
     "db:restore": "node scripts/restore.ts",
+    "import": "node --conditions=react-server scripts/import.ts",
+    "import:fixture": "node lib/import/fixtures/make-fixture.ts",
     "preview": "node scripts/preview.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "next": "^16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "read-excel-file": "^9.3.20",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
@@ -36,6 +42,7 @@
     "eslint-config-next": "^16.4.6",
     "jsdom": "^31.0.1",
     "typescript": "~6.0.3",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "write-excel-file": "^4.1.1"
   }
 }

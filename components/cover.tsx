@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 
-const SIZE = 125;
+const DEFAULT_SIZE = 125;
 
 /** Album cover that falls back to a grey square when there is no image or it fails to load. */
-export function Cover({ src, alt }: { src: string | null; alt: string }) {
+export function Cover({ src, alt, size = DEFAULT_SIZE }: { src: string | null; alt: string; size?: number }) {
   const [failed, setFailed] = useState(false);
 
   if (failed || src === null) {
@@ -14,14 +14,14 @@ export function Cover({ src, alt }: { src: string | null; alt: string }) {
         role="img"
         aria-label={`No cover for ${alt}`}
         style={{
-          width: SIZE,
-          height: SIZE,
+          width: size,
+          height: size,
           background: "#d4d4d4",
           color: "#737373",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 48,
+          fontSize: Math.round(size * 0.38),
         }}
       >
         ♪
@@ -34,8 +34,8 @@ export function Cover({ src, alt }: { src: string | null; alt: string }) {
     <img
       src={src}
       alt={alt}
-      width={SIZE}
-      height={SIZE}
+      width={size}
+      height={size}
       loading="lazy"
       onError={() => setFailed(true)}
       ref={(img) => {

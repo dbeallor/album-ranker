@@ -59,6 +59,31 @@ Open <http://localhost:3000/matchups> to answer "which of these two do you like 
 
 Ratings are never stored. Every request replays the year placements (ranked over lower ranked and over honorable mentions, year by year) and then your matchup answers, oldest first, as Elo with K = 32 from 1500. Only ranked and honorable mention albums are rated and served. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md).
 
+## Artists
+
+Open <http://localhost:3000/artists> to see artists ranked by score, overall or one decade at a time (1950s to 2020s). Open an artist to see their placed albums with year, placement and rating. Scores come from the replayed ratings on every request. Details are in [the ALBUM-8 spec](docs/superpowers/specs/2026-11-21-album-8-artist-views.md).
+
+## Decade lists
+
+Open <http://localhost:3000/decades> to pick a decade, then <http://localhost:3000/decades/1990> (for example) for its top 25. A decade with no list shows a suggestion built from your ratings; press Accept suggestion to save it, then reorder by drag and drop (or Move up and Move down), remove albums, or add ranked and honorable mention albums from the panel under the list. Every change saves at once, and the server refuses a 26th album. Details are in [the ALBUM-9 spec](docs/superpowers/specs/2026-11-21-album-9-decade-top-25.md).
+
+## Import the spreadsheet
+
+`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then writes year entries and the decade lists. Rows it can't match with confidence go to the review page.
+
+- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
+- It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
+- Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog, keep it as a manual album, or skip it.
+- The spreadsheet is never committed; keep it outside the repo.
+
+Reading the summary the script prints at the end:
+
+- `Imported` rows were matched automatically. `Sent to review` splits into no match, ambiguous, duplicate album match and rank taken; the rows themselves are on `/import`.
+- `Merged duplicates`, `Conflicting placement` (a rank and an honorable mention on one row; imported as an honorable mention), `Decade rank dropped` (a decade rank on a listed album, or one that is not a whole number from 1 to 25; the row is still imported) and `Decade list full` name the rows that need a look.
+- `Invalid, skipped` rows are left out, each with its reason; fix the sheet and run again.
+- `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
+- `Decade lists` shows how many entries each decade list now has. The summary describes this run only.
+
 ## Browser tests
 
 Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.

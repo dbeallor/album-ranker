@@ -48,6 +48,8 @@ describe("searchAlbums results", () => {
       catalogId: "b248d212-aace-3c3e-a23d-e13aaac1f87a",
       title: "Getz / Gilberto",
       artist: "Stan Getz / João Gilberto featuring Antônio Carlos Jobim",
+      artistId:
+        "8f2422ab-0ec6-4c92-80c4-afe9622fab32+286ec4c2-b5ca-4f85-b331-280a6d73dd14+7a8dbe84-f4c0-4457-bfa3-edced1f8cde0",
       year: 1964,
       coverUrl: "https://coverartarchive.org/release-group/b248d212-aace-3c3e-a23d-e13aaac1f87a/front-250",
     });
@@ -92,6 +94,26 @@ describe("searchAlbums results", () => {
     if (!result.ok) return;
     const undated = result.albums.find((a) => a.catalogId === "05e450b0-35a8-421c-8e74-047cd4c0cebf");
     expect(undated?.year).toBeNull();
+  });
+
+  const credits: { name: string; credit: unknown; artistId: string | null }[] = [
+    { name: "one artist", credit: [{ name: "A", artist: { id: "id-a", name: "A" } }], artistId: "id-a" },
+    {
+      name: "a collaboration joins ids with +",
+      credit: [
+        { name: "A", joinphrase: " & ", artist: { id: "id-a", name: "A" } },
+        { name: "B", artist: { id: "id-b", name: "B" } },
+      ],
+      artistId: "id-a+id-b",
+    },
+    { name: "a credit with no ids", credit: [{ name: "A" }], artistId: null },
+    { name: "a missing credit", credit: undefined, artistId: null },
+  ];
+  it.each(credits)("gives the artist id for $name", async ({ credit, artistId }) => {
+    const group = { id: "g1", title: "T", "primary-type": "Album", "artist-credit": credit };
+    const { search } = setup(() => jsonResponse({ "release-groups": [group] }));
+    const result = await search("album");
+    expect(result.ok && result.albums[0].artistId).toBe(artistId);
   });
 
   it("reads the year from full and partial dates", async () => {
