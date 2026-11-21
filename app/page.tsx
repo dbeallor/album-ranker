@@ -10,6 +10,9 @@ export default function Home() {
       <p>
         <Link href="/matchups">Matchups</Link>
       </p>
+      <p>
+        <Link href="/artists">Artists</Link>
+      </p>
     </main>
   );
 }
