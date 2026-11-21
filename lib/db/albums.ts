@@ -125,6 +125,7 @@ export function linkToCatalog(db: DatabaseSync, albumId: number, catalog: Catalo
   return transaction(db, () => {
     const album = getAlbum(db, albumId);
     if (!album) throw new DataError("not_found", `Album ${albumId} does not exist.`);
+    if (catalog.title.trim() === "") throw new DataError("invalid_input", "Album title is required.");
     assertCatalogIdFree(db, catalog.catalogId, albumId);
 
     const artist = findOrCreateArtist(db, catalog.artist);
