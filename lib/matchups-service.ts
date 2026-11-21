@@ -111,7 +111,7 @@ export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => numb
   const a = loadAlbumCard(db, undone.albumAId);
   const b = loadAlbumCard(db, undone.albumBId);
   const text = a && b ? changeText(before, after, [a, b], "Undone: ") : null;
-  const lastAnswer = text === null ? null : { text };
+  const lastAnswer = { text: text ?? "Undone." };
 
   if (a && b && after.has(a.id) && after.has(b.id) && a.year !== b.year) {
     const count = countMatchups(db);
