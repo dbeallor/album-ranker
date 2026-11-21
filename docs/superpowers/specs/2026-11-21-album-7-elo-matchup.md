@@ -2,7 +2,7 @@
 
 **Status:** Shipped
 **Date:** 2026-11-21
-**Shipped:** in PR #21, as specified
+**Shipped:** in PR #21, with differences: [as-built](../as-built/2026-11-21-album-7-elo-matchup.md)
 **Ticket:** [ALBUM-7](https://github.com/dbeallor/album-ranker/issues/7), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Scoring: head-to-head Elo, [data model and storage](2026-11-21-album-4-data-model-storage.md)
 
