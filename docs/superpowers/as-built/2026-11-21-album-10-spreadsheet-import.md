@@ -8,7 +8,7 @@
 
 ### Data layer and catalog
 
-- The data access layer gains three helpers the spec doesn't list: `findYearEntryBySource` (re-run check by source row key), `setSourceDecadeRank` ("Move it here" always sets the row's decade rank on the moved album, null included, so no old rank lingers) and `getImportReviewItem` (by id, for the review actions).
+- The data access layer gains four helpers the spec doesn't list: `findRankHolder` (the album holding a rank in a year, used by the row write and the review actions' rank-taken check), `findYearEntryBySource` (re-run check by source row key), `setSourceDecadeRank` ("Move it here" always sets the row's decade rank on the moved album, null included, so no old rank lingers) and `getImportReviewItem` (by id, for the review actions).
 - `insertIntoDecadeBySourceRank` has a third result, `already_listed`, for an album already on its decade list. The spec names `inserted` and `full` only.
 - A catalog candidate saved on a review item carries the artist id (`artistId`), so a candidate chosen on the review page shares its artist like an automatic match does.
 - A `duplicate_album` or `rank_taken` review item stores the matched album as its only candidate, so the page can offer it (and "Move it here").
