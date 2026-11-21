@@ -35,7 +35,10 @@ Used by `replay-thread-video` while authoring (`tools/replay/story/`, `timeline/
 **Controls and GitHub**
 12. Use the dashboard's action items (Approve, Changes, Start shipping, View spec, View PR), never the nearby links. Reason: that is what the user clicks.
 13. Approvals use the real Approve button, never a typed `approve N`. Changes button, then type the rest. Start shipping for mark-todo. Only combined multi-command messages are typed. Reason: matches real use.
-14. View the spec on GitHub at each revision's sha before approving it. View the PR on GitHub (Conversation, then Files changed) before the merge approval. Real URLs shown in the address bar. Reason: the user reviews before approving.
+14. View the spec on GitHub at each revision's sha before approving it. View the PR on GitHub (Conversation, then Files changed) before the merge approval. Real URLs shown in the address bar. Reason: the user reviews before approving. This holds when the real approval came seconds after the artifact appeared: show a skim, never an approval without the view.
+
+**Numbers**
+18. Every number in the narration (counts, costs, minutes, ports, tests, files) is checked against the fixtures (`spend.json`, PR bodies, chief messages, timeline times), and the narration is corrected when it differs. Reason: a viewer trusts a spoken number.
 
 **Editing**
 15. Never edit an old story or timeline to fit new data; copy to a new date. Reason: old videos must stay reproducible.

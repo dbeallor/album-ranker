@@ -15,22 +15,17 @@ All code is in `tools/replay/` (see `tools/replay/README.md` and `STAGE_API.md`)
 
 ## Steps
 
-1. **Identify the thread.** Project "Album Ranker", thread "ALBUM - Chief of Staff". Use `t3_thread_list` / `t3_thread_search` to find it and its child threads (titles, models, start and end times). Read the full history with `t3_thread_read` paging with `afterPosition=-1` until nothing is left. Take real UTC timestamps from it.
-2. **Snapshot ephemeral data before rendering.** Date `<date>` is `YYYY-MM-DD` of the session. Create `tools/replay/fixtures/<date>/` and fill it:
-   - Dashboard JSON: `port=$(jq .port .agent-team/dashboard.json); curl -s http://127.0.0.1:$port/api > fixtures/<date>/live-api.json` (run from the repo root checkout that owns `.agent-team/`).
-   - `cp .agent-team/gantt/*.json fixtures/<date>/gantt/` and `cp .agent-team/state.json fixtures/<date>/`.
-   - Each spec version shown: `git fetch origin refs/pull/<N>/head`, then `git show <sha>:<specPath> > fixtures/<date>/spec-<sha7>.md` (7-char sha, one file per revision the story views).
-   - PRs and issues: `~/.collective-wisdom/scripts/gh.sh pr view <N> --repo dbeallor/album-ranker --json title,number,headRefName,body,comments > fixtures/<date>/pr<N>.json` (same for `issue view`). Never call bare `gh`.
-3. **Write the timeline and the story by copying the previous ones.**
-   - `cp timeline/<prev>.json timeline/<date>.json`; `cp story/<prev>.mjs story/<date>.mjs`. Never edit an old story or timeline to fit new data.
-   - Timeline: `tickets` (id, title, createdAt, specPath), `sessions` (gantt session id with role `chief`, `helper` or `ticket`), `events` (real UTC `t`, ticket stage transitions in `set`: stage, list, next, risk, specSha/headSha, pr, mergedAt), `commands` (`t`, `text`, `control` = `typed | approve | changes | todo`, `ticket`). Check it with `node dev/dash-at.mjs <iso time> [ship|backlog|done|cos]` (screenshots to `out/dash-at/`).
-   - Story: `meta` (date, timeline, fixtures, dashUrl, tree, setup incl. model) and `beats`. Each beat has `say` (first-person voiceover about what the user is doing) and `run` (actions from `lib/director.mjs`: `clock`, `ff`, `type`, `press`, `pressChanges`, `reply`, `card`, `waitOn`, `viewSpec`, `viewPr`, `filesChanged`, `openPanel`, `dashTab`...). Chat text is the condensed real text from the history.
-   - `viewPr` reads `fixtures/<date>/pr13.json` and `spec-42e9abb.md` by name: parametrize it in `lib/director.mjs` when a story shows a different PR.
-4. **Render** (macOS, Chrome, ffmpeg; run from `tools/replay`):
-   - Quick check of some beats: `BEATS=3,7 FINAL=$PWD/out/check.mp4 node render.mjs story/<date>.mjs` (other beats replay silently so state carries over).
-   - Full video, in the background (it takes several minutes): `FINAL=<repo>/screen_recordings/replay-<date>-v<N>.mp4 node render.mjs story/<date>.mjs`. `screen_recordings/` is gitignored. Use a new versioned name, never overwrite an earlier video.
-5. **QA** with the frame recipe in `replay-fidelity-checklist`. Fix the story or timeline, re-render, repeat.
-6. **Report** the video path, duration and resolution (`ffprobe -v error -show_entries stream=width,height,duration -of default=nw=1 <file>`), and the approximations.
+1. **Identify the thread.** Project "Album Ranker", thread "ALBUM - Chief of Staff". Use `t3_thread_list` / `t3_thread_search` for it and its child threads (titles, models, start and end times). The full transcript comes from T3's local store, read-only: `sqlite3 -readonly ~/.t3/userdata/statev2.sqlite` (the real message texts, timestamps, senders, attachments). `t3_thread_read` pages are the fallback.
+2. **Snapshot ephemeral data before rendering.** Date `<date>` is `YYYY-MM-DD` of the snapshot. Fill `tools/replay/fixtures/<date>/`:
+   - `thread.json` (the transcript), `threads.json` (the project's threads, for the sidebar), `snapshot.json` (`takenAt`).
+   - Dashboard data: `live-api.json` (`curl -s http://127.0.0.1:$(jq .port .agent-team/dashboard.json)/api`), `gantt/*.json`, `gantt-history.json`, `state.json`, `spend.json`, `specs.json`, `tracker-lists.json`.
+   - Each spec version shown: `spec-<ticket>-<sha7>.md` (`git fetch origin refs/pull/<N>/head`, then `git show <sha>:<specPath>`).
+   - PRs and issues: `pr-<N>.json` and `pr-<N>.diff`, `issue-<N>.json` and `issue-<N>-timeline.json`, through `~/.collective-wisdom/scripts/gh.sh` only, never bare `gh`.
+3. **Write the timeline** `timeline/<date>.json`: tickets, sessions (role `chief`, `helper` or `ticket`, models, titles), specs, prs, chief resets, `events` (real UTC `t`, stage transitions in `set`) and `commands` (every real user message with `control` = `typed | approve | changes | todo` and the `artifact` an approval was given on). Never edit an older timeline. Check it with `node dev/dash-at.mjs <iso time> [ship|backlog|done|cos]` and with the ground-truth test: `node --test lib/` compares `stateAt` against `live-api.json` at the snapshot.
+4. **Write the story** `story/<date>.mjs` (copy a previous one for the API, never edit it). Every real command appears in order with its recorded control, every approval is preceded by the View spec / View PR it approves, the chief's replies are the real messages condensed, child cards come from `timeline.sessions`. Check numbers in the narration against the fixtures (see the checklist). `node render.mjs story/<date>.mjs --dry` must show no `late:` lines.
+5. **Draft render** with the free voice, in the background (about 10 minutes): `TTS=say FINAL=<repo>/screen_recordings/drafts/<name>.mp4 node render.mjs story/<date>.mjs` (`BEATS=3,7` to redo some beats). QA frames with the checklist, fix, re-render.
+6. **Final render** in the ElevenLabs voice: `FINAL=<repo>/screen_recordings/replay-<date>-v<N>.mp4 node render.mjs story/<date>.mjs`. `screen_recordings/` is gitignored; use a new versioned name, never overwrite an earlier video. The voice is slower than `say`, so check the `late:` lines of this render too.
+7. **Report** the video path, duration and resolution (`ffprobe -v error -show_entries stream=width,height,duration -of default=nw=1 <file>`), and the approximations.
 
 ## Later re-renders (as the MVP gets built)
 
