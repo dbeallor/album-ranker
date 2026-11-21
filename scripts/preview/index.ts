@@ -414,7 +414,10 @@ async function start(command: StartCommand): Promise<void> {
 /** The full HEAD SHA, or undefined when git can't say. */
 function headOf(checkout: string): string | undefined {
   try {
-    return execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim() || undefined;
+    return execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || undefined;
   } catch {
     return undefined;
   }

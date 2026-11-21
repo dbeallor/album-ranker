@@ -85,6 +85,15 @@ export async function runSession(options: SessionOptions): Promise<SessionResult
     });
     await context.addInitScript({ content: recorderScript() });
 
+    // Chromium started by Playwright keeps running after its last window closes, so end the session ourselves.
+    const watch = (opened: Page): void => {
+      opened.once("close", () => {
+        if (!instance.contexts().some((open) => open.pages().length > 0)) {
+          void instance.close().catch(() => {});
+        }
+      });
+    };
+    context.on("page", watch);
     const page = await context.newPage();
     const abort = () => void instance.close().catch(() => {});
     signal?.addEventListener("abort", abort, { once: true });

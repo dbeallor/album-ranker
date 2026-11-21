@@ -58,7 +58,7 @@ Any checkout can run these. A ticket preview needs a worktree for its branch, fo
 | `npm run record -- 3000` | `http://localhost:3000`, for example `npm run dev` |
 | `npm run record -- http://localhost:3000/search` | A URL on `localhost`, `127.0.0.1` or `[::1]`; any other host is refused |
 
-If the preview isn't running, the command prints the `npm run preview -- <target>` line that starts it. Click through the app in the window. Close the window or press Ctrl-C to stop; the command prints where it saved the log.
+If the preview isn't running, the command prints the `npm run preview -- <target>` line that starts it. Click through the app in the window. Close the window or press Ctrl-C to stop (only the page you start on is checked as local, so pages you reach by following an external link are recorded too); the command prints where it saved the log.
 
 - **Where:** `recordings/<YYYYMMDD-HHMMSS>-<port>/events.json` in the checkout you ran it from (gitignored), or `<dir>/events.json` with `--out <dir>`. While you work the file is rewritten at most once a second, so a crash loses at most the last second.
 - **Viewport:** 1280x720 unless `--viewport <W>x<H>` says otherwise, so click positions match the `viewport` in the log.
