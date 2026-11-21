@@ -1,19 +1,34 @@
 export type Config = {
   databasePath: string;
+  musicbrainzUserAgent: string;
 };
 
 const DEFAULT_DATABASE_PATH = "./data/album-ranker.db";
+const DEFAULT_MUSICBRAINZ_USER_AGENT = "album-ranker/0.1";
 
-export function getConfig(): Config {
-  const raw = process.env.DATABASE_PATH;
+function readSetting(name: string, fallback: string, hint: string): string {
+  const raw = process.env[name];
 
   if (raw === undefined) {
-    return { databasePath: DEFAULT_DATABASE_PATH };
+    return fallback;
   }
   if (raw.trim() === "") {
-    throw new Error(
-      "DATABASE_PATH is set but empty. Set it to a file path, or unset it to use the default.",
-    );
+    throw new Error(`${name} is set but empty. ${hint}`);
   }
-  return { databasePath: raw };
+  return raw;
+}
+
+export function getConfig(): Config {
+  return {
+    databasePath: readSetting(
+      "DATABASE_PATH",
+      DEFAULT_DATABASE_PATH,
+      "Set it to a file path, or unset it to use the default.",
+    ),
+    musicbrainzUserAgent: readSetting(
+      "MUSICBRAINZ_USER_AGENT",
+      DEFAULT_MUSICBRAINZ_USER_AGENT,
+      "Set it to a User-Agent string, or unset it to use the default.",
+    ),
+  };
 }
