@@ -37,6 +37,9 @@ export function YearAddPanel({ disabled, rankedFull, searchAction, onAddCatalog,
   const [releaseYear, setReleaseYear] = useState("");
   const [area, setArea] = useState<Area>("listed");
 
+  // The form's area can't stay on ranked once ranked is full.
+  if (rankedFull && area === "ranked") setArea("listed");
+
   async function search(event: FormEvent) {
     event.preventDefault();
     const text = query.trim();

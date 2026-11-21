@@ -205,18 +205,23 @@ describe("addFromCatalog", () => {
   });
 
   it.each([
-    { name: "a cover URL on another host", album: catalog(1, { coverUrl: "https://example.com/cover.jpg" }) },
-    { name: "a cover URL that is not https", album: catalog(1, { coverUrl: "http://coverartarchive.org/a.jpg" }) },
-    { name: "an empty title", album: catalog(1, { title: "  " }) },
-    { name: "a title that is too long", album: catalog(1, { title: "x".repeat(301) }) },
-    { name: "an artist that is not a string", album: catalog(1, { artist: 7 }) },
-    { name: "a release year that is not a whole number", album: catalog(1, { year: "1987" }) },
-  ])("refuses $name and stores nothing", ({ album }) => {
-    const db = memoryDb();
+    {
+      name: "a cover URL on another host or without https",
+      albums: [catalog(1, { coverUrl: "https://example.com/cover.jpg" }), catalog(1, { coverUrl: "http://coverartarchive.org/a.jpg" })],
+    },
+    {
+      name: "a title or artist that is empty, too long or not a string",
+      albums: [catalog(1, { title: "  " }), catalog(1, { title: "x".repeat(301) }), catalog(1, { artist: 7 })],
+    },
+    { name: "a release year that is not a whole number", albums: [catalog(1, { year: "1987" })] },
+  ])("refuses $name and stores nothing", ({ albums }) => {
+    for (const album of albums) {
+      const db = memoryDb();
 
-    expect(addFromCatalog(db, 1987, album, "ranked")).toHaveProperty("error");
-    expect(listAlbums(db)).toEqual([]);
-    expect(listAllYearEntries(db)).toEqual([]);
+      expect(addFromCatalog(db, 1987, album, "ranked")).toHaveProperty("error");
+      expect(listAlbums(db)).toEqual([]);
+      expect(listAllYearEntries(db)).toEqual([]);
+    }
   });
 
   it("accepts a result with no cover and no release year", () => {

@@ -77,3 +77,41 @@ export function moveDown(placements: Placements, albumId: number): Placements {
   if (index === -1 || index >= placements.ranked.length - 1) return placements;
   return applyMove(placements, albumId, { area: "ranked", index: index + 1 }).placements;
 }
+
+/**
+ * Turns a drop into a move. `overId` is the id of what the card was dropped on: `album-<id>`, `slot-<rank>` or
+ * `area-<area>`. `layout` is the stored ranks when they have a gap (slot 3 empty in [1, 2, 4]), otherwise null.
+ * Returns null when the drop changes nothing: on itself, on a card or zone of its own unranked area, or on nothing known.
+ * Ranked cards dropped on a ranked card or slot are reordered, so those are not null.
+ */
+export function dropTarget(
+  placements: Placements,
+  layout: number[] | null,
+  albumId: number,
+  overId: string,
+): MoveTarget | null {
+  const from = areaOf(placements, albumId);
+  if (overId.startsWith("album-")) {
+    const onto = Number(overId.slice(6));
+    if (onto === albumId) return null;
+    const area = areaOf(placements, onto);
+    if (area === "ranked") return { area, index: placements.ranked.indexOf(onto) };
+    return area && area !== from ? { area } : null;
+  }
+  if (overId.startsWith("slot-")) {
+    const slot = Number(overId.slice(5));
+    let index: number | undefined;
+    if (layout) {
+      const found = layout.indexOf(slot);
+      index = found === -1 ? undefined : found;
+    } else {
+      index = slot - 1 < placements.ranked.length ? slot - 1 : undefined;
+    }
+    return { area: "ranked", index };
+  }
+  if (overId === "area-honorable_mention" || overId === "area-listed") {
+    const area = overId.slice(5) as Area;
+    return area === from ? null : { area };
+  }
+  return null;
+}

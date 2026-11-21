@@ -170,10 +170,13 @@ describe("year screen", () => {
     await waitFor(() => expect(saveAction).toHaveBeenCalledWith(1987, expected));
   });
 
-  it("the Move to menu offers only the other two areas", () => {
-    setup({ placements: { ...empty, honorableMentions: [1] } });
-    const options = within(within(card("Album 1")).getByRole("combobox", { name: "Move to" })).getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["Move to…", "Ranked", "Listed"]);
+  it("honorable mentions and listed stay sorted by artist then title right after a move", async () => {
+    setup({ placements: { ranked: [], honorableMentions: [1, 3], listed: [2] } });
+
+    fireEvent.change(within(card("Album 2")).getByRole("combobox", { name: "Move to" }), { target: { value: "honorable_mention" } });
+
+    const region = within(screen.getByRole("region", { name: "Honorable mentions" }));
+    await waitFor(() => expect(region.getAllByRole("group").map((el) => el.getAttribute("aria-label"))).toEqual(["Album 1", "Album 2", "Album 3"]));
   });
 
   it("Remove drops the album from the page and saves without it", async () => {
@@ -275,6 +278,29 @@ describe("year screen", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe("Rank 2 in 1987 is already taken.");
     expect(slotTitles().slice(0, 3)).toEqual(["Album 1", "Album 2", "Album 3"]);
+  });
+
+  it("a failed first save and a change made meanwhile are both reverted, with an alert", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { saveAction } = setup({
+      placements: { ...empty, ranked: [1, 2, 3] },
+      save: async () => {
+        await gate;
+        return { error: "Could not save." };
+      },
+    });
+
+    fireEvent.click(within(card("Album 3")).getByRole("button", { name: "Move up" }));
+    await waitFor(() => expect(saveAction).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(card("Album 1")).getByRole("button", { name: "Move down" }));
+    expect(slotTitles().slice(0, 3)).toEqual(["Album 3", "Album 1", "Album 2"]);
+
+    release();
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Could not save.");
+    expect(slotTitles().slice(0, 3)).toEqual(["Album 1", "Album 2", "Album 3"]);
+    expect(saveAction).toHaveBeenCalledTimes(1);
   });
 
   it("sends changes one at a time: a change made while a save is in flight waits for it", async () => {

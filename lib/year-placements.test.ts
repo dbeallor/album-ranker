@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyMove, moveDown, moveUp, removeAlbum, type Placements } from "./year-placements";
+import { applyMove, dropTarget, moveDown, moveUp, removeAlbum, type Placements } from "./year-placements";
 
 const base: Placements = { ranked: [1, 2, 3, 4], honorableMentions: [5, 6], listed: [7] };
 const ids = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
@@ -30,10 +30,6 @@ describe("applyMove", () => {
       honorableMentions: [5, 6],
       listed: [],
     });
-  });
-
-  it("appends to ranked when no index is given", () => {
-    expect(applyMove(base, 5, { area: "ranked" }).placements.ranked).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("pushes rank 10 to honorable mentions when an eleventh album is dropped in", () => {
@@ -71,5 +67,28 @@ describe("moveUp, moveDown and removeAlbum", () => {
     expect(removeAlbum(base, 2).ranked).toEqual([1, 3, 4]);
     expect(removeAlbum(base, 6).honorableMentions).toEqual([5]);
     expect(removeAlbum(base, 7).listed).toEqual([]);
+  });
+});
+
+describe("dropTarget", () => {
+  // Ranked 1 to 4 (ids 1-4), honorable mentions 5 and 6, listed 7 and 8.
+  const placements: Placements = { ranked: [1, 2, 3, 4], honorableMentions: [5, 6], listed: [7, 8] };
+  const gap = [1, 2, 4, 5]; // stored ranks with rank 3 missing, for ids 1-4
+
+  it.each([
+    { name: "a ranked card on another ranked card takes its position", id: 4, over: "album-2", layout: null, expected: { area: "ranked", index: 1 } },
+    { name: "a ranked card on itself is a no-op", id: 2, over: "album-2", layout: null, expected: null },
+    { name: "a listed card on a ranked card goes into ranked at that position", id: 7, over: "album-3", layout: null, expected: { area: "ranked", index: 2 } },
+    { name: "a ranked card on a card in another area moves to that area", id: 1, over: "album-6", layout: null, expected: { area: "honorable_mention" } },
+    { name: "an honorable mention on a card in its own area is a no-op", id: 5, over: "album-6", layout: null, expected: null },
+    { name: "a listed card on a card in its own area is a no-op", id: 7, over: "album-8", layout: null, expected: null },
+    { name: "a filled slot gives the position of its card", id: 7, over: "slot-2", layout: null, expected: { area: "ranked", index: 1 } },
+    { name: "an empty slot appends to the end", id: 7, over: "slot-9", layout: null, expected: { area: "ranked", index: undefined } },
+    { name: "a slot after a rank gap gives the card's position, not the slot number", id: 7, over: "slot-4", layout: gap, expected: { area: "ranked", index: 2 } },
+    { name: "the empty slot in a rank gap appends to the end", id: 7, over: "slot-3", layout: gap, expected: { area: "ranked", index: undefined } },
+    { name: "an area zone gives that area", id: 1, over: "area-listed", layout: null, expected: { area: "listed" } },
+    { name: "an area zone it is already in is a no-op", id: 5, over: "area-honorable_mention", layout: null, expected: null },
+  ])("$name", ({ id, over, layout, expected }) => {
+    expect(dropTarget(placements, layout, id, over)).toEqual(expected);
   });
 });

@@ -25,7 +25,7 @@ import type { AddResult, Conflict, RemovedDecadeEntry, YearActionResult, YearAlb
 import {
   MAX_RANKED,
   applyMove,
-  areaOf,
+  dropTarget,
   moveDown,
   moveUp,
   removeAlbum,
@@ -62,6 +62,9 @@ function gapLayout(view: YearView): number[] | null {
   const ranks = view.ranked.map((album) => album.rank);
   return ranks.every((rank, i) => rank === i + 1) ? null : ranks;
 }
+
+const byArtistThenTitle = (a: YearAlbum, b: YearAlbum) =>
+  a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title);
 
 function albumIndex(view: YearView): Map<number, YearAlbum> {
   return new Map([...view.ranked, ...view.honorableMentions, ...view.listed].map((album) => [album.id, album]));
@@ -294,32 +297,11 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
     change(result);
   }
 
-  /** Ranked index for a drop on a slot: the album sitting there, or the end of the list for an empty slot. */
-  function indexForSlot(slot: number): number | undefined {
-    const ranked = latest.current.ranked;
-    if (layout) {
-      const index = layout.indexOf(slot);
-      return index === -1 ? undefined : index;
-    }
-    return slot - 1 < ranked.length ? slot - 1 : undefined;
-  }
-
   function onDragEnd({ active, over }: DragEndEvent) {
     if (!over) return;
     const albumId = Number(String(active.id).slice(6));
-    const target = String(over.id);
-    if (target.startsWith("album-")) {
-      // Dropped on another card: ranked cards give their position, the other areas give their area.
-      const onto = Number(target.slice(6));
-      const area = areaOf(latest.current, onto);
-      if (area === "ranked") move(albumId, { area, index: latest.current.ranked.indexOf(onto) });
-      else if (area) move(albumId, { area });
-    } else if (target.startsWith("slot-")) {
-      move(albumId, { area: "ranked", index: indexForSlot(Number(target.slice(5))) });
-    } else if (target === "area-honorable_mention" || target === "area-listed") {
-      const area = target.slice(5) as Area;
-      if (areaOf(latest.current, albumId) !== area) move(albumId, { area });
-    }
+    const target = dropTarget(latest.current, layout, albumId, String(over.id));
+    if (target) move(albumId, target);
   }
 
   /** Runs an add and shows what came back. Resolves true when the album was added. */
@@ -387,7 +369,9 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
   const isEmpty = ranked.length + honorableMentions.length + listed.length === 0;
   const grid: CSSProperties = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" };
 
-  function unranked(area: Area, ids: number[], emptyText: string) {
+  function unranked(area: Area, unsorted: number[], emptyText: string) {
+    // Always by artist, then title, as the server loads them, so a card lands in the same place before and after a reload.
+    const ids = [...unsorted].sort((a, b) => byArtistThenTitle(albums.get(a)!, albums.get(b)!));
     return (
       <section aria-labelledby={`${area}-heading`}>
         <h2 id={`${area}-heading`}>{AREA_NAMES[area]}</h2>
