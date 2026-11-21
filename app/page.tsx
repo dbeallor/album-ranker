@@ -20,6 +20,9 @@ export default async function Home() {
       <p>
         <Link href="/artists">Artists</Link>
       </p>
+      <p>
+        <Link href="/decades">Decade lists</Link>
+      </p>
 
       {openItems > 0 && (
         <p>
