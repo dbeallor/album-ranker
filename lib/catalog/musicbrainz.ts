@@ -12,13 +12,13 @@ const REQUEST_TIMEOUT_MS = 8000;
 export type CatalogErrorKind = "busy" | "unreachable";
 
 export class CatalogError extends Error {
-  constructor(
-    readonly kind: CatalogErrorKind,
-    detail: string,
-    options?: { cause?: unknown },
-  ) {
+  // Declared as a field, not a constructor parameter property, so Node's type stripping (the import script) can run it.
+  readonly kind: CatalogErrorKind;
+
+  constructor(kind: CatalogErrorKind, detail: string, options?: { cause?: unknown }) {
     super(detail, options);
     this.name = "CatalogError";
+    this.kind = kind;
   }
 }
 

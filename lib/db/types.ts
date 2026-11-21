@@ -76,6 +76,8 @@ export type CatalogCandidate = {
   catalogId: string;
   title: string;
   artist: string;
+  /** The catalog's artist id (ids joined with "+" for a collaboration), so a chosen candidate shares its artist. */
+  artistId?: string | null;
   releaseYear: number | null;
   coverUrl: string | null;
 };

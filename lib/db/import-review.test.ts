@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createImportReviewItem,
   findImportReviewItem,
+  getImportReviewItem,
   listImportReviewItems,
   resolveImportReviewItem,
   skipImportReviewItem,
@@ -63,5 +64,12 @@ describe("import review items", () => {
     expect(() =>
       createImportReviewItem(db, { ...input, reason: "bogus" as unknown as "no_match" }),
     ).toThrow(/CHECK/);
+  });
+
+  it("gets an item by id, or undefined", () => {
+    const db = memoryDb();
+    const item = createImportReviewItem(db, input);
+    expect(getImportReviewItem(db, item.id)).toEqual(item);
+    expect(getImportReviewItem(db, item.id + 1)).toBeUndefined();
   });
 });

@@ -1,13 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
-import { removeIneligibleDecadeEntries } from "./decade-lists";
-import { now, transaction } from "./transaction";
+import { removeIneligibleDecadeEntries } from "./decade-lists.ts";
+import { now, transaction } from "./transaction.ts";
 import {
   DataError,
   type DecadeListEntry,
   type Placement,
   type SourceRowKey,
   type YearEntry,
-} from "./types";
+} from "./types.ts";
 
 type Row = Record<string, unknown>;
 
@@ -82,6 +82,23 @@ function assertAlbumExists(db: DatabaseSync, albumId: number): void {
 export function findRankHolder(db: DatabaseSync, year: number, rank: number): number | undefined {
   const row = db.prepare("SELECT album_id FROM year_entries WHERE year = ? AND rank = ?").get(year, rank);
   return row ? (row.album_id as number) : undefined;
+}
+
+/** The year entry an import row produced, by its source key (exact text, as stored). */
+export function findYearEntryBySource(db: DatabaseSync, source: SourceRowKey): YearEntry | undefined {
+  const row = db
+    .prepare("SELECT * FROM year_entries WHERE source_title = ? AND source_artist = ? AND source_year = ?")
+    .get(source.title, source.artist, source.year);
+  return row ? toEntry(row) : undefined;
+}
+
+/** Replaces the source decade rank the album's year entry keeps for ordering decade list insertions. */
+export function setSourceDecadeRank(db: DatabaseSync, albumId: number, rank: number | null): void {
+  if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 25)) {
+    throw new DataError("invalid_input", `Source decade rank must be from 1 to 25, got ${rank}.`);
+  }
+  requireEntry(db, albumId);
+  db.prepare("UPDATE year_entries SET source_decade_rank = ? WHERE album_id = ?").run(rank, albumId);
 }
 
 export function getYearEntryByAlbum(db: DatabaseSync, albumId: number): YearEntry | undefined {

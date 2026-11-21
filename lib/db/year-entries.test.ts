@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   addYearEntry,
   findRankHolder,
+  findYearEntryBySource,
   getYearEntryByAlbum,
   listAllYearEntries,
   listYear,
   removeYearEntry,
+  setSourceDecadeRank,
   setYearPlacements,
   updateYearEntry,
 } from "./year-entries";
@@ -140,5 +142,27 @@ describe("year entries", () => {
     expect(findRankHolder(db, 1999, 4)).toBe(a);
     expect(findRankHolder(db, 1999, 5)).toBeUndefined();
     expect(findRankHolder(db, 2000, 4)).toBeUndefined();
+  });
+
+  it("finds an entry by its source key, exact text only", () => {
+    const db = memoryDb();
+    const [a] = seedAlbums(db, 1);
+    const source = { title: "Fake Album One", artist: "Fake Artist A", year: 1999 };
+    addYearEntry(db, { albumId: a, year: 1999, placement: "listed", source });
+    expect(findYearEntryBySource(db, source)?.albumId).toBe(a);
+    expect(findYearEntryBySource(db, { ...source, title: "fake album one" })).toBeUndefined();
+    expect(findYearEntryBySource(db, { ...source, year: 2000 })).toBeUndefined();
+  });
+
+  it("replaces the source decade rank, validating it and requiring an entry", () => {
+    const db = memoryDb();
+    const [a, b] = seedAlbums(db, 2);
+    addYearEntry(db, { albumId: a, year: 1999, placement: "ranked", rank: 1, sourceDecadeRank: 7 });
+    setSourceDecadeRank(db, a, 3);
+    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBe(3);
+    setSourceDecadeRank(db, a, null);
+    expect(getYearEntryByAlbum(db, a)!.sourceDecadeRank).toBeNull();
+    expect(errorCode(() => setSourceDecadeRank(db, a, 26))).toBe("invalid_input");
+    expect(errorCode(() => setSourceDecadeRank(db, b, 3))).toBe("not_found");
   });
 });

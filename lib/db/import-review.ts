@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { now, transaction } from "./transaction";
+import { now, transaction } from "./transaction.ts";
 import {
   DataError,
   type CatalogCandidate,
@@ -8,7 +8,7 @@ import {
   type ReviewReason,
   type ReviewStatus,
   type SourceRowKey,
-} from "./types";
+} from "./types.ts";
 
 type Row = Record<string, unknown>;
 
@@ -47,6 +47,11 @@ export function findImportReviewItem(db: DatabaseSync, source: SourceRowKey): Im
   const row = db
     .prepare("SELECT * FROM import_review_items WHERE source_title = ? AND source_artist = ? AND source_year = ?")
     .get(source.title, source.artist, source.year);
+  return row ? toItem(row) : undefined;
+}
+
+export function getImportReviewItem(db: DatabaseSync, id: number): ImportReviewItem | undefined {
+  const row = db.prepare("SELECT * FROM import_review_items WHERE id = ?").get(id);
   return row ? toItem(row) : undefined;
 }
 
