@@ -4,11 +4,11 @@ import { useState } from "react";
 
 const SIZE = 125;
 
-/** Album cover that falls back to a grey square when the image fails to load. */
-export function Cover({ src, alt }: { src: string; alt: string }) {
+/** Album cover that falls back to a grey square when there is no image or it fails to load. */
+export function Cover({ src, alt }: { src: string | null; alt: string }) {
   const [failed, setFailed] = useState(false);
 
-  if (failed) {
+  if (failed || src === null) {
     return (
       <div
         role="img"
