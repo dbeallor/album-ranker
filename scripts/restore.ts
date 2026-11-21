@@ -52,7 +52,9 @@ async function main(args: string[]): Promise<void> {
   console.log(`Restored ${describe(result.summary.backup)} to ${databasePath}`);
   if (result.preRestorePath) {
     console.log(`The data it replaced is kept at ${result.preRestorePath}`);
-    console.log(`To undo this restore: npm run db:restore -- ${result.preRestorePath}`);
+    if (!result.summary.currentUnreadable) {
+      console.log(`To undo this restore: npm run db:restore -- ${result.preRestorePath}`);
+    }
   }
 }
 

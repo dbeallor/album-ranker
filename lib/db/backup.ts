@@ -245,10 +245,13 @@ export async function restoreDatabase(options: RestoreOptions): Promise<RestoreR
     live = new DatabaseSync(targetPath);
     live.exec("PRAGMA busy_timeout = 5000");
     summary.current = countRows(live);
-  } catch {
-    // A damaged file is a main reason to restore, so go on and keep its raw files instead of a VACUUM copy.
+  } catch (error) {
     if (live?.isOpen) live.close();
     live = undefined;
+    // Only a damaged file goes on (SQLITE_CORRUPT 11, SQLITE_NOTADB 26); a busy or unreadable one must not be replaced from raw bytes.
+    const code = (error as { errcode?: number }).errcode;
+    if (code !== 11 && code !== 26) throw error;
+    // A damaged file is a main reason to restore, so keep its raw files instead of a VACUUM copy.
     summary.currentUnreadable = true;
   }
   try {
