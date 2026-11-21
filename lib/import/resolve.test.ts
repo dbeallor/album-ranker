@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createAlbum, findAlbumByCatalogId, listAlbums } from "../db/albums.ts";
-import { getDecadeList, setDecadeList } from "../db/decade-lists.ts";
+import { MAX_DECADE_LIST, getDecadeList, setDecadeList } from "../db/decade-lists.ts";
 import {
   createImportReviewItem,
   getImportReviewItem,
@@ -95,6 +95,24 @@ describe("using a catalog album", () => {
     expect(getYearEntryByAlbum(db, findAlbumByCatalogId(db, "cat-one")!.id)).toMatchObject({
       placement: over.sourcePlacement ?? "ranked",
     });
+  });
+
+  it("imports the year entry but reports a full decade list", () => {
+    const db = memoryDb();
+    const fillers = Array.from({ length: MAX_DECADE_LIST }, (_, i) => {
+      const album = createAlbum(db, { title: `Fake Filler ${i}`, artist: { name: `Fake Filler Artist ${i}` } });
+      addYearEntry(db, { albumId: album.id, year: 2002, placement: "honorable_mention" });
+      return album.id;
+    });
+    setDecadeList(db, 2000, fillers);
+    const review = item(db);
+
+    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE });
+
+    expect(result).toMatchObject({ ok: true, decade: { status: "full" } });
+    if (!result.ok) return;
+    expect(getYearEntryByAlbum(db, result.albumId)).toMatchObject({ year: 2001, rank: 3 });
+    expect(getDecadeList(db, 2000).map((e) => e.albumId)).toEqual(fillers);
   });
 
   it("puts the album on the decade list by the sheet's decade rank when items resolve out of order", () => {
@@ -250,7 +268,7 @@ describe("an album already on a year page", () => {
 
     const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
 
-    expect(result).toMatchObject({ ok: true, albumId: album.id, movedFromYear: 2004, decade: { status: "already_listed" } });
+    expect(result).toMatchObject({ ok: true, albumId: album.id, movedFromYear: 2004, decade: { status: "inserted", position: 1 } });
     expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2001, placement: "honorable_mention", rank: null, sourceDecadeRank: 4 });
     expect(listAlbums(db)).toHaveLength(1);
     expect(getImportReviewItem(db, review.id)).toMatchObject({ status: "resolved", resolvedAlbumId: album.id });
@@ -265,6 +283,56 @@ describe("an album already on a year page", () => {
 
     expect(result.ok && result.removedDecadeEntries.map((e) => e.albumId)).toEqual([album.id]);
     expect(getDecadeList(db, 2000)).toEqual([]);
+  });
+
+  it.each([
+    { name: "a decade rank", over: { sourceDecadeRank: 5 }, expected: 5 },
+    { name: "no decade rank, so the old one does not linger", over: { sourceDecadeRank: null }, expected: null },
+    { name: "a listed row, which has no decade rank", over: { sourcePlacement: "listed" as const, sourceRank: null, sourceDecadeRank: null }, expected: null },
+  ])("leaves the moved album with the row's $name", ({ over, expected }) => {
+    const db = memoryDb();
+    const album = setup(db); // starts with source decade rank 9
+    const review = item(db, over);
+
+    expect(resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true }).ok).toBe(true);
+    expect(getYearEntryByAlbum(db, album.id)!.sourceDecadeRank).toBe(expected);
+  });
+
+  it("repositions the album on its decade list when a same-decade move changes the decade rank", () => {
+    const db = memoryDb();
+    const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
+    addYearEntry(db, { albumId: album.id, year: 2004, placement: "ranked", rank: 1, sourceDecadeRank: 1 });
+    const others = [2, 3, 4].map((decadeRank) => {
+      const other = createAlbum(db, { title: `Fake Other ${decadeRank}`, artist: { name: `Fake Other Artist ${decadeRank}` } });
+      addYearEntry(db, { albumId: other.id, year: 2005, placement: "honorable_mention", sourceDecadeRank: decadeRank });
+      return other.id;
+    });
+    setDecadeList(db, 2000, [album.id, ...others]);
+    const review = item(db, { sourceDecadeRank: 3 });
+
+    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
+
+    expect(result).toMatchObject({ ok: true, decade: { status: "inserted", position: 3 } });
+    expect(getDecadeList(db, 2000).map((e) => e.albumId)).toEqual([others[0], others[1], album.id, others[2]]);
+    expect(getYearEntryByAlbum(db, album.id)).toMatchObject({ year: 2001, sourceDecadeRank: 3 });
+  });
+
+  it("repositions the album on a full decade list without dropping it", () => {
+    const db = memoryDb();
+    const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
+    addYearEntry(db, { albumId: album.id, year: 2004, placement: "ranked", rank: 1, sourceDecadeRank: 1 });
+    const others = Array.from({ length: MAX_DECADE_LIST - 1 }, (_, i) => {
+      const other = createAlbum(db, { title: `Fake Other ${i}`, artist: { name: `Fake Other Artist ${i}` } });
+      addYearEntry(db, { albumId: other.id, year: 2005, placement: "honorable_mention", sourceDecadeRank: i + 2 });
+      return other.id;
+    });
+    setDecadeList(db, 2000, [album.id, ...others]);
+    const review = item(db, { sourceDecadeRank: MAX_DECADE_LIST });
+
+    const result = resolveReviewItem(db, review.id, { kind: "catalog", album: CANDIDATE, moveHere: true });
+
+    expect(result).toMatchObject({ ok: true, decade: { status: "inserted", position: MAX_DECADE_LIST } });
+    expect(getDecadeList(db, 2000).map((e) => e.albumId)).toEqual([...others, album.id]);
   });
 
   it("fails when the rank is taken in the row's year, leaving the album and the item as they were", () => {

@@ -8,7 +8,7 @@
 
 ### Data layer and catalog
 
-- The data access layer gains three helpers the spec doesn't list: `findYearEntryBySource` (re-run check by source row key), `setSourceDecadeRank` (used when a moved album gets the row's decade rank) and `getImportReviewItem` (by id, for the review actions).
+- The data access layer gains three helpers the spec doesn't list: `findYearEntryBySource` (re-run check by source row key), `setSourceDecadeRank` ("Move it here" always sets the row's decade rank on the moved album, null included, so no old rank lingers) and `getImportReviewItem` (by id, for the review actions).
 - `insertIntoDecadeBySourceRank` has a third result, `already_listed`, for an album already on its decade list. The spec names `inserted` and `full` only.
 - A catalog candidate saved on a review item carries the artist id (`artistId`), so a candidate chosen on the review page shares its artist like an automatic match does.
 - A `duplicate_album` or `rank_taken` review item stores the matched album as its only candidate, so the page can offer it (and "Move it here").
@@ -28,6 +28,6 @@
 - The page is `app/import/page.tsx` with the markup in `components/import-review.tsx` and the actions in `app/import/actions.ts`. Three actions: choose album (a candidate or a search result, or "Move it here"), keep as manual, skip. Each calls `resolveReviewItem` or `skipReviewItem`, one transaction each.
 - The per-item catalog search is a plain GET form (`/import?search=<item id>&q=<text>`), the same pattern as `/search`, so it works without JavaScript. Only one item shows search results at a time.
 - "Move it here" is shown up front in place of "Use this album" when the candidate or search result is already on a year page (with that year named), not only after a failed attempt.
-- Actions answer by redirecting to `/import`. A failure message (rank taken, album already on a year page, item no longer open) travels in the `error` and `item` query parameters and shows next to the item, which stays open. The notice for decade list entries removed by a move uses `removed` and `album`. It is plain text rendered escaped.
+- Actions answer by redirecting to `/import`. A failure message (rank taken, album already on a year page, item no longer open) travels in the `error` and `item` query parameters and shows next to the item, which stays open. The notice for decade list entries removed by a move uses `removed` and `album`. When a resolved row's year entry is in but its decade list is full (25), `full` carries the album title and the page shows a status line saying so. A same-decade move that changes the decade rank takes the album off its decade list and puts it back by the new rank, so the order follows the sheet. It is plain text rendered escaped.
 - The home page and `/import` are rendered per request (`connection()` on the home page), so `next build` doesn't open a database.
 - The page tests mock `getDb` with an in-memory database and the catalog search; the server actions themselves are covered through `resolveReviewItem`'s tests, not a separate test.

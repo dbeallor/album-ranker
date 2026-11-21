@@ -1,6 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createAlbum, findAlbumByCatalogId, getAlbum } from "../db/albums.ts";
-import { decadeOf, insertIntoDecadeBySourceRank, type DecadeInsertResult } from "../db/decade-lists.ts";
+import {
+  decadeOf,
+  getDecadeList,
+  insertIntoDecadeBySourceRank,
+  setDecadeList,
+  type DecadeInsertResult,
+} from "../db/decade-lists.ts";
 import { getImportReviewItem, resolveImportReviewItem, skipImportReviewItem } from "../db/import-review.ts";
 import { transaction } from "../db/transaction.ts";
 import {
@@ -111,7 +117,8 @@ export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: Reso
           placement: item.sourcePlacement,
           rank: item.sourceRank,
         }).removedDecadeEntries;
-        if (item.sourceDecadeRank !== null) setSourceDecadeRank(db, albumId, item.sourceDecadeRank);
+        // Always overwrite, including with null, so the album keeps no decade rank from its old row.
+        setSourceDecadeRank(db, albumId, item.sourceDecadeRank);
       } else {
         albumId =
           existing?.id ??
@@ -139,10 +146,20 @@ export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: Reso
         });
       }
 
-      const decade =
-        item.sourceDecadeRank === null || item.sourcePlacement === "listed"
-          ? null
-          : insertIntoDecadeBySourceRank(db, albumId, decadeOf(item.source.year));
+      let decade: DecadeInsertResult | null = null;
+      if (item.sourceDecadeRank !== null && item.sourcePlacement !== "listed") {
+        const decadeStart = decadeOf(item.source.year);
+        decade = insertIntoDecadeBySourceRank(db, albumId, decadeStart);
+        if (decade.status === "already_listed" && movedFromYear !== null) {
+          // A same-decade move can change the decade rank: take the album off the list and put it back
+          // where the new rank belongs. Removing it first leaves room, so the list is never full here.
+          const others = getDecadeList(db, decadeStart)
+            .map((listed) => listed.albumId)
+            .filter((listedId) => listedId !== albumId);
+          setDecadeList(db, decadeStart, others);
+          decade = insertIntoDecadeBySourceRank(db, albumId, decadeStart);
+        }
+      }
       return {
         ok: true,
         albumId,

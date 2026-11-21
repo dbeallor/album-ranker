@@ -182,4 +182,20 @@ describe("import review page", () => {
     );
     expect(screen.getByText("Nothing to check.")).toBeDefined();
   });
+
+  it("tells the user when the decade list was full", async () => {
+    await renderPage({ full: "Fake Album One" });
+
+    expect(screen.getByRole("status").textContent).toBe(
+      "Fake Album One was added to its year page but not to the decade list, because that list already has 25 albums.",
+    );
+  });
+
+  it("shows the full-list title as text, not markup", async () => {
+    await renderPage({ full: "<b>Bold</b>" });
+
+    const status = screen.getByRole("status");
+    expect(status.querySelector("b")).toBeNull();
+    expect(status.textContent).toContain("<b>Bold</b>");
+  });
 });

@@ -143,6 +143,7 @@ export function ImportReview({
   counts,
   error,
   removedNotice,
+  fullNotice,
   actions,
 }: {
   items: ReviewItemView[];
@@ -150,6 +151,8 @@ export function ImportReview({
   /** A failure for an item that is not on the page (already resolved, or unknown). */
   error: string | null;
   removedNotice: string | null;
+  /** Set when the album went on its year page but the decade list was already full. */
+  fullNotice: string | null;
   actions: ReviewActions;
 }) {
   return (
@@ -160,6 +163,7 @@ export function ImportReview({
       </p>
       {error && <p role="alert">{error}</p>}
       {removedNotice && <p role="status">{removedNotice}</p>}
+      {fullNotice && <p role="status">{fullNotice}</p>}
       {items.length === 0 ? (
         <p>Nothing to check.</p>
       ) : (

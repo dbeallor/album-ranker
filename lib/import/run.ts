@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { CatalogError } from "../catalog/musicbrainz.ts";
 import { listDecadeLists } from "../db/decade-lists.ts";
 import { findImportReviewItem, listImportReviewItems } from "../db/import-review.ts";
 import type { ReviewReason } from "../db/types.ts";
@@ -47,6 +48,8 @@ async function searchWithRetries(row: ImportRow, deps: RunDeps) {
     try {
       return { ok: true as const, outcome: await matchRow(row, deps.search) };
     } catch (error) {
+      // Only catalog failures are worth retrying; a bug or a database error must surface, not read as "not reached".
+      if (!(error instanceof CatalogError)) throw error;
       deps.onCatalogError?.(row, error);
       if (attempt >= RETRY_DELAYS_MS.length) return { ok: false as const };
       await deps.sleep(RETRY_DELAYS_MS[attempt]);

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { CatalogError } from "../catalog/musicbrainz.ts";
 import type { CatalogAlbum } from "../catalog/types.ts";
 import { listAlbums } from "../db/albums.ts";
 import { MAX_DECADE_LIST, getDecadeList, listDecadeLists } from "../db/decade-lists.ts";
@@ -224,7 +225,7 @@ describe("catalog errors", () => {
     const db = memoryDb();
     const { search, sleep, deps } = fakeDeps(catalog);
     search.mockImplementation(async (query) => {
-      if (query.startsWith("Fake Album 1 ")) throw new Error("busy");
+      if (query.startsWith("Fake Album 1 ")) throw new CatalogError("busy", "busy");
       return catalog;
     });
 
@@ -247,7 +248,7 @@ describe("catalog errors", () => {
   it("imports the row when a retry succeeds", async () => {
     const rows = simpleRows(1);
     const { search, sleep, deps } = fakeDeps(catalogFor(rows));
-    search.mockRejectedValueOnce(new Error("timeout"));
+    search.mockRejectedValueOnce(new CatalogError("unreachable", "timeout"));
     const db = memoryDb();
 
     const summary = await runImport(db, prepareRows(rows), deps);
@@ -260,15 +261,32 @@ describe("catalog errors", () => {
     const rows = simpleRows(1);
     const onCatalogError = vi.fn();
     const { search, deps } = fakeDeps(catalogFor(rows), { onCatalogError });
-    search.mockRejectedValue(new Error("busy"));
+    search.mockRejectedValue(new CatalogError("busy", "busy"));
     await runImport(memoryDb(), prepareRows(rows), deps);
     expect(onCatalogError).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ["an Error", () => new Error("boom")],
+    ["a TypeError", () => new TypeError("x is not a function")],
+    ["a non-error value", () => "nope"],
+  ])("rethrows %s without retrying or counting the row as not reached", async (_name, make) => {
+    const thrown = make();
+    const rows = simpleRows(2);
+    const onCatalogError = vi.fn();
+    const { search, sleep, deps } = fakeDeps(catalogFor(rows), { onCatalogError });
+    search.mockRejectedValue(thrown);
+
+    await expect(runImport(memoryDb(), prepareRows(rows), deps)).rejects.toBe(thrown);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(onCatalogError).not.toHaveBeenCalled();
   });
 
   it("stops after ten failed rows in a row and counts the rest as not reached", async () => {
     const rows = simpleRows(15);
     const { search, sleep, deps } = fakeDeps(catalogFor(rows));
-    search.mockRejectedValue(new Error("down"));
+    search.mockRejectedValue(new CatalogError("unreachable", "down"));
     const db = memoryDb();
 
     const summary = await runImport(db, prepareRows(rows), deps);
@@ -287,7 +305,7 @@ describe("catalog errors", () => {
     const { search, deps } = fakeDeps(catalog);
     search.mockImplementation(async (query) => {
       const n = Number(/^Fake Album (\d+) /.exec(query)![1]);
-      if (n !== 10 && n !== 11 && n !== 21) throw new Error("down");
+      if (n !== 10 && n !== 11 && n !== 21) throw new CatalogError("unreachable", "down");
       return catalog;
     });
 

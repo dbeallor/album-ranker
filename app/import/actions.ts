@@ -44,10 +44,12 @@ function resolve(itemId: number, choice: ResolveChoice): never {
   const result = resolveReviewItem(db, itemId, choice);
   if (!result.ok) return fail(itemId, result.message);
   const params: Record<string, string> = {};
+  const title = getAlbum(db, result.albumId)?.title ?? "The album";
   if (result.removedDecadeEntries.length > 0) {
     params.removed = String(result.removedDecadeEntries.length);
-    params.album = getAlbum(db, result.albumId)?.title ?? "The album";
+    params.album = title;
   }
+  if (result.decade?.status === "full") params.full = title;
   return back(params);
 }
 

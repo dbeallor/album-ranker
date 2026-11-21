@@ -9,7 +9,7 @@ import { getYearEntryByAlbum } from "@/lib/db/year-entries";
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
 type Param = string | string[] | undefined;
-type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; removed?: Param; album?: Param }>;
+type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; removed?: Param; album?: Param; full?: Param }>;
 
 function first(param: Param): string {
   return (Array.isArray(param) ? param[0] : param) ?? "";
@@ -73,12 +73,19 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
       ? `${first(params.album) || "The album"} no longer qualifies for a decade list, so ${removed} decade list ${removed === 1 ? "entry was" : "entries were"} removed.`
       : null;
 
+  const fullTitle = first(params.full).trim();
+  const fullNotice =
+    fullTitle === ""
+      ? null
+      : `${fullTitle} was added to its year page but not to the decade list, because that list already has 25 albums.`;
+
   return (
     <ImportReview
       items={items}
       counts={counts}
       error={errorMessage && !open.some((item) => item.id === errorItemId) ? errorMessage : null}
       removedNotice={removedNotice}
+      fullNotice={fullNotice}
       actions={{ chooseAlbum: chooseAlbumAction, keepManual: keepManualAction, skip: skipAction }}
     />
   );
