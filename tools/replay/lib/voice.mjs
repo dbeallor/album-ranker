@@ -62,14 +62,18 @@ const FIXES = {
   422: 'ElevenLabs rejected the request, usually an invalid ELEVENLABS_VOICE_ID: check it in tools/replay/.env',
 }
 
+/** One synthesis with character timing: the `with-timestamps` endpoint returns base64 audio and `alignment` (characters, start and end seconds per character). */
 async function elevenlabs(p, text, context, file) {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(p.voiceId)}?output_format=${FORMAT}`, {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(p.voiceId)}/with-timestamps?output_format=${FORMAT}`, {
     method: 'POST',
     headers: { 'xi-api-key': p.key, 'content-type': 'application/json' },
     body: JSON.stringify({ text, model_id: p.model, voice_settings: p.settings, ...context }),
   })
   if (!res.ok) throw new Error(`ElevenLabs HTTP ${res.status}: ${FIXES[res.status] ?? 'unexpected error, see https://elevenlabs.io/docs/api-reference/text-to-speech'}. Render stopped, no fallback to say.`)
-  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()))
+  const body = await res.json()
+  if (!body.audio_base64 || !body.alignment?.characters?.length) throw new Error('ElevenLabs with-timestamps returned no audio or no alignment. Render stopped.')
+  fs.writeFileSync(file, Buffer.from(body.audio_base64, 'base64'))
+  fs.writeFileSync(file.replace(/\.mp3$/, '.json'), JSON.stringify(body.alignment))
 }
 
 let provider, synthesized = 0
@@ -84,17 +88,8 @@ function chosen() {
 /** Characters sent to ElevenLabs so far in this run (cache hits cost none). */
 export const charsSynthesized = () => synthesized
 
-/**
- * Speaks `text` (with pause markup, see narration.mjs) to an audio file and returns its path; ElevenLabs audio is cached in CACHE, `say` audio goes to `dir/name.aiff`.
- * `near` is the previous and next beat's narration, sent as continuity context where the model allows it.
- */
-export async function synthesize(text, dir, name, near = {}) {
+function plan(text, near) {
   const provider = chosen()
-  if (provider.name === 'say') {
-    const file = path.join(dir, `${name}.aiff`)
-    execFileSync('say', ['-v', provider.voice, '-r', SAY_RATE, '-o', file, forSay(text)])
-    return file
-  }
   const spoken = forModel(text, provider.model)
   const context = {}
   if (takesContext(provider.model)) {
@@ -102,10 +97,32 @@ export async function synthesize(text, dir, name, near = {}) {
     if (near.next) context.next_text = plain(near.next).slice(0, CONTEXT_CHARS)
   }
   const file = path.join(CACHE, `${cacheKey(provider, spoken, context)}.mp3`)
-  if (fs.existsSync(file)) { console.log(`${name}: cache hit, ${spoken.length} chars`); return file }
+  return { provider, spoken, context, file, timing: file.replace(/\.mp3$/, '.json') }
+}
+
+const read = (file, timing) => ({ file, alignment: JSON.parse(fs.readFileSync(timing, 'utf8')) })
+
+/** The cached ElevenLabs audio of `text` (`{ file, alignment }`) without any network call, or null when it is not cached or the voice is `say`: lets a dry run plan with the real timing. */
+export function cached(text, near = {}) {
+  const { provider, file, timing } = plan(text, near)
+  return provider.name === 'elevenlabs' && fs.existsSync(file) && fs.existsSync(timing) ? read(file, timing) : null
+}
+
+/**
+ * Speaks `text` (with pause markup, see narration.mjs) to an audio file and returns `{ file, alignment }`; ElevenLabs audio is cached in CACHE as `<key>.mp3` with its character alignment in `<key>.json` (an mp3 without alignment counts as a miss), `say` audio goes to `dir/name.aiff` with no alignment.
+ * `near` is the previous and next beat's narration, sent as continuity context where the model allows it.
+ */
+export async function synthesize(text, dir, name, near = {}) {
+  const { provider, spoken, context, file, timing } = plan(text, near)
+  if (provider.name === 'say') {
+    const out = path.join(dir, `${name}.aiff`)
+    execFileSync('say', ['-v', provider.voice, '-r', SAY_RATE, '-o', out, forSay(text)])
+    return { file: out, alignment: null }
+  }
+  if (fs.existsSync(file) && fs.existsSync(timing)) { console.log(`${name}: cache hit, ${spoken.length} chars`); return read(file, timing) }
   fs.mkdirSync(CACHE, { recursive: true })
   await elevenlabs(provider, spoken, context, file)
   synthesized += spoken.length
   console.log(`${name}: synthesized ${spoken.length} chars`)
-  return file
+  return read(file, timing)
 }

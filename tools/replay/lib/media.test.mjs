@@ -18,3 +18,15 @@ test('a long video of one-frame steps is as long as its audio', () => {
   assert.ok(Math.abs(len.audio - total) < 0.05, `audio ${len.audio}s, expected ${total}s`)
   fs.rmSync(dir, { recursive: true, force: true })
 })
+
+test('voiceFilter puts the delay and each pause into the voice as silence', async () => {
+  const { voiceFilter } = await import('./media.mjs')
+  assert.deepEqual(voiceFilter({}), ['-af', 'apad'])
+  const f = voiceFilter({ delay: 1, gaps: [{ audioAt: 8, seconds: 5 }] })
+  assert.equal(f[0], '-filter_complex')
+  assert.match(f[1], /aevalsrc=0:d=1\.000/)
+  assert.match(f[1], /atrim=start=0\.000:end=8\.000/)
+  assert.match(f[1], /aevalsrc=0:d=5\.000/)
+  assert.match(f[1], /atrim=start=8\.000,/)
+  assert.match(f[1], /concat=n=4/)
+})

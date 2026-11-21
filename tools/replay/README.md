@@ -51,6 +51,8 @@ Overrides (env, no code change; all are part of the cache key):
 
 Narration markup, converted per model by `lib/narration.mjs`: `{pause}` and `{pause:long}` become `<break time="0.4s" />` and `0.8s` on v2, `[pause]` and `[long pause]` on v3; `{tag:thoughtful}` becomes `[thoughtful]` on v3 and is dropped elsewhere. Captions drop the markers; `say` turns pauses into silences. Keep a few pauses per beat, many break tags cause artifacts. The neighbouring beats' text goes along as `previous_text` / `next_text` for continuity (not on v3, which rejects them).
 
+Synthesis uses the `with-timestamps` endpoint (`POST /v1/text-to-speech/{voice_id}/with-timestamps`): it returns base64 audio and `alignment` (`characters`, `character_start_times_seconds`, `character_end_times_seconds`). It takes `previous_text` / `next_text` like the plain endpoint. `<break>` tags come back in the alignment as ordinary characters, all stamped with the time the break starts; `lib/timing.mjs` skips them. The alignment is stored next to the mp3 (`<key>.json`); an mp3 without it counts as a cache miss.
+
 ElevenLabs bills per character, so synthesized audio is cached in `out/voice-cache/` keyed by provider, voice, model, settings and text. Re-renders and `BEATS` subsets reuse it; only changed narration is synthesized. Each render logs cache hits and fresh synthesis, and ends with the characters synthesized. If an ElevenLabs call fails (401 bad key, 402/429 quota, 422 bad voice id) the render stops and does not fall back to `say`.
 
 ## Story API
@@ -58,6 +60,22 @@ ElevenLabs bills per character, so synthesized audio is cached in `out/voice-cac
 A story (`story/<date>.mjs`) exports `meta` and `beats`. A beat is `{ say, caption?, run }`: `say` is the narration with `{pause}` markers (a beat without `say` is silent and lasts as long as its actions), `caption` replaces the caption text when it should differ from the narration, `run` is an async function of the calls below (from `lib/director.mjs`, `lib/recorder.mjs`).
 
 Captions are cut on sentence boundaries (not at `p.m.`, `e.g.`, initials or `Next.js`), further at clauses and words when a sentence is long, so that each piece fits the caption strip's two lines, and are shown one after the other in proportion to their length over the narration. A beat's actions are timed against the narration: `until(f)` holds until fraction `f` of the audio has played, `ff(time, { until: f })` runs the clock until then. A beat lasts the longer of its actions and its narration plus 0.7 s; with little narration the actions set the length, with a lot the last frame holds.
+
+### Cues: actions anchored to spoken words
+
+The voice's word times drive the scene. A phrase is a string (matched case-insensitively at a word start, first occurrence) or `{ word, nth }`. With an ElevenLabs alignment the time is exact; for `say` and for `--dry` without cached audio it is estimated from the phrase's position in the text. A render prints, per beat, every cue as `cue "word": word 12.34s, action 12.50s (+0.16s)` and writes `out/sync.json` (beat, word and action times, also as absolute video seconds). An action more than 0.4 s after its word is reported as `late:` with by how much; a phrase that is not in the narration fails the render.
+
+| Call | What it does |
+|---|---|
+| `until('Approve')`, `until({ word: 'Merge', nth: 2 })` | Holds until the word starts. `until(0.5)` (a fraction of the audio) still works. |
+| `approve(t, { at })`, `startShipping(t, { at })`, `changes(t, rest, { at, sendAt, ms })`, `dashTab(tab, { at })`, `openPanel(t, kind, scope?, { at })`, `viewSpec({ ..., at })`, `viewPr({ ..., at })`, `filesChanged({ at })`, `backToDash({ at })` | The cursor arrives on the control 0.1 s after the word (the move starts early enough). `sendAt` is the word the typed message is sent on. |
+| `type(text, { ms, at })` | Typing starts early enough for the message to be sent on the word. |
+| `ff(time, { until: 'word' })` | Runs the clock until the word. |
+| beat `delay: 1.5` | Silence before the voice, so the scene can set up first (replies, a time-lapse) and the voice never describes what is not yet on screen. |
+| `pauseVoice('word')` ... `resumeVoice(lead = 0.6)` | The voice stops just before the word while a stretch of actions that is longer than the words runs, then carries on; the cached audio is cut there and silence inserted (`media.mjs` `voiceFilter`), no new synthesis. `resumeVoice` lets the voice restart `lead` s later so the next click can travel. |
+| `closeOldTabs()` | Closes GitHub tabs down to two (about 1.2 s each). Call it where the voice leaves room, before a view; otherwise the fourth tab is closed on the spot and delays the cues after it. |
+
+The dry run uses the cached audio and its alignment when it exists (no network), so it shows the real cue times.
 
 `meta.sidebarThreads` (or `sidebarThreads(list)`) takes the recorded `threads.json` rows; see below.
 
@@ -102,7 +120,7 @@ The sidebar shows the project's other top-level threads from `threads.json`: `si
 ## Layout
 
 - `render.mjs`: runs a story, speaks each beat, assembles the video
-- `lib/voice.mjs`: text to speech (ElevenLabs with cache, or `say`)
+- `lib/voice.mjs`: text to speech (ElevenLabs with cache and alignment, or `say`); `lib/timing.mjs`: word start times for cues
 - `story/<date>.mjs`: narration and stage actions per beat
 - `timeline/<date>.json`: tickets, sessions, stage events and commands with real UTC times
 - `fixtures/<date>/`: recorded dashboard JSON, gantt sessions, spec versions, PR data

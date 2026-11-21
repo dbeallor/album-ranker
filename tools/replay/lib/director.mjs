@@ -207,9 +207,19 @@ async function point(loc, inDash) {
 
 const dashLoc = (sel) => page.frameLocator('#dash').locator(sel).filter({ visible: true }).first()
 
-async function clickLoc(loc, { real = true, inDash = false } = {}) {
+const MOVE_MS = 700
+// The cursor lands this long after the word that names the control (the click is the ripple that follows).
+const LAND_AFTER = 0.1
+
+/**
+ * Moves to a control and clicks it. With `at` (a narration phrase, see `cue` in recorder.mjs) the cursor arrives on the control just after that word is spoken:
+ * the way there starts early enough, and a click that cannot make it is reported as late.
+ */
+async function clickLoc(loc, { real = true, inDash = false, at } = {}) {
   const p = await point(loc, inDash)
-  await moveTo(p.x, p.y)
+  const word = at ? await rec.holdToCue(at, MOVE_MS / 1000 - LAND_AFTER) : null
+  await moveTo(p.x, p.y, MOVE_MS)
+  if (word !== null) rec.syncMark(at, word, rec.beatSeconds())
   await ripple()
   if (real) { await loc.click(); await rec.hold(rec.STEP) }
 }
@@ -226,22 +236,23 @@ function offered(kind, ticket) {
 const clickDash = (sel, opts) => clickLoc(dashLoc(sel), { inDash: true, ...opts })
 
 /** Moves the cursor to a control of the stage (a browser tab, a PR sub-tab) and clicks it. The stage has no handlers, so the caller applies the effect. */
-const clickStage = (sel) => clickLoc(page.locator(sel).first(), { real: false })
+const clickStage = (sel, opts) => clickLoc(page.locator(sel).first(), { real: false, ...opts })
 
 /** Clicks a dashboard tab: `ship`, `backlog`, `done` or `cos`. */
-export const dashTab = act('dashTab', (tab) => clickDash(tabSelector(tab)))
+export const dashTab = act('dashTab', (tab, opts) => clickDash(tabSelector(tab), opts))
 
 /**
  * Opens the Agents or Details panel (`kind`) of a ticket's card, unless it is open already: `openPanel('ALBUM-7', 'agents')`, `scope` `merged` on the Done tab.
  * The old argument order `openPanel('agents', 'ALBUM-7')` works too.
  */
-export const openPanel = act('openPanel', async (a, b, c) => {
+export const openPanel = act('openPanel', async (a, b, ...rest) => {
+  const opts = typeof rest.at(-1) === 'object' ? rest.pop() : {}
   const [ticket, kind] = ['agents', 'details'].includes(a) ? [b, a] : [a, b]
   offered(kind, ticket)
-  const sel = buttonSelector(kind, ticket, c)
+  const sel = buttonSelector(kind, ticket, rest[0])
   const open = await dashLoc(sel).getAttribute('aria-expanded')
   if (open === 'true') await rec.hold(rec.STEP)
-  else await clickDash(sel)
+  else await clickDash(sel, opts)
 })
 
 /** Scrolls the dashboard to `y` (CSS pixels of the dashboard page). */
@@ -251,21 +262,27 @@ export const scrollDash = act('scrollDash', scrollDashTo)
 
 const touch = async () => { ui.lastActive = ui.clock; await syncSidebar() }
 
-async function typeText(text, { attach, prefix = '', ms } = {}) {
+async function typeText(text, { attach, prefix = '', ms, at } = {}) {
   const total = ms ?? Math.min(4800, Math.max(1000, text.length * 55))
+  // The message is sent 0.35 s after the last character; `at` waits so that this lands on the word.
+  const word = at ? await rec.holdToCue(at, total / 1000 + 0.35) : null
   await rec.anim(total, (p) => ev(([t, a]) => S.composer(t, a), [prefix + text.slice(0, Math.round(p * text.length)), attach]))
-  await send(prefix + text, attach)
+  await send(prefix + text, attach, word === null ? undefined : () => rec.syncMark(at, word, rec.beatSeconds() - 0.3))
 }
 
-/** Types `text` into the composer (after `prefix`, already there), then sends it. */
+/**
+ * Types `text` into the composer (after `prefix`, already there), then sends it.
+ * `ms` is the typing time (default 55 ms per character, 1 to 4.8 s); `at` is a narration phrase: the typing starts early enough for the message to be sent as that word is spoken.
+ */
 export const type = act('type', typeText)
 
 /** Sends the composer's draft as a user message. */
-async function send(text, attach) {
+async function send(text, attach, onSent) {
   await rec.hold(350)
   await ev(([t, a]) => S.addUser(t, a), [text, attach])
   await touch()
   await rec.hold(300)
+  onSent?.()
 }
 
 /**
@@ -290,31 +307,31 @@ async function applyLink(kind, ticket) {
 }
 
 /** Clicks the real Approve or Start shipping button (`approve` or `todo`) of `ticket`, then sends the command the link put in the composer. */
-async function pressButton(kind, ticket) {
+async function pressButton(kind, ticket, { at } = {}) {
   offered(kind, ticket)
-  await clickDash(buttonSelector(kind, ticket))
+  await clickDash(buttonSelector(kind, ticket), { at })
   await send(await applyLink(kind, ticket))
 }
 
 /** Clicks the real Changes button of `ticket`, then types `rest` after the prefilled `changes N: ` and sends it. */
-async function pressChangesButton(ticket, rest) {
+async function pressChangesButton(ticket, rest, { at, sendAt, ...typing } = {}) {
   offered('changes', ticket)
-  await clickDash(buttonSelector('changes', ticket))
+  await clickDash(buttonSelector('changes', ticket), { at })
   const prefix = await applyLink('changes', ticket)
-  await typeText(rest, { prefix })
+  await typeText(rest, { prefix, ...typing, at: sendAt })
 }
 
-/** Clicks Approve on `ticket`'s card (scrolling the board to it first), and the composer gets `approve N` and sends it. */
-export const approve = act('approve', (ticket) => pressButton('approve', ticket))
+/** Clicks Approve on `ticket`'s card (scrolling the board to it first), and the composer gets `approve N` and sends it. `{ at }` is the narration phrase the click lands on. */
+export const approve = act('approve', (ticket, opts) => pressButton('approve', ticket, opts))
 
-/** Clicks Changes on `ticket`'s card; the composer is prefilled with `changes N: ` and `restOfText` is typed after it. */
+/** Clicks Changes on `ticket`'s card; the composer is prefilled with `changes N: ` and `restOfText` is typed after it. `{ at }` is the phrase the click lands on; `{ ms, at: ..., sendAt }`-style typing options (`ms`, and `sendAt` for the phrase the message is sent on) follow the typing of `type`. */
 export const changes = act('changes', pressChangesButton)
 
 /** Clicks Start shipping on `ticket`'s card (Backlog tab); the composer gets `mark N todo` and sends it. */
-export const startShipping = act('startShipping', (ticket) => pressButton('todo', ticket))
+export const startShipping = act('startShipping', (ticket, opts) => pressButton('todo', ticket, opts))
 
 /** The old names of `approve` / `startShipping` (`press('approve', t)`, `press('todo', t)`) and `changes` (`pressChanges`). */
-export const press = act('press', pressButton)
+export const press = act('press', (kind, ticket, opts) => pressButton(kind, ticket, opts))
 export const pressChanges = act('pressChanges', pressChangesButton)
 
 async function setThinking(on) {
@@ -390,13 +407,13 @@ export const intro = act('intro', (on) => ev((o) => S.intro(o), on))
 // ---------- GitHub in the browser pane ----------
 
 /** Clicks the dashboard link found by `sel` and returns its url. The dashboard opens it in a new tab, so the click itself is not delivered. */
-async function clickLink(sel) {
+async function clickLink(sel, at) {
   const loc = dashLoc(sel)
-  await clickLoc(loc, { real: false, inDash: true })
+  await clickLoc(loc, { real: false, inDash: true, at })
   return loc.getAttribute('href')
 }
 
-const clickAction = (kind, ticket) => { offered(kind, ticket); return clickLink(buttonSelector(kind, ticket)) }
+const clickAction = (kind, ticket, at) => { offered(kind, ticket); return clickLink(buttonSelector(kind, ticket), at) }
 
 async function showTabs() { await ev(([t, d]) => S.browserTabs([d, ...t]), [ui.tabs, { ...DASH_TAB, url: ui.dashUrl }]) }
 
@@ -407,17 +424,23 @@ async function closeTab(id) {
   ui.tabs = ui.tabs.filter((t) => t.id !== id)
   await ev(() => S.tabHover(null))
   await showTabs()
-  await rec.hold(500)
+  await rec.hold(250)
 }
 
-/** Opens `tab` in the browser pane, expanded, with `html`; the oldest GitHub tab is closed once there are more than three. */
+/**
+ * Closes the oldest GitHub tabs until at most two stay open, so that the next one that opens makes three, the way a person tidies the tab strip: the cursor goes to the close button, which shows on hover.
+ * Takes about 1.5 s per tab, so a story calls it where the voice leaves room (while a page is being read, or before a beat's first cue), not in the middle of a click on a cue.
+ */
+export const closeOldTabs = act('closeOldTabs', async () => { while (ui.tabs.length > MAX_GH_TABS - 1) await closeTab(ui.tabs[0].id) })
+
+/** Opens `tab` in the browser pane, expanded, with `html`. A fourth GitHub tab is closed on the spot, which costs time, when the story did not tidy up (`closeOldTabs`) before. */
 async function openGh(tab, html) {
   ui.tabs = [...ui.tabs.filter((t) => t.id !== tab.id), tab]
   await showTabs()
   await ev(([id, h]) => S.ghPage(id, h), [tab.id, html])
   await ev((id) => { S.browserSelect(id); S.browserExpand(true) }, tab.id)
   await rec.hold(700)
-  if (ui.tabs.length > MAX_GH_TABS) await closeTab(ui.tabs[0].id)
+  if (ui.tabs.length > MAX_GH_TABS) { rec.note('closeTab (on the spot: no closeOldTabs before this view)'); await closeTab(ui.tabs[0].id) }
 }
 
 async function scrollGh(y, ms = 1400) {
@@ -443,23 +466,23 @@ export const scrollToHeading = act('scrollToHeading', scrollHeading)
 /** Scrolls the open GitHub page to `fraction` of its length. */
 export const scrollGhBy = act('scrollGhBy', scrollFraction)
 
-async function showFiles() {
-  await clickStage('.ghp.on .g-tabs [data-n="1"]')
+async function showFiles({ at } = {}) {
+  await clickStage('.ghp.on .g-tabs [data-n="1"]', { at })
   await ev(() => S.ghTabSwitch(1))
-  await rec.hold(700)
+  await rec.hold(400)
 }
 
-/** Clicks the PR page's Files changed tab. */
+/** Clicks the PR page's Files changed tab (`{ at }`: the narration phrase the click lands on). */
 export const filesChanged = act('filesChanged', showFiles)
 
-async function toDash() {
-  await clickStage('#tabs .tab[data-tab-id="dash"]')
+async function toDash({ at } = {}) {
+  await clickStage('#tabs .tab[data-tab-id="dash"]', { at })
   await ev(() => { S.browserSelect('dash'); S.browserExpand(false) })
   await refresh()
-  await rec.hold(500)
+  await rec.hold(300)
 }
 
-/** Clicks the Agent team tab to go back to the dashboard. */
+/** Clicks the Agent team tab to go back to the dashboard (`{ at }`: the narration phrase the click lands on). */
 export const backToDash = act('backToDash', toDash)
 
 /**
@@ -486,8 +509,8 @@ const fixture = (...names) => {
   return fs.readFileSync(found, 'utf8')
 }
 
-async function openSpec({ ticket, sha, path: specPath, md, scrollTo, depth = 'read', ms, stay = false }) {
-  const url = await clickAction('spec', ticket)
+async function openSpec({ ticket, sha, path: specPath, md, scrollTo, depth = 'read', ms, stay = false, at }) {
+  const url = await clickAction('spec', ticket, at)
   const m = new RegExp(`^${repoUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/blob/([0-9a-f]{40})/(.+)$`).exec(url)
   if (!m || !m[1].startsWith(sha) || (specPath && specPath !== m[2])) throw new Error(`View spec ${ticket}: the dashboard links ${url}, expected commit ${sha}${specPath ? ` and ${specPath}` : ''}`)
   const file = m[2]
@@ -510,8 +533,8 @@ export const viewSpec = act('viewSpec', (a, b) => openSpec(typeof a === 'string'
 
 const mergedAt = (pr) => (pr.mergedAt ? Date.parse(pr.mergedAt) : Infinity)
 
-async function openPr({ ticket, pr, diff, depth = 'read', tabs, scrollTo, ms, stay = false }) {
-  const url = await clickAction('pr', ticket)
+async function openPr({ ticket, pr, diff, depth = 'read', tabs, scrollTo, ms, stay = false, at }) {
+  const url = await clickAction('pr', ticket, at)
   if (url !== `${repoUrl}/pull/${pr.number}`) throw new Error(`View PR ${ticket}: the dashboard links ${url}, expected ${repoUrl}/pull/${pr.number}`)
   const seen = (t) => Date.parse(t) <= ui.clock
   const comments = pr.comments.filter((c) => seen(c.createdAt))

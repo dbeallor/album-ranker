@@ -37,6 +37,10 @@ Used by `replay-thread-video` while authoring (`tools/replay/story/`, `timeline/
 13. Approvals use the real Approve button, never a typed `approve N`. Changes button, then type the rest. Start shipping for mark-todo. Only combined multi-command messages are typed. Reason: matches real use.
 14. View the spec on GitHub at each revision's sha before approving it. View the PR on GitHub (Conversation, then Files changed) before the merge approval. Real URLs shown in the address bar. Reason: the user reviews before approving. This holds when the real approval came seconds after the artifact appeared: show a skim, never an approval without the view.
 
+**Sync**
+19. Every action the narration names happens on its word (clicks on Approve, Merge, Start shipping, Changes land within 0.4 s after it; GitHub views open when the narration starts on reading and show the described section; panels open when mentioned). The voice never describes something before it is visible: use a beat `delay`, an earlier start, or `pauseVoice`. Reason: the draft's voice ran ahead of the clicks.
+20. The render log has no `late:` lines, and `out/sync.json` lists every cue; no stretch over about 2.5 s where nothing moves and nothing is said.
+
 **Numbers**
 18. Every number in the narration (counts, costs, minutes, ports, tests, files) is checked against the fixtures (`spend.json`, PR bodies, chief messages, timeline times), and the narration is corrected when it differs. Reason: a viewer trusts a spoken number.
 
@@ -60,7 +64,7 @@ The narration is the user thinking out loud while working on their own project: 
 ## Frame QA recipe
 
 Extract frames at the start of each beat and at every clock jump, approval and GitHub view (video time from `out/frames.txt` or the render log):
-`ffmpeg -v error -ss <sec> -i <video> -frames:v 1 -q:v 2 <scratch>/f<sec>.jpg`, then view them. Check at each: the sidebar label and age, the model picker, caption position, dashboard tab pills and counts against the timeline at that clock, gantt bars (only started rows, partial bars), the time-lapse chip while fast-forwarding, the address bar on GitHub tabs, no clipped or overlapping text. Also check audio length equals video length (`ffprobe`).
+`ffmpeg -v error -ss <sec> -i <video> -frames:v 1 -q:v 2 <scratch>/f<sec>.jpg`, then view them. Check at each: the sidebar label and age, the model picker, caption position, dashboard tab pills and counts against the timeline at that clock, gantt bars (only started rows, partial bars), the time-lapse chip while fast-forwarding, the address bar on GitHub tabs, no clipped or overlapping text. Also check audio length equals video length (`ffprobe`), and for each cue in `out/sync.json` extract the frame at its `actionAt` and check the cursor is on the named button or the described section is on screen, and the caption is the sentence being spoken.
 
 ## Known approximations
 

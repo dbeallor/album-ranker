@@ -1,8 +1,8 @@
 // The whole "ALBUM - Chief of Staff" session (2026-11-20 6:01 p.m. to 2026-11-21 1:05 a.m. in New York): narration and what happens on the stage, beat by beat.
 // Times are the real ones (UTC); the dashboard is drawn as it was at the clock's time. Chat replies are the real messages, condensed.
 import fs from 'fs'
-import { clock, ff, later, type, sent, reply, worked, card, patchCard, waitOn, thinking, intro, openDashTab, dashTab, openPanel, scrollDash, approve, changes, startShipping, viewSpec, viewPr } from '../lib/director.mjs'
-import { hold, until } from '../lib/recorder.mjs'
+import { clock, ff, later, type, sent, reply, worked, card, patchCard, waitOn, thinking, intro, openDashTab, dashTab, openPanel, scrollDash, scrollToHeading, scrollGhBy, filesChanged, backToDash, closeOldTabs, approve, changes, startShipping, viewSpec, viewPr } from '../lib/director.mjs'
+import { hold, until, pauseVoice, resumeVoice } from '../lib/recorder.mjs'
 
 const FX = new URL('../fixtures/2026-11-21/', import.meta.url).pathname
 
@@ -455,31 +455,34 @@ export const beats = [
     say: "First thing, I just tell it to set up the repo. {pause} It writes a little config file, opens a pull request, and tells me what it assumed. That's fine. I merge it, and tell it to start the team.",
     run: async () => {
       await clock('23:01:19')
-      await type('set up this repo')
+      await type('set up this repo', { at: 'repo' })
       await thinking(true)
-      await ff('23:02:35', { ms: 1500 })
+      await ff('23:02:35', { ms: 1200 })
+      await until('It writes')
       await reply(M.setup, { think: 200, reveal: 3200 })
-      await until(0.75)
+      await until('I merge')
       await clock('23:03:20')
-      await type('start the team')
+      await type('start the team', { at: 'start the team' })
       await thinking(true)
     },
   },
   {
     say: "And there's the dashboard. {pause} Nothing on it yet, because there aren't any tickets. So let's give it something to do.",
     run: async () => {
-      await ff('23:03:52', { ms: 900 })
+      await ff('23:03:52', { ms: 500 })
+      await until('dashboard')
       await openDashTab()
       await ff('23:04:15', { ms: 700 })
+      await until('Nothing on it')
       await reply(M.start, { think: 200, reveal: 2400 })
-      await ff('23:07:05', { ms: 1200 })
+      await ff('23:07:05', { ms: 1000 })
     },
   },
   {
     say: "I attach the spreadsheet, and explain what I actually want. Search a catalog, rank albums by year, real cover art. {pause} And I mention I've never liked how the scoring works. Then I ask for one ticket to spec the MVP, and a batch of follow ups.",
     run: async () => {
       await clock('23:07:11')
-      await type(REQUEST, { attach: 'Best Albums.xlsx 299 KB', ms: 6500 })
+      await type(REQUEST, { attach: 'Best Albums.xlsx 299 KB', ms: 9400, at: 'Then I ask' })
       await thinking(true)
       await clock('23:07:36')
       await thinking(false)
@@ -493,40 +496,41 @@ export const beats = [
   },
   {
     say: "It hands that off to a helper, and a few minutes later I've got nine tickets in the backlog. {pause} Only the first one can start. Everything else is blocked on the spec, which is what I wanted.",
+    delay: 0.8,
     run: async () => {
       await clock('23:10:38')
-      await reply(M.tickets2, { think: 500, reveal: 3000 })
-      await until(0.55)
+      await reply(M.tickets2, { think: 500, reveal: 2200 })
+      await until('Only the first one')
       await scrollDash(500, 1400)
-      await until(0.85)
+      await until('which is what')
       await scrollDash(0, 900)
     },
   },
   {
     say: "Now, the scoring. I can't really say what bugs me about it, so I just ask it to look. {pause} And it's kind of brutal. Turns out my year weights mostly measure how much I listened that year, not how good the year was. {pause} Yeah. That's the thing I couldn't put my finger on.",
     run: async () => {
-      await ff('23:11:58', { ms: 900 })
-      await type(EPIC, { ms: 3600 })
+      await clock('23:11:58')
+      await type(EPIC, { ms: 3600, at: 'to look' })
       await clock('23:12:30')
       await card(H2)
-      await reply(M.critique, { think: 700, reveal: 4200 })
+      await reply(M.critique, { think: 700, reveal: 3600 })
       await waitOn('h2')
-      await ff('23:13:36', { until: 0.88 })
+      await ff('23:13:36', { until: 'Yeah' })
       await reply(M.epic, { think: 300, reveal: 1600 })
     },
   },
   {
     say: "Alright, let's go. I hit Start shipping on ticket two, and a spec writer picks it up. That one runs on the bigger model, Opus. {pause} And I can watch it work in the agents panel. Time, cost, who's doing what.",
     run: async () => {
-      await ff('23:14:36', { ms: 1000 })
-      await startShipping('ALBUM-2')
-      await ff('23:15:12', { ms: 1400 })
+      await clock('23:14:36')
+      await startShipping('ALBUM-2', { at: 'Start shipping' })
+      await ff('23:15:12', { ms: 500 })
       await clock('23:15:16')
       await card(S2)
-      await reply(M.start2, { think: 400, reveal: 2200 })
+      await reply(M.start2, { think: 300, reveal: 1400 })
       await waitOn('s2')
-      await dashTab('ship')
-      await openPanel('ALBUM-2', 'agents')
+      await dashTab('ship', { at: 'And I can' })
+      await openPanel('ALBUM-2', 'agents', { at: 'agents panel' })
       await ff('23:20:36', { until: 0.97 })
     },
   },
@@ -534,35 +538,38 @@ export const beats = [
     say: "Okay, spec's ready, and it's flagged high risk because there's a decision in it for me. So I open it on GitHub and actually read it. {pause} Hm. It wants to keep my old scoring, and add a medal table next to it, and let me switch between them. {pause} I don't want two systems. I want one that's right.",
     run: async () => {
       await clock('23:20:40')
-      await reply(M.spec1, { think: 400, reveal: 2600 })
-      await until(0.25)
-      await viewSpec({ ticket: 'ALBUM-2', sha: '5c249ca', depth: 'read', scrollTo: 'Choice for the MVP', ms: 5000 })
-      await until(0.97)
+      await reply(M.spec1, { think: 300, reveal: 2400 })
+      await viewSpec({ ticket: 'ALBUM-2', sha: '5c249ca', stay: true, at: 'I open it' })
+      await scrollToHeading('Choice for the MVP')
+      await until("I don't want two")
+      await backToDash()
     },
   },
   {
     say: "So I hit Changes, and tell it. Drop the multiple algorithms. Just do head to head Elo. Show me two albums, I pick one, and the ratings sort themselves out.",
     run: async () => {
       await clock('23:24:25')
-      await changes('ALBUM-2', 'ditch multiple algorithm support\n\ngo with head to head elo algorithm')
+      await changes('ALBUM-2', 'ditch multiple algorithm support\n\ngo with head to head elo algorithm', { at: 'Changes', ms: 3500, sendAt: 'Show me two albums' })
       await clock('23:24:48')
-      await reply(M.changes, { think: 400, reveal: 2000 })
+      await reply(M.changes, { think: 300, reveal: 1200 })
       await waitOn('s2')
-      await ff('23:27:05', { ms: 3000 })
-      await reply(M.spec2, { think: 300, reveal: 2600 })
+      await ff('23:27:05', { ms: 2000 })
+      await reply(M.spec2, { think: 300, reveal: 1800 })
     },
   },
   {
     run: async () => {
-      await ff('23:42:30', { ms: 2800 })
+      await ff('23:42:30', { ms: 1800 })
     },
   },
   {
     say: "Second version. Let me check the scoring section again. {pause} One rating per album, and it seeds everything from my existing yearly rankings, so it's useful on day one. {pause} Yep. That's it. Approve.",
     run: async () => {
-      await viewSpec({ ticket: 'ALBUM-2', sha: '3091b45', depth: 'skim', scrollTo: 'Scoring: head-to-head Elo', ms: 5500 })
+      await viewSpec({ ticket: 'ALBUM-2', sha: '3091b45', stay: true, at: 'Let me check' })
+      await scrollToHeading('Scoring: head-to-head Elo')
+      await backToDash({ at: 'Yep' })
       await clock('23:43:21')
-      await approve('ALBUM-2')
+      await approve('ALBUM-2', { at: 'Approve' })
       await patchCard('s2', { model: SONNET })
     },
   },
@@ -570,303 +577,366 @@ export const beats = [
     say: "Now it builds. Well, it's a spec, so the build is just getting the document into a pull request. {pause} But it still gets reviewed. Four rounds of code review before it comes back to me. And meanwhile a helper rewrites the other tickets to match the Elo plan.",
     run: async () => {
       await clock('23:43:46')
-      await reply(M.approved, { think: 400, reveal: 1800 })
+      await reply(M.approved, { think: 300, reveal: 1400 })
       await card(H3)
       await waitOn(['s2', 'h3'])
-      await openPanel('ALBUM-2', 'agents')
-      await ff('23:45:46', { until: 0.4 })
-      await reply(M.helper, { think: 300, reveal: 2000 })
-      await dashTab('backlog')
-      await until(0.6)
+      await openPanel('ALBUM-2', 'agents', { at: 'the build' })
+      await ff('23:45:46', { until: 'But it still' })
+      await reply(M.helper, { think: 200, reveal: 1400 })
+      await ff('23:51:00', { until: 'And meanwhile' })
+      await dashTab('backlog', { at: 'rewrites' })
+      await until('Elo plan')
       await dashTab('ship')
-      await ff('23:51:00', { until: 0.97 })
     },
   },
   {
     say: "Ready to merge. Same deal, I'm not approving off a summary. I open the pull request. {pause} Description makes sense, reviews passed, and the diff is one new file. Good. Approve.",
+    delay: 1.0,
     run: async () => {
       await clock('23:51:03')
-      await reply(M.mergeready, { think: 300, reveal: 2200 })
-      await until(0.2)
-      await viewPr({ ticket: 'ALBUM-2', ...prOf(13), depth: 'read', ms: 1500 })
+      await reply(M.mergeready, { think: 200, reveal: 1200 })
+      await viewPr({ ticket: 'ALBUM-2', ...prOf(13), stay: true, at: 'I open the' })
+      await until('Description')
+      await scrollGhBy(0.35, 1700)
+      await filesChanged({ at: 'the diff' })
+      await backToDash({ at: 'new file' })
       await clock('23:53:28')
-      await approve('ALBUM-2')
+      await approve('ALBUM-2', { at: 'Approve' })
     },
   },
   {
     say: "And that's merged. About four and a half dollars for a reviewed spec. {pause} Quick bit of housekeeping, and I start the next ticket, the app scaffold. Then I step away for a while.",
+    delay: 2.8,
     run: async () => {
       await clock('23:53:44')
-      await reply(M.merging, { think: 300, reveal: 1400 })
+      await reply(M.merging, { think: 200, reveal: 700 })
       await waitOn('s2')
-      await ff('23:54:21', { ms: 1800 })
-      await reply(M.merged, { think: 200, reveal: 2000 })
-      await dashTab('done')
-      await openPanel('ALBUM-2', 'agents', 'merged')
-      await ff('23:55:18', { ms: 1000 })
-      await type('11 is done\n\nlink 6 and 7\n\nmark 3 todo', { ms: 1800 })
+      await ff('23:54:21', { ms: 600 })
+      await reply(M.merged, { think: 200, reveal: 900 })
+      await dashTab('done', { at: "that's merged" })
+      await openPanel('ALBUM-2', 'agents', 'merged', { at: 'four and a half' })
+      await ff('23:55:18', { ms: 500 })
+      await type('11 is done\n\nlink 6 and 7\n\nmark 3 todo', { ms: 1800, at: 'the next ticket' })
       await clock('23:55:40')
       await card(S3)
       await card(H4)
-      await reply(M.house, { think: 300, reveal: 2000 })
+      await reply(M.house, { think: 300, reveal: 1200 })
       await waitOn(['s3', 'h4'])
       await dashTab('ship')
       await openPanel('ALBUM-3', 'agents')
-      await ff('23:57:15', { until: 0.97 })
-      await reply(M.spec3, { think: 300, reveal: 2400 })
+      await ff('23:57:15', { ms: 800 })
+      await reply(M.spec3, { think: 300, reveal: 1400 })
     },
   },
   {
     say: "Okay, I'm back. It's a little after midnight. {pause} The scaffold spec's been sitting there waiting for me. Next.js, TypeScript, tests, lint, nothing fancy. Quick read, and approve.",
+    delay: 2.4,
     run: async () => {
       await later('05:06:00')
-      await viewSpec({ ticket: 'ALBUM-3', sha: '111a741', depth: 'skim' })
-      await until(0.85)
+      await closeOldTabs()
+      await viewSpec({ ticket: 'ALBUM-3', sha: '111a741', stay: true, at: "scaffold spec" })
+      await scrollToHeading('The stack')
+      await backToDash({ at: 'fancy' })
       await clock('05:06:17')
-      await approve('ALBUM-3')
+      await approve('ALBUM-3', { at: 'approve' })
       await patchCard('s3', { model: SONNET })
+      await closeOldTabs()
     },
   },
   {
     say: "Seven minutes later it's ready to merge. Twenty one files, which is about right for an empty app. {pause} Reviews passed, and it ran the tests in a fresh clone. Merge it.",
+    delay: 1.5,
     run: async () => {
       await clock('05:06:34')
-      await reply(M.built3, { think: 300, reveal: 1600 })
+      await reply(M.built3, { think: 200, reveal: 500 })
       await waitOn('s3')
-      await ff('05:13:30', { until: 0.2 })
-      await reply(M.mergeready3, { think: 300, reveal: 2400 })
-      await viewPr({ ticket: 'ALBUM-3', ...prOf(16), depth: 'skim', tabs: ['conversation', 'files'] })
+      await ff('05:13:30', { ms: 900 })
+      await reply(M.mergeready3, { think: 200, reveal: 1000 })
+      await viewPr({ ticket: 'ALBUM-3', ...prOf(16), stay: true, at: 'Twenty one' })
+      await filesChanged({ at: 'about right' })
+      await backToDash({ at: 'fresh' })
       await clock('05:16:23')
-      await approve('ALBUM-3')
+      await approve('ALBUM-3', { at: 'Merge it' })
     },
   },
   {
     say: "Now it gets fun, because two tickets just unblocked, and they don't depend on each other. Data model, and catalog search. {pause} So I start both. Two spec writers, side by side.",
     run: async () => {
       await clock('05:16:58')
-      await reply(M.merged3, { think: 200, reveal: 1800 })
-      await dashTab('backlog')
-      await ff('05:17:28', { ms: 1000 })
-      await startShipping('ALBUM-4')
+      await reply(M.merged3, { think: 200, reveal: 1600 })
+      await dashTab('backlog', { at: 'unblocked' })
+      await ff('05:17:28', { ms: 500 })
+      await startShipping('ALBUM-4', { at: 'Data model' })
       await clock('05:17:41')
-      await startShipping('ALBUM-5')
+      await startShipping('ALBUM-5', { at: 'So I start' })
       await clock('05:17:46')
       await card(S4)
       await clock('05:17:57')
       await card(S5)
-      await reply(M.started45, { think: 300, reveal: 2000 })
+      await reply(M.started45, { think: 300, reveal: 1400 })
       await waitOn(['s4', 's5'])
       await dashTab('ship')
-      await ff('05:19:52', { ms: 3000 })
+      await ff('05:19:52', { ms: 1000 })
     },
   },
   {
     say: "Both specs land within three minutes. The data model's straightforward. Six tables, and ratings are never stored, they're computed. {pause} Search is the interesting one. It went with MusicBrainz, because it's the only free catalog that groups all the editions of an album into one. {pause} That's exactly the problem I was worried about. Approve both.",
     run: async () => {
-      await reply(M.spec4, { think: 300, reveal: 2000 })
-      await viewSpec({ ticket: 'ALBUM-4', sha: '07ea805', depth: 'skim' })
-      await ff('05:21:12', { ms: 1500 })
-      await reply(M.spec5, { think: 300, reveal: 2000 })
-      await viewSpec({ ticket: 'ALBUM-5', sha: '607a5f3', depth: 'skim', scrollTo: 'Choosing the catalog', ms: 4000 })
+      await closeOldTabs()
+      await ff('05:21:12', { ms: 1000 })
+      await reply(M.spec4, { think: 200, reveal: 1000 })
+      await viewSpec({ ticket: 'ALBUM-4', sha: '07ea805', stay: true, at: 'Six tables' })
+      await reply(M.spec5, { think: 100, reveal: 300 })
+      await closeOldTabs()
+      await scrollToHeading('Schema', 900)
+      await backToDash({ at: 'Search is' })
+      await viewSpec({ ticket: 'ALBUM-5', sha: '607a5f3', stay: true, at: 'It went with' })
+      await scrollToHeading('Choosing the catalog')
+      await backToDash({ at: "That's exactly" })
       await clock('05:22:49')
-      await approve('ALBUM-4')
+      await approve('ALBUM-4', { at: 'Approve' })
       await clock('05:22:53')
       await approve('ALBUM-5')
       await patchCard('s4', { model: SONNET })
       await patchCard('s5', { model: SONNET })
+      await closeOldTabs()
     },
   },
   {
     say: "Two builds running now, and you can see them both on the board. {pause} Search finishes first. Forty one tests, covers load straight from the archive, and there's a placeholder when one's missing. Looks good to me. Merge.",
+    delay: 1.4,
     run: async () => {
       await clock('05:23:08')
-      await reply(M.both45, { think: 300, reveal: 1600 })
+      await reply(M.both45, { think: 200, reveal: 1000 })
       await waitOn(['s4', 's5'])
-      await openPanel('ALBUM-4', 'agents')
-      await openPanel('ALBUM-5', 'agents')
-      await ff('05:31:42', { until: 0.3 })
-      await reply(M.mergeready5, { think: 300, reveal: 2400 })
-      await viewPr({ ticket: 'ALBUM-5', ...prOf(17), depth: 'skim', tabs: ['conversation', 'files'] })
+      await openPanel('ALBUM-4', 'agents', { at: 'running' })
+      await openPanel('ALBUM-5', 'agents', { at: 'see them' })
+      await ff('05:31:42', { until: 'Search finishes' })
+      await reply(M.mergeready5, { think: 150, reveal: 500 })
+      await viewPr({ ticket: 'ALBUM-5', ...prOf(17), stay: true, at: 'Forty one' })
+      await filesChanged({ at: 'from the archive' })
+      await backToDash({ at: "when one's missing" })
       await clock('05:32:45')
-      await approve('ALBUM-5')
+      await approve('ALBUM-5', { at: 'Merge.' })
     },
   },
   {
     say: "Oh, and this is kind of neat. The chief of staff hit its context limit, so it wrote itself some notes, reset, and picked up right where it left off. {pause} Meanwhile the data model pull request had a conflict with the search one I just merged. Its agent sorted that out on its own, and it's ready. Merge.",
     run: async () => {
       await clock('05:32:57')
-      await reply(M.merging5, { think: 200, reveal: 1200 })
+      await reply(M.merging5, { think: 200, reveal: 800 })
+      await closeOldTabs()
       await clock('05:33:09')
+      await until('hit its context')
       await sent('CHIEF OF STAFF RESET a7c3e19d. Run /chief-of-staff take over.', { sender: 'Chief of staff reset' })
-      await reply(M.reset1, { think: 300, reveal: 1800 })
-      await ff('05:36:03', { ms: 1800 })
-      await reply(M.takeover1, { think: 200, reveal: 2200 })
-      await ff('05:38:57', { until: 0.6 })
-      await reply(M.mergeready4, { think: 300, reveal: 2400 })
-      await viewPr({ ticket: 'ALBUM-4', ...prOf(18), depth: 'skim' })
+      await reply(M.reset1, { think: 200, reveal: 1200 })
+      await ff('05:36:03', { until: 'picked up' })
+      await reply(M.takeover1, { think: 200, reveal: 1400 })
+      await ff('05:38:57', { ms: 400 })
+      await until('Meanwhile')
+      await reply(M.mergeready4, { think: 200, reveal: 1800 })
+      await viewPr({ ticket: 'ALBUM-4', ...prOf(18), stay: true, at: 'conflict' })
+      await scrollGhBy(0.3, 1500)
+      await backToDash({ at: 'on its own' })
       await clock('05:39:16')
-      await approve('ALBUM-4')
+      await approve('ALBUM-4', { at: 'Merge.' })
     },
   },
   {
     say: "At this point I get lazy and just say, mark everything that's unblocked. {pause} That's three tickets. The Elo engine, the spreadsheet import, and deployment. Only two specs can run at a time, so the third one waits its turn.",
+    delay: 1.2,
     run: async () => {
       await clock('05:39:53')
-      await reply(M.merged4, { think: 200, reveal: 1600 })
-      await ff('05:41:35', { ms: 1200 })
-      await type('mark all unblocked tickets todo', { ms: 1800 })
+      await reply(M.merged4, { think: 200, reveal: 1000 })
+      await ff('05:41:35', { ms: 600 })
+      await type('mark all unblocked tickets todo', { ms: 1800, at: 'unblocked' })
       await clock('05:42:42')
       await card(S7)
       await card(S10)
-      await reply(M.todo3, { think: 400, reveal: 2200 })
+      await reply(M.todo3, { think: 300, reveal: 1600 })
       await waitOn(['s7', 's10'])
-      await until(0.6)
-      await ff('05:43:30', { ms: 1200 })
+      await ff('05:43:30', { until: 0.9 })
     },
   },
   {
     say: "Elo spec's back. Ratings start at fifteen hundred, and they're replayed from my answers every time, never stored. Undo just deletes the last answer. {pause} Fine by me. Approve.",
+    delay: 2.2,
     run: async () => {
-      await ff('05:44:20', { ms: 1200 })
-      await reply(M.spec7, { think: 300, reveal: 2200 })
-      await viewSpec({ ticket: 'ALBUM-7', sha: 'd99fe7c', depth: 'skim', scrollTo: 'Rating engine', ms: 4000 })
+      await closeOldTabs()
+      await ff('05:44:20', { ms: 900 })
+      await reply(M.spec7, { think: 200, reveal: 1000 })
+      await viewSpec({ ticket: 'ALBUM-7', sha: 'd99fe7c', stay: true, at: 'Ratings start' })
+      await scrollToHeading('Rating engine')
+      await backToDash({ at: 'Fine by me' })
       await clock('05:44:32')
-      await approve('ALBUM-7')
+      await approve('ALBUM-7', { at: 'Approve' })
       await patchCard('s7', { model: SONNET })
       await clock('05:44:50')
-      await reply(M.built7, { think: 200, reveal: 1800 })
+      await reply(M.built7, { think: 200, reveal: 800 })
       await card(S14)
-      await ff('05:46:11', { ms: 1200 })
-      await reply(M.spec10, { think: 200, reveal: 1800 })
+      await ff('05:46:11', { ms: 900 })
+      await reply(M.spec10, { think: 200, reveal: 800 })
     },
   },
   {
     say: "While the import spec finishes, I ask for a new ticket. I want the app to log what I do in the browser, so I can replay my testing later. {pause} And the import spec looks right. About fifteen minutes to pull in all seven hundred and fifty two rows. Approve.",
     run: async () => {
       await clock('05:46:20')
-      await type('add a ticket to add frontend event tracking so that i can replay my browser testing in the replay renderer (being worked on in another thread)', { ms: 3500 })
+      await type('add a ticket to add frontend event tracking so that i can replay my browser testing in the replay renderer (being worked on in another thread)', { ms: 3000, at: 'the app to log' })
       await clock('05:46:29')
       await card(H19)
-      await reply(M.helper19, { think: 200, reveal: 900 })
+      await reply(M.helper19, { think: 200, reveal: 600 })
       await waitOn('h19')
-      await viewSpec({ ticket: 'ALBUM-10', sha: '9c01385', depth: 'skim' })
+      await closeOldTabs()
+      await viewSpec({ ticket: 'ALBUM-10', sha: '9c01385', stay: true, at: 'And the import spec' })
+      await scrollToHeading('Running it')
+      await backToDash({ at: 'seven hundred' })
       await clock('05:46:35')
-      await approve('ALBUM-10')
+      await approve('ALBUM-10', { at: 'Approve' })
       await patchCard('s10', { model: SONNET })
       await clock('05:46:48')
-      await reply(M.built10, { think: 200, reveal: 1400 })
+      await reply(M.built10, { think: 200, reveal: 800 })
       await clock('05:46:53')
-      await reply(M.ticket19, { think: 200, reveal: 1800 })
+      await reply(M.ticket19, { think: 200, reveal: 800 })
     },
   },
   {
     say: "One more ticket. I want proper local previews. One for main, and one for any ticket I want to poke at. {pause} And then the deploy spec shows up. Fly dot io, a login page, a few dollars a month. {pause} It's reasonable, but I haven't even run this thing locally yet. So, not now. Back to the backlog.",
     run: async () => {
       await clock('05:47:26')
-      await type('add a ticket to formalize how to run local testing environments, with a main preview based off the main branch, and the ability to show previews of any ticket on other local ports', { ms: 3500 })
+      await type('add a ticket to formalize how to run local testing environments, with a main preview based off the main branch, and the ability to show previews of any ticket on other local ports', { ms: 3000, at: 'any ticket' })
       await clock('05:47:33')
       await card(H20)
-      await reply(M.helper20, { think: 200, reveal: 800 })
+      await reply(M.helper20, { think: 200, reveal: 600 })
       await waitOn('h20')
-      await ff('05:47:49', { ms: 900 })
-      await reply(M.spec14, { think: 200, reveal: 2000 })
-      await viewSpec({ ticket: 'ALBUM-14', sha: 'b0e86b7', depth: 'read', scrollTo: 'Choosing the host', ms: 3000 })
+      await closeOldTabs()
+      await ff('05:47:49', { ms: 400 })
+      await until('deploy spec')
+      await reply(M.spec14, { think: 200, reveal: 1000 })
+      await viewSpec({ ticket: 'ALBUM-14', sha: 'b0e86b7', stay: true, at: 'Fly dot' })
+      await scrollToHeading('Choosing the host', 1200)
+      await backToDash({ at: 'a month' })
       await clock('05:48:05')
-      await reply(M.ticket20, { think: 200, reveal: 1400 })
+      await reply(M.ticket20, { think: 100, reveal: 600 })
       await clock('05:48:20')
-      await type('hold off on 14 for now, move it back to the backlog, i want to test things locally before deploying', { ms: 2800 })
+      await type('hold off on 14 for now, move it back to the backlog, i want to test things locally before deploying', { ms: 2800, at: 'not now' })
       await clock('05:48:38')
-      await reply(M.hold14, { think: 300, reveal: 1800 })
-      await dashTab('backlog')
+      await dashTab('backlog', { at: 'the backlog' })
+      await reply(M.hold14, { think: 200, reveal: 1000 })
     },
   },
   {
     say: "Mark the unblocked ones again, and now there are four agents going at once, which is the cap. {pause} The two new specs come back fast. Previews on port four thousand, plus the ticket number. Nice. Approve both. They'll build as soon as there's a free slot.",
     run: async () => {
       await clock('05:48:55')
-      await type('mark any unblocked tickets as todo', { ms: 1800 })
+      await type('mark any unblocked tickets as todo', { ms: 1800, at: 'four agents' })
       await clock('05:49:24')
       await card(S19)
       await clock('05:49:30')
       await card(S20)
-      await reply(M.four, { think: 300, reveal: 2400 })
+      await reply(M.four, { think: 200, reveal: 1400 })
       await waitOn(['s19', 's20'])
       await dashTab('ship')
-      await ff('05:51:03', { ms: 1800 })
-      await reply(M.spec20, { think: 200, reveal: 1600 })
-      await viewSpec({ ticket: 'ALBUM-20', sha: '1296400', depth: 'skim' })
-      await ff('05:51:35', { ms: 900 })
-      await reply(M.spec19, { think: 200, reveal: 1600 })
-      await viewSpec({ ticket: 'ALBUM-19', sha: 'ad4400f', depth: 'skim' })
+      await closeOldTabs()
+      await ff('05:51:03', { ms: 400 })
+      await until('The two new specs')
+      await reply(M.spec20, { think: 150, reveal: 800 })
+      await viewSpec({ ticket: 'ALBUM-20', sha: '1296400', stay: true, at: 'Previews' })
+      await scrollToHeading('Ticket preview')
+      await backToDash({ at: 'Nice' })
+      await pauseVoice('Approve both')
+      await ff('05:51:35', { ms: 400 })
+      await reply(M.spec19, { think: 150, reveal: 700 })
+      await closeOldTabs()
+      await viewSpec({ ticket: 'ALBUM-19', sha: 'ad4400f', stay: true })
+      await scrollGhBy(0.3, 900)
+      await backToDash()
       await clock('05:51:39')
-      await approve('ALBUM-20')
+      resumeVoice()
+      await approve('ALBUM-20', { at: 'Approve' })
       await clock('05:51:44')
       await approve('ALBUM-19')
       await clock('05:51:59')
-      await reply(M.queued, { think: 200, reveal: 1800 })
+      await reply(M.queued, { think: 200, reveal: 1000 })
     },
   },
   {
     say: "Actually, I've been thinking about that deploy ticket. {pause} I'd rather it go on AWS. Staging and production, in a fresh account. And I don't want to pay for servers that sit there doing nothing, so, pay for what I use. {pause} A helper rewrites the ticket both times, and it stays parked until I'm ready.",
+    delay: 1.5,
     run: async () => {
       await dashTab('backlog')
       await clock('05:52:34')
-      await type('changes 14: deploy to aws with separate staging and production environments colocated on a new account i\'ll create', { ms: 3000 })
+      await type('changes 14: deploy to aws with separate staging and production environments colocated on a new account i\'ll create', { ms: 3000, at: 'on AWS' })
       await clock('05:52:49')
       await card(H14A)
-      await reply(M.aws1, { think: 200, reveal: 1800 })
+      await reply(M.aws1, { think: 200, reveal: 800 })
       await waitOn('h14a')
-      await ff('05:53:32', { ms: 1500 })
-      await reply(M.aws2, { think: 200, reveal: 1800 })
+      await ff('05:53:32', { ms: 700 })
+      await reply(M.aws2, { think: 200, reveal: 800 })
       await clock('05:54:18')
-      await type("changes 14: make sure the aws deployment is architected such that as much as possible is pay for what you use, rather than long living services i'm constantly paying for", { ms: 3200 })
+      await type("changes 14: make sure the aws deployment is architected such that as much as possible is pay for what you use, rather than long living services i'm constantly paying for", { ms: 3200, at: 'what I use' })
       await clock('05:54:31')
       await card(H14B)
-      await reply(M.aws3, { think: 200, reveal: 1600 })
+      await reply(M.aws3, { think: 200, reveal: 800 })
       await waitOn('h14b')
     },
   },
   {
     say: "And the Elo engine's ready to merge already. {pause} Sixty new tests, and there's a matchup screen in the app now. The security review did flag that undo has no login in front of it. That's what the password gate is for, so I'm okay with it. Merge.",
+    delay: 1.2,
     run: async () => {
       await dashTab('ship')
+      await closeOldTabs()
       await clock('05:54:55')
-      await viewPr({ ticket: 'ALBUM-7', ...prOf(21), depth: 'skim', tabs: ['conversation', 'files'] })
+      await viewPr({ ticket: 'ALBUM-7', ...prOf(21), stay: true, at: 'Sixty new tests' })
+      await filesChanged({ at: 'matchup screen' })
+      await backToDash({ at: 'is for' })
       await clock('05:55:04')
-      await approve('ALBUM-7')
+      await approve('ALBUM-7', { at: 'Merge.' })
       await clock('05:55:12')
       await patchCard('s20', { model: SONNET })
-      await ff('05:55:35', { ms: 1500 })
-      await reply(M.merged7, { think: 300, reveal: 2600 })
-      await reply(M.aws4, { think: 200, reveal: 1400 })
+      await ff('05:55:35', { ms: 1000 })
+      await reply(M.merged7, { think: 200, reveal: 1400 })
+      await reply(M.aws4, { think: 100, reveal: 600 })
     },
   },
   {
     say: "With that in, the last three screens are unblocked. The year ranking page, artist views, decade lists. {pause} Start all three. {pause} Two of the specs come back, I read them, approve, and they queue up behind the builds that are already running.",
+    delay: 2.2,
     run: async () => {
-      await ff('05:56:16', { ms: 900 })
-      await type('are there any more tickets with no blockers to start shipping?', { ms: 2800 })
+      await clock('05:56:16')
+      await type('are there any more tickets with no blockers to start shipping?', { ms: 1800, at: 'With that in' })
       await clock('05:56:25')
-      await reply(M.unblocked, { think: 300, reveal: 2200 })
+      await reply(M.unblocked, { think: 200, reveal: 1400 })
       await clock('05:56:38')
-      await type('start all 3', { ms: 900 })
+      await type('start all 3', { ms: 900, at: 'Start all' })
+      await pauseVoice('Two of the specs')
       await clock('05:56:59')
       await card(S6)
       await clock('05:57:04')
       await card(S8)
-      await reply(M.all3, { think: 300, reveal: 2200 })
+      await reply(M.all3, { think: 200, reveal: 1000 })
       await waitOn(['s6', 's8'])
-      await ff('05:58:34', { ms: 2000 })
-      await reply(M.spec8, { think: 200, reveal: 1800 })
+      await ff('05:58:34', { ms: 700 })
+      await reply(M.spec8, { think: 150, reveal: 800 })
       await clock('05:58:43')
       await sent('CHIEF OF STAFF RESET b4d8f2a6. Run /chief-of-staff take over.', { sender: 'Chief of staff reset' })
-      await reply(M.reset2, { think: 200, reveal: 600 })
-      await reply(M.takeover2, { think: 200, reveal: 1200 })
-      await ff('05:59:20', { ms: 900 })
-      await viewSpec({ ticket: 'ALBUM-8', sha: '00f5d42', depth: 'skim' })
-      await viewSpec({ ticket: 'ALBUM-6', sha: 'a58fba1', depth: 'skim' })
+      await reply(M.reset2, { think: 150, reveal: 400 })
+      await reply(M.takeover2, { think: 150, reveal: 800 })
+      await ff('05:59:20', { ms: 600 })
+      await closeOldTabs()
+      resumeVoice(0)
+      await viewSpec({ ticket: 'ALBUM-8', sha: '00f5d42', stay: true, at: 'I read' })
+      await pauseVoice('approve,')
+      await scrollGhBy(0.3, 900)
+      await backToDash()
+      await closeOldTabs()
+      await viewSpec({ ticket: 'ALBUM-6', sha: 'a58fba1', stay: true })
+      await scrollGhBy(0.3, 900)
+      await backToDash()
       await clock('06:01:12')
-      await approve('ALBUM-8')
+      resumeVoice()
+      await approve('ALBUM-8', { at: 'approve,' })
       await clock('06:01:16')
       await approve('ALBUM-6')
       await reply(M.queued68, { think: 200, reveal: 800 })
@@ -875,14 +945,14 @@ export const beats = [
   {
     say: "So that's where things are. It's about one in the morning. {pause} Five tickets merged, two building, three more queued, and one last spec being written. The whole night's cost about thirty two dollars. {pause} I describe what I want, I read the specs, I read the pull requests, and I say yes or no. Everything in between, the team handles.",
     run: async () => {
-      await ff('06:04:18', { ms: 1800 })
+      await ff('06:04:18', { ms: 800 })
       await card(S9)
-      await reply(M.takeover2done, { think: 300, reveal: 2400 })
-      await ff('06:05:21', { ms: 1500 })
-      await until(0.45)
-      await dashTab('done')
-      await openPanel('ALBUM-7', 'agents', 'merged')
-      await until(0.97)
+      await reply(M.takeover2done, { think: 150, reveal: 1000 })
+      await ff('06:05:21', { ms: 700 })
+      await dashTab('done', { at: 'tickets merged' })
+      await dashTab('ship', { at: 'two building' })
+      await dashTab('done', { at: "whole night's" })
+      await openPanel('ALBUM-7', 'agents', 'merged', { at: 'thirty two' })
     },
   },
 ]

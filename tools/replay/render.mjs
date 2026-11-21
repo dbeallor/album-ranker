@@ -6,9 +6,10 @@ import fs from 'fs'
 import path from 'path'
 import { launch, close } from './lib/director.mjs'
 import { startBeat, endBeat, totalSeconds, estimateSeconds, frameList } from './lib/recorder.mjs'
-import { speak, assemble } from './lib/media.mjs'
+import { speak, peek, assemble } from './lib/media.mjs'
 import { charsSynthesized, resolveProvider } from './lib/voice.mjs'
 import { beatRange } from './lib/beat-range.mjs'
+import { cueLookup } from './lib/timing.mjs'
 
 const ROOT = path.dirname(new URL(import.meta.url).pathname)
 const OUT = path.join(ROOT, 'out')
@@ -22,9 +23,16 @@ const shown = (i) => !only || only.has(i)
 
 const stamp = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-function report(i, voiceS, scene, estimated) {
-  console.log(`beat ${i}: narration ${estimated ? '~' : ''}${voiceS.toFixed(1)}s, scene ${scene.seconds.toFixed(1)}s${dry ? '' : `, video so far ${totalSeconds().toFixed(0)}s`}`)
-  for (const l of scene.late) console.log(`  late: until(${l.fraction}) came ${l.byS.toFixed(1)}s after its point in the narration`)
+const syncLog = []
+
+function report(i, voiceS, scene, estimated, start) {
+  const tail = scene.seconds - scene.delay - voiceS - scene.gaps.reduce((n, g) => n + g.seconds, 0)
+  console.log(`beat ${i}: narration ${estimated ? '~' : ''}${voiceS.toFixed(1)}s${scene.delay ? ` after ${scene.delay.toFixed(1)}s`: ''}, scene ${scene.seconds.toFixed(1)}s, silent tail ${tail.toFixed(1)}s${dry ? '' : `, video so far ${totalSeconds().toFixed(0)}s`}`)
+  for (const l of scene.late) console.log(l.word ? `  late: cue "${l.word}" came ${l.byS.toFixed(1)}s after its word` : `  late: until(${l.fraction}) came ${l.byS.toFixed(1)}s after its point in the narration`)
+  for (const c of scene.syncs) {
+    console.log(`  cue "${c.word}": word ${c.wordS.toFixed(2)}s, action ${c.actionS.toFixed(2)}s (${c.actionS >= c.wordS ? '+' : ''}${(c.actionS - c.wordS).toFixed(2)}s)`)
+    syncLog.push({ beat: i, word: c.word, wordS: c.wordS, actionS: c.actionS, wordAt: start + c.wordS, actionAt: start + c.actionS, estimated })
+  }
   if (dry) for (const a of scene.actions) console.log(`  +${a.at.toFixed(1)}s ${a.text}`)
 }
 
@@ -36,26 +44,29 @@ let planned = 0
 for (const [i, beat] of beats.entries()) {
   if (!shown(i)) { startBeat(beat, null); await beat.run(); await endBeat(); continue }
   if (dry) {
-    const voiceS = beat.say ? estimateSeconds(beat.say) : 0
-    startBeat(beat, voiceS, { plan: true })
+    const heard = beat.say ? peek(beat.say, { previous: beats[i - 1]?.say, next: beats[i + 1]?.say }) : null
+    const voiceS = heard?.seconds ?? (beat.say ? estimateSeconds(beat.say) : 0)
+    startBeat(beat, voiceS, { plan: true, lookup: beat.say ? cueLookup(beat.say, heard?.alignment ?? null, voiceS) : null })
     await beat.run()
     const scene = await endBeat({ plan: true })
+    report(i, voiceS, scene, !heard, planned)
     planned += scene.seconds
-    report(i, voiceS, scene, true)
     continue
   }
   const voice = beat.say ? await speak(beat.say, AUDIO, `beat${i}`, { previous: beats[i - 1]?.say, next: beats[i + 1]?.say }) : { file: null, seconds: 0 }
-  startBeat(beat, voice.seconds)
+  const start = totalSeconds()
+  startBeat(beat, voice.seconds, { lookup: beat.say ? cueLookup(beat.say, voice.alignment, voice.seconds) : null })
   await beat.run()
   const scene = await endBeat()
-  narrated.push({ file: voice.file, seconds: scene.seconds })
-  report(i, voice.seconds, scene)
+  narrated.push({ file: voice.file, seconds: scene.seconds, delay: scene.delay, gaps: scene.gaps })
+  report(i, voice.seconds, scene, !voice.alignment, start)
 }
 await close()
 
 if (dry) {
   console.log(`dry run: ${stamp(planned)} of video planned, nothing rendered`)
 } else {
+  fs.writeFileSync(path.join(OUT, 'sync.json'), JSON.stringify(syncLog, null, 1))
   const final = process.env.FINAL || path.join(OUT, 'replay.mp4')
   const len = assemble(frameList(), narrated, OUT, final)
   const billed = resolveProvider().name === 'elevenlabs' ? `, ${charsSynthesized()} ElevenLabs characters synthesized` : ''
