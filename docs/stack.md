@@ -11,6 +11,7 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Tests | Vitest, with React Testing Library and jsdom for components |
 | Lint | ESLint with the Next.js config (flat config) |
 | Typecheck | `tsc --noEmit` |
+| Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
 | Database (later, #4) | SQLite in one file. The driver and any ORM are #4's call |
 
 TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
