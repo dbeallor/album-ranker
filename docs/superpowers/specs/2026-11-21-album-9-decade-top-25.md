@@ -1,6 +1,7 @@
 # Decade top 25 lists
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #28, as specified
 **Date:** 2026-11-21
 **Ticket:** [ALBUM-9](https://github.com/dbeallor/album-ranker/issues/9), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Decade top 25, [data model and storage](2026-11-21-album-4-data-model-storage.md), [Elo engine and matchups](2026-11-21-album-7-elo-matchup.md). Shares its drag and drop choices with the per-year ranking screen spec (ALBUM-6, on `feat/album-6-year-ranking-screen`).
