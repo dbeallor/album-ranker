@@ -1,7 +1,8 @@
 # Artist views by decade and overall
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #26, as specified
 **Ticket:** [ALBUM-8](https://github.com/dbeallor/album-ranker/issues/8), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § MVP features 4 and § Artist score; [Elo rating engine](2026-11-21-album-7-elo-matchup.md) § Artist score
 
