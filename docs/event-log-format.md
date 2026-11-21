@@ -1,8 +1,19 @@
 # Browser test event log format
 
-For the author of the replay renderer. A browser test (`npm run test:e2e`) records what it does in the page and writes it as `events.json`, one file per test, in Playwright's output folder for that test (`test-results/e2e/<test folder>/events.json`). The file is also attached to the test report. The source of truth for the types is [`e2e/recorder/recorder.ts`](../e2e/recorder/recorder.ts) (`EventLog`, `RecordedEvent`, `ElementInfo`); the design is in [the ALBUM-19 spec](superpowers/specs/2026-11-21-album-19-browser-event-log.md).
+For the author of the replay renderer. Two things write this log as `events.json`:
 
-This is version 1. It is a proposal that was not agreed with the renderer; if the renderer needs something else, change this file and the recorder together.
+- **A browser test** (`npm run test:e2e`), one file per test, in Playwright's output folder for that test (`test-results/e2e/<test folder>/events.json`). The file is also attached to the test report.
+- **A session you click through** (`npm run record`), one file per session, in `recordings/<YYYYMMDD-HHMMSS>-<port>/events.json` (see [How to record](#how-to-record)).
+
+The source of truth for the types is [`e2e/recorder/recorder.ts`](../e2e/recorder/recorder.ts) (`EventLog`, `LogSource`, `RecordedEvent`, `ElementInfo`); the designs are in the [ALBUM-19 spec](superpowers/specs/2026-11-21-album-19-browser-event-log.md) and the [ALBUM-30 spec](superpowers/specs/2026-11-21-album-30-record-local-previews.md).
+
+This is version 2. It is a proposal that was not agreed with the renderer; if the renderer needs something else, change this file and the recorder together.
+
+### Changes from version 1
+
+- New `source` object saying where the log came from (see [Source](#source)).
+- `test` is optional: only Playwright runs have it. A version 1 reader could rely on `test` being a string, so this is version 2, not an additive change.
+- Events, `startedAt`, `viewport` and the `seq`/`t` rules are unchanged. Nothing read version 1 yet.
 
 ## File
 
@@ -11,8 +22,15 @@ JSON, UTF-8, one object:
 ```json
 {
   "format": "album-ranker-events",
-  "version": 1,
-  "test": "search page: search for an album",
+  "version": 2,
+  "source": {
+    "kind": "preview",
+    "host": "localhost:4030",
+    "preview": "30",
+    "branch": "feat/album-30-record-events-local-previews",
+    "worktree": "/Users/me/album-ranker-30",
+    "commit": "3abd2de0c1f4..."
+  },
   "startedAt": "2026-11-21T15:04:05.123Z",
   "viewport": { "width": 1280, "height": 720 },
   "events": [
@@ -27,11 +45,25 @@ JSON, UTF-8, one object:
 }
 ```
 
-- `format`, `version`: check these first. `version` is `1`.
-- `test`: the test's full title.
+- `format`, `version`: check these first. `version` is `2`.
+- `source`: where the log came from, below.
+- `test`: the test's full title, for example `"search page: search for an album"`. Only in a Playwright run; the example above is a recorded session, so it has none.
 - `startedAt`: ISO time of the first event, so the first event has `t: 0`.
-- `viewport`: the page size in CSS pixels, or `null` if the test did not set one.
+- `viewport`: the page size in CSS pixels, or `null` if none was set.
 - `events`: the ordered log.
+
+## Source
+
+| Field | Meaning |
+|---|---|
+| `host` | Always present. Host and port of the app, for example `localhost:3000`, `127.0.0.1:3100`. |
+| `kind` | `"playwright"` (a browser test), `"preview"` (a `npm run preview` target) or `"dev"` (a `next dev` server). Left out for any other server. |
+| `preview` | The preview's target (`main`, `30` or a branch name). Previews only. |
+| `branch` | The checkout's branch. Left out on a detached HEAD. |
+| `worktree` | Path of the checkout the app runs from. |
+| `commit` | Full SHA. For the main preview, the commit built when the preview started. For anything else, HEAD of the checkout when the recording started. A dirty working tree is not flagged. |
+
+Every field except `host` is left out when it can't be known, never guessed or set to `null`. Two logs from two previews always differ in `host`, and in `preview` and `branch`.
 
 ## Events
 
@@ -65,3 +97,13 @@ Find the element by `selector`. If the page no longer matches, fall back to `tag
 ## What is not recorded
 
 Scrolling, hover, mouse movement, keys other than through `input` and `submit`, DOM snapshots, screenshots and video.
+
+## How to record
+
+```
+npm run record -- <target> [--out <dir>] [--viewport <W>x<H>]
+```
+
+`<target>` is `main`, a ticket number or a branch (the running preview of it), a port (`3000`) or a URL on `localhost`, `127.0.0.1` or `[::1]`. The command opens a Chromium window (one-time install: `npx playwright install chromium`) on that app. You click through it; closing the window or pressing Ctrl-C ends the session and writes the log. The first event is the `load` of the opened URL. The viewport is fixed at 1280x720 unless `--viewport` says otherwise, and the log's `viewport` is that size. Cover images load normally in a recording; the browser test blocks them.
+
+Nothing records while the command isn't running: the app has no recorder code and no endpoint.
