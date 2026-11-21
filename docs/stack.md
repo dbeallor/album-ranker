@@ -12,7 +12,7 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Lint | ESLint with the Next.js config (flat config) |
 | Typecheck | `tsc --noEmit` |
 | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
-| Database (later, #4) | SQLite in one file. The driver and any ORM are #4's call |
+| Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
 
 TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
 
@@ -21,7 +21,7 @@ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
 - **One process for the page and the server.** Server components, route handlers and server actions run on the server, so the SQLite file never reaches the browser and any catalog key stays server-side.
 - **React for the hard screens.** The year page (#6) and the decade list (#9) need drag and drop with keyboard and touch, and React has the most mature libraries for that.
 - **TypeScript end to end.** The Elo replay (#7), the data model (#4) and the import script (#10) share types with the screens.
-- **The import script runs on the same code.** #10 can import the same modules and run with `tsx` (added by #10).
+- **The import script runs on the same code.** #10 can import the same modules and run as a script through Node's type stripping, as `scripts/migrate.ts` does (`npm run db:migrate`).
 - **npm** ships with Node and needs no extra install.
 - **Vitest** runs TypeScript without a build step and covers both pure logic and components.
 
