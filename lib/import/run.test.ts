@@ -73,7 +73,7 @@ describe("importing the fixture spreadsheet", () => {
       [10, 9, "rows differ, kept the first (listed), ignored (honorable mention)"],
     ]);
     expect(summary.conflictingPlacement.map((row) => row.key.title)).toEqual(["Fake Album Five"]);
-    expect(summary.droppedDecadeRank.map((row) => [row.key.title, row.droppedDecadeRank])).toEqual([["Fake Album Eleven", 5]]);
+    expect(summary.droppedDecadeRank.map((row) => [row.key.title, row.droppedDecadeRank])).toEqual([["Fake Album Eleven", "decade rank 5 on a listed album"]]);
     expect(search).toHaveBeenCalledTimes(14);
   });
 

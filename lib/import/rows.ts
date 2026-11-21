@@ -57,14 +57,22 @@ export function mapRow(raw: RawRow): MapResult {
   if (rank !== null && (Number.isNaN(rank) || rank < 1 || rank > 10)) {
     return { ok: false, reason: `rank "${text(raw.rank)}" is outside 1 to 10` };
   }
-  const decadeRank = wholeNumber(raw.decadeRank);
-  if (decadeRank !== null && (Number.isNaN(decadeRank) || decadeRank < 1 || decadeRank > 25)) {
-    return { ok: false, reason: `decade rank "${text(raw.decadeRank)}" is outside 1 to 25` };
+  // A bad decade rank costs the row only its decade rank: it is dropped and named, the row is still imported.
+  const rawDecadeRank = wholeNumber(raw.decadeRank);
+  let decadeRank: number | null = null;
+  let droppedDecadeRank: string | null = null;
+  if (rawDecadeRank !== null) {
+    if (Number.isNaN(rawDecadeRank)) droppedDecadeRank = `decade rank "${text(raw.decadeRank)}" is not a whole number`;
+    else if (rawDecadeRank < 1 || rawDecadeRank > 25) droppedDecadeRank = `decade rank ${rawDecadeRank} is outside 1 to 25`;
+    else decadeRank = rawDecadeRank;
   }
 
   const honorableMention = isHonorableMention(raw.honorableMention);
   const placement: Placement = honorableMention ? "honorable_mention" : rank !== null ? "ranked" : "listed";
-  const keepsDecadeRank = placement !== "listed";
+  if (decadeRank !== null && placement === "listed") {
+    droppedDecadeRank = `decade rank ${decadeRank} on a listed album`;
+    decadeRank = null;
+  }
 
   return {
     ok: true,
@@ -73,9 +81,9 @@ export function mapRow(raw: RawRow): MapResult {
       key: { title, artist, year },
       placement,
       rank: placement === "ranked" ? rank : null,
-      decadeRank: keepsDecadeRank ? decadeRank : null,
+      decadeRank,
       conflictingPlacement: honorableMention && rank !== null ? { droppedRank: rank } : null,
-      droppedDecadeRank: !keepsDecadeRank ? decadeRank : null,
+      droppedDecadeRank,
     },
   };
 }

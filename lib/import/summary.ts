@@ -44,7 +44,7 @@ export function formatSummary(summary: ImportSummary): string {
       "Decade rank dropped",
       summary.droppedDecadeRank.map((row) => ({
         name: describeKey(row.key),
-        note: `decade rank ${row.droppedDecadeRank} on a listed album`,
+        note: row.droppedDecadeRank ?? "",
       })),
     ),
     ...listed(

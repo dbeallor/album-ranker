@@ -40,8 +40,29 @@ describe("mapRow placement", () => {
     const result = mapRow(rawRow({ decadeRank: 5 }));
     expect(result).toMatchObject({
       ok: true,
-      row: { placement: "listed", decadeRank: null, droppedDecadeRank: 5, conflictingPlacement: null },
+      row: { placement: "listed", decadeRank: null, droppedDecadeRank: "decade rank 5 on a listed album", conflictingPlacement: null },
     });
+  });
+});
+
+describe("mapRow invalid decade rank", () => {
+  const cases = [
+    { name: "0", raw: { decadeRank: 0 }, reason: "decade rank 0 is outside 1 to 25" },
+    { name: "26", raw: { decadeRank: 26 }, reason: "decade rank 26 is outside 1 to 25" },
+    { name: "0.25", raw: { decadeRank: 0.25 }, reason: 'decade rank "0.25" is not a whole number' },
+    { name: "text", raw: { decadeRank: "top" }, reason: 'decade rank "top" is not a whole number' },
+  ];
+  it.each(cases)("keeps the row and drops a decade rank of $name", ({ raw, reason }) => {
+    expect(mapRow(rawRow({ rank: 3, ...raw }))).toMatchObject({
+      ok: true,
+      row: { placement: "ranked", rank: 3, decadeRank: null, droppedDecadeRank: reason },
+    });
+  });
+
+  it("counts the row as read and does not invalidate it", () => {
+    const prepared = prepareRows([rawRow({ decadeRank: 0.25 })]);
+    expect(prepared.invalid).toEqual([]);
+    expect(prepared.rows).toHaveLength(1);
   });
 });
 
@@ -59,8 +80,6 @@ describe("mapRow validation", () => {
     { name: "rank 11", raw: { rank: 11 }, reason: 'rank "11" is outside 1 to 10' },
     { name: "a text rank", raw: { rank: "top" }, reason: 'rank "top" is outside 1 to 10' },
     { name: "a fractional rank", raw: { rank: 2.5 }, reason: 'rank "2.5" is outside 1 to 10' },
-    { name: "decade rank 0", raw: { decadeRank: 0 }, reason: 'decade rank "0" is outside 1 to 25' },
-    { name: "decade rank 26", raw: { decadeRank: 26 }, reason: 'decade rank "26" is outside 1 to 25' },
     { name: "an invalid rank even with the honorable mention flag", raw: { rank: 11, honorableMention: 1 }, reason: 'rank "11" is outside 1 to 10' },
   ];
   it.each(cases)("rejects $name", ({ raw, reason }) => {

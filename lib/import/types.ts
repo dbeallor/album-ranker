@@ -22,8 +22,8 @@ export type ImportRow = {
   decadeRank: number | null;
   /** The sheet gave both a rank and the honorable mention flag; the flag won and the rank was dropped. */
   conflictingPlacement: { droppedRank: number } | null;
-  /** The sheet gave a decade rank to a listed row; it was dropped. */
-  droppedDecadeRank: number | null;
+  /** Why the row's decade rank was dropped (listed row, not a whole number, outside 1 to 25); null when it was kept or absent. */
+  droppedDecadeRank: string | null;
 };
 
 /** Searches the catalog; rejects when the catalog can't answer. Tests pass a fake. */

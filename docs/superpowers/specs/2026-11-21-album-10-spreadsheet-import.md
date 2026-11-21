@@ -27,7 +27,7 @@ npm run import -- "/path/to/Best Albums.xlsx"
 - Opens the sheet named `Albums`. A file without it fails with a message naming the sheets it found.
 - Finds the columns by their header in row 1: `Album`, `Artist`, `Year`, `Honorable Mention`, `Decade Top 25 Rank`, and `Rank`. The sheet has two `Rank` columns; the input one is the `Rank` to the right of `Album` (the leading one is a derived label). A missing header fails with a message naming it.
 - Reads cell values only. Formulas, derived columns (`Decade`, `Title`, `Points`, `Total Albums In Year`, `Year Weight`, the weighted score, `DecadeRank`), `New`, `Decade Top 25 Candidate` and every other sheet are ignored.
-- A row with an empty album, artist and year is a blank row and is not counted. A row missing one of the three, a year outside 1900 to 2100, a rank outside 1 to 10, or a decade rank outside 1 to 25 is skipped as invalid and named in the summary.
+- A row with an empty album, artist and year is a blank row and is not counted. A row missing one of the three, a year outside 1900 to 2100, or a rank outside 1 to 10 is skipped as invalid and named in the summary. A decade rank outside 1 to 25 or not a whole number is dropped and named in the summary; the row is still imported.
 - Honorable mention is set when the cell holds a non-zero number, `TRUE`, or text other than `0`, `no` or `false` (the sheet uses `1`).
 
 ### Row mapping
@@ -179,3 +179,4 @@ The year pages themselves are #6. Until it ships, the acceptance is checked thro
 - **The review page lives at `/import`**, linked from the home page only while items are open. No undo.
 - **A new dependency** to read `.xlsx`, read-only. Proposed: `read-excel-file`.
 - **No dry-run mode.** A run takes about 15 minutes; a dry run would double that, and re-running is safe.
+- **A bad decade rank drops only the decade rank.** The decade rank is a side annotation; losing the whole row (its year entry and rank) over a typo in it would cost more than the decade list entry it protects. The summary names the dropped decade rank and why, under "Decade rank dropped", so the user can fix it by hand.
