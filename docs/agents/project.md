@@ -42,9 +42,9 @@ Set the `Tracker` row to `linear`, `github` or `jira`. A missing row or a `TODO(
 
 | Key | Value |
 |---|---|
-| Test | `none yet` |
-| Lint | TODO(dbeallor) |
-| Typecheck | TODO(dbeallor) |
+| Test | `npm test` |
+| Lint | `npm run lint` |
+| Typecheck | `npm run typecheck` |
 | Required CI checks | none (no CI yet) |
 | Agent-team script tests | `python3 -I -m pytest -q scripts` (needs `pytest`, e.g. `uvx pytest -q scripts`) |
 | Docs index listing | `python3 ~/.collective-wisdom/scripts/docs_index.py` (generates one table of every spec, plan and as-built under `docs/superpowers/`) |
@@ -68,12 +68,17 @@ Skills and the Chief of Staff restate these in every child task.
 - The root checkout stays on the merge target branch. Branch work happens in a worktree: `.worktrees/<short-name>/`, or the one T3 Code created under `~/.t3/worktrees/`.
 - Never push to the merge target branch; push only the ticket's own branch (a head from the Branch pattern row).
 - Never commit `.env`, API keys or tokens.
-- none yet
+- Never commit the `data/` folder or any SQLite file.
 
 ## Areas and labels
 
 - Area labels: none yet. Type labels: `Feature`, `Improvement`, `Bug`. Team labels `agent` and `agent-skip` are managed by the Chief of Staff and the approver.
-- Areas (path boundaries per role): none yet.
+- Areas (path boundaries per role):
+  - `app/`: pages, layouts, route handlers and server actions.
+  - `components/`: React components shared between pages.
+  - `lib/`: server and shared logic (config now; database, Elo and catalog later). Server-only modules import `server-only`.
+  - `scripts/`: command-line scripts (the import, #10).
+  - `docs/`: specs, plans and the stack doc.
 
 ## Product rules
 
