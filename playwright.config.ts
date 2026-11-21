@@ -30,6 +30,7 @@ export default defineConfig({
       env: {
         MUSICBRAINZ_URL: `http://127.0.0.1:${STUB_PORT}`,
         DATABASE_PATH: "test-results/db/e2e.db",
+        BACKUP_DIR: "test-results/db/backups",
       },
     },
   ],

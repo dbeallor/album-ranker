@@ -10,6 +10,23 @@ Personal Favorite Album Ranker
 5. `npm run dev`
 6. Open <http://localhost:3000>.
 
+## Back up and restore your data
+
+Your rankings live in one SQLite file: `data/album-ranker.db` in the checkout (or `DATABASE_PATH`). While the app runs, recent answers can sit in its `-wal` and `-shm` files next to it, so copying the `.db` alone can miss them. Deleting the checkout or worktree, or running `git clean -fdx`, deletes its `data/` folder.
+
+Backups go to `~/.album-ranker/backups/`, outside every checkout, so they survive removing a worktree or re-cloning. Set `BACKUP_DIR` to move them. Each database file gets its own subfolder (its name plus a short hash of its path, with a `source.txt` saying which file), so another worktree's test data never pushes your real backups out. Files are named like `20261121T143005Z-manual.db`, and the newest 10 per database are kept. Backups are your personal data: they stay on this machine, are readable only by you, and never go in git.
+
+| Command | What it does |
+|---|---|
+| `npm run db:backup` | Backs up the database now. Safe while the app runs |
+| `npm run db:backup -- list` | Lists the backups, newest first, with size and album, year entry and matchup counts |
+| `npm run db:restore -- latest` | Restores the newest backup |
+| `npm run db:restore -- <file>` | Restores a backup, given as a path or as a file name in this database's backup folder |
+
+- **Restore:** stop the app first (`npm run dev`, and any preview using that file). If a database already exists, it shows what would be replaced and asks you to type `yes`. `--yes` skips the question; with no terminal and no `--yes` it refuses and changes nothing. If the file is still open in another process (the app is running), the restore stops without replacing it. A damaged file that can't be opened is replaced after you confirm, and its raw files are kept in the backup folder as `*-pre-restore-unreadable.db.bak`.
+- **Undo a restore:** the replaced data is saved as a `pre-restore` backup, and restore prints its path. Run `npm run db:restore -- <that file>` to go back.
+- **Migrations:** when `npm run db:migrate` or the app finds a pending migration in an existing database, it takes a `pre-migrate` backup first. If that backup fails, no migration runs.
+
 ## Preview branches
 
 Run `main` and any ticket's worktree side by side, each on its own port and its own SQLite file.
