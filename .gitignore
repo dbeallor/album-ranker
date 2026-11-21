@@ -8,5 +8,6 @@ next-env.d.ts
 data/
 *.db
 *.sqlite*
+*.db-*
 coverage/
 *.tsbuildinfo
