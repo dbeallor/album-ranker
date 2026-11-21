@@ -47,6 +47,24 @@ Any checkout can run these. A ticket preview needs a worktree for its branch, fo
 - **Refresh after a merge:** run `npm run preview -- main` again. It stops the running main preview, rebuilds and starts it. If the root checkout is behind `origin/main`, it warns and prints the `git pull --ff-only` command; it never pulls.
 - **Stop:** `npm run preview -- stop <main|N|branch|all>`.
 
+## Record a session
+
+`npm run record -- <target>` opens a Chromium window on a local app and records what you click, type and submit there, for the replay renderer. One time: `npx playwright install chromium`.
+
+| Command | Records |
+|---|---|
+| `npm run record -- main` | The running main preview (<http://localhost:4000>) |
+| `npm run record -- 30` | The running preview of ticket 30; a branch name works too |
+| `npm run record -- 3000` | `http://localhost:3000`, for example `npm run dev` |
+| `npm run record -- http://localhost:3000/search` | A URL on `localhost`, `127.0.0.1` or `[::1]`; any other host is refused |
+
+If the preview isn't running, the command prints the `npm run preview -- <target>` line that starts it. Click through the app in the window. Close the window or press Ctrl-C to stop; the command prints where it saved the log.
+
+- **Where:** `recordings/<YYYYMMDD-HHMMSS>-<port>/events.json` in the checkout you ran it from (gitignored), or `<dir>/events.json` with `--out <dir>`. While you work the file is rewritten at most once a second, so a crash loses at most the last second.
+- **Viewport:** 1280x720 unless `--viewport <W>x<H>` says otherwise, so click positions match the `viewport` in the log.
+- **Which app:** each log's `source` says where it came from: host and port, and, where the code can tell, the kind of run, preview name, branch, worktree and commit. The fields are in [docs/event-log-format.md](docs/event-log-format.md).
+- **Nothing runs in the app:** the recorder is injected by this command's browser. The app has no recorder code and no endpoint, and a build contains none.
+
 ## Search albums
 
 Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive.
@@ -97,7 +115,7 @@ Playwright drives Chromium against a production build of the app on port 3100, w
 1. One time: `npx playwright install chromium`
 2. `npm run test:e2e`
 
-Each test also records what it does in the page (clicks, typing, form submits, route changes) and writes it as `events.json` in that test's folder under `test-results/e2e/`, for the replay renderer. The format is in [docs/event-log-format.md](docs/event-log-format.md). The recorder is injected by the test; the app's own code never contains it.
+Each test also records what it does in the page (clicks, typing, form submits, route changes) and writes it as `events.json` in that test's folder under `test-results/e2e/`, for the replay renderer. The format is in [docs/event-log-format.md](docs/event-log-format.md). The same recorder runs in `npm run record` ([Record a session](#record-a-session)). The browser injects it; the app's own code never contains it.
 
 Checks:
 

@@ -113,6 +113,7 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
   - Ticket preview: `npm run preview -- <N>` serves that ticket's worktree on port `4000 + N` (ticket 20 is <http://localhost:4020>), using `data/preview.db` in the worktree. A branch with no ticket number needs `--port <p>`.
   - Previews bind to 127.0.0.1 only. A ticket preview needs a worktree, e.g. `git worktree add ../album-ranker-20 -b feat/album-20-short-title origin/main`.
   - `npm run preview -- list` shows running previews; `npm run preview -- stop <main|N|all>` stops them. Point the user at the preview URL after a UI change.
+  - `npm run record -- <main|N|port|url>` opens a recording browser on a running preview or local app and writes `recordings/<time>-<port>/events.json` (gitignored; format in `docs/event-log-format.md`). Nothing records unless you run it.
 
 ## Models
 
