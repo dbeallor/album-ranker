@@ -18,6 +18,10 @@ const cases: Case[] = [
   { name: "MUSICBRAINZ_USER_AGENT set is used", variable: "MUSICBRAINZ_USER_AGENT", field: "musicbrainzUserAgent", env: "album-ranker/0.1 (me@example.com)", expected: "album-ranker/0.1 (me@example.com)" },
   { name: "MUSICBRAINZ_USER_AGENT empty throws", variable: "MUSICBRAINZ_USER_AGENT", field: "musicbrainzUserAgent", env: "", expected: new Error("MUSICBRAINZ_USER_AGENT") },
   { name: "MUSICBRAINZ_USER_AGENT whitespace throws", variable: "MUSICBRAINZ_USER_AGENT", field: "musicbrainzUserAgent", env: "   ", expected: new Error("MUSICBRAINZ_USER_AGENT") },
+  { name: "MUSICBRAINZ_URL unset gives the default", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: undefined, expected: "https://musicbrainz.org" },
+  { name: "MUSICBRAINZ_URL set is used without a trailing slash", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "http://127.0.0.1:3101/", expected: "http://127.0.0.1:3101" },
+  { name: "MUSICBRAINZ_URL empty throws", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "", expected: new Error("MUSICBRAINZ_URL") },
+  { name: "MUSICBRAINZ_URL whitespace throws", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "   ", expected: new Error("MUSICBRAINZ_URL") },
 ];
 
 describe("getConfig", () => {
@@ -28,6 +32,7 @@ describe("getConfig", () => {
   it.each(cases)("$name", ({ variable, field, env, expected }) => {
     vi.stubEnv("DATABASE_PATH", undefined);
     vi.stubEnv("MUSICBRAINZ_USER_AGENT", undefined);
+    vi.stubEnv("MUSICBRAINZ_URL", undefined);
     if (env !== undefined) {
       vi.stubEnv(variable, env);
     }
