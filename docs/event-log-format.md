@@ -1,6 +1,6 @@
 # Browser test event log format
 
-For the author of the replay renderer. A browser test (`npm run test:e2e`) records what it does in the page and writes it as `events.json`, one file per test, in Playwright's output folder for that test (`test-results/<test folder>/events.json`). The file is also attached to the test report. The source of truth for the types is [`e2e/recorder/recorder.ts`](../e2e/recorder/recorder.ts) (`EventLog`, `RecordedEvent`, `ElementInfo`); the design is in [the ALBUM-19 spec](superpowers/specs/2026-11-21-album-19-browser-event-log.md).
+For the author of the replay renderer. A browser test (`npm run test:e2e`) records what it does in the page and writes it as `events.json`, one file per test, in Playwright's output folder for that test (`test-results/e2e/<test folder>/events.json`). The file is also attached to the test report. The source of truth for the types is [`e2e/recorder/recorder.ts`](../e2e/recorder/recorder.ts) (`EventLog`, `RecordedEvent`, `ElementInfo`); the design is in [the ALBUM-19 spec](superpowers/specs/2026-11-21-album-19-browser-event-log.md).
 
 This is version 1. It is a proposal that was not agreed with the renderer; if the renderer needs something else, change this file and the recorder together.
 
