@@ -1,5 +1,7 @@
-import Link from "next/link";
 import { connection } from "next/server";
+import { CardGrid } from "@/components/ui/card-grid";
+import { LinkCard } from "@/components/ui/link-card";
+import { PageHeader } from "@/components/ui/page-header";
 import { getDb } from "@/lib/db/server";
 import { listImportReviewItems } from "@/lib/db/import-review";
 
@@ -9,29 +11,22 @@ export default async function Home() {
   const openItems = listImportReviewItems(getDb(), "open").length;
 
   return (
-    <main>
-      <h1>Album ranker</h1>
-      <p>
-        <Link href="/search">Search albums</Link>
-      </p>
-      <p>
-        <Link href="/years">Year rankings</Link>
-      </p>
-      <p>
-        <Link href="/matchups">Matchups</Link>
-      </p>
-      <p>
-        <Link href="/artists">Artists</Link>
-      </p>
-      <p>
-        <Link href="/decades">Decade lists</Link>
-      </p>
-
-      {openItems > 0 && (
-        <p>
-          <Link href="/import">Import review: {openItems} to check</Link>
-        </p>
-      )}
-    </main>
+    <>
+      <PageHeader title="Album ranker" description="Rank the albums you love, year by year." />
+      <CardGrid>
+        <LinkCard href="/search" title="Search albums" description="Look up an album or artist in the catalog." />
+        <LinkCard href="/years" title="Year rankings" description="Rank each year's albums, and keep honorable mentions." />
+        <LinkCard href="/matchups" title="Matchups" description="Pick the better of two albums to refine your ratings." />
+        <LinkCard href="/artists" title="Artists" description="See artists ranked by how their albums rate." />
+        <LinkCard href="/decades" title="Decade lists" description="Build a top 25 for each decade." />
+        {openItems > 0 && (
+          <LinkCard
+            href="/import"
+            title={`Import review: ${openItems} to check`}
+            description="Match imported spreadsheet rows to catalog albums."
+          />
+        )}
+      </CardGrid>
+    </>
   );
 }

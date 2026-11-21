@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { YearScreen } from "@/components/year-screen";
+import { ButtonLink } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 import { getDb } from "@/lib/db/server";
 import { isValidYear, loadYearView } from "@/lib/year-service";
 import { addFromCatalog, addManualAlbum, saveYear, searchCatalog } from "../actions";
@@ -17,13 +18,17 @@ export default async function YearPage({ params }: { params: Params }) {
   const view = loadYearView(getDb(), year);
 
   return (
-    <main>
-      <h1>{year}</h1>
-      <p style={{ display: "flex", gap: 16 }}>
-        {isValidYear(year - 1) && <Link href={`/years/${year - 1}`}>← {year - 1}</Link>}
-        <Link href="/years">All years</Link>
-        {isValidYear(year + 1) && <Link href={`/years/${year + 1}`}>{year + 1} →</Link>}
-      </p>
+    <>
+      <PageHeader
+        title={year}
+        actions={
+          <>
+            {isValidYear(year - 1) && <ButtonLink href={`/years/${year - 1}`}>← {year - 1}</ButtonLink>}
+            <ButtonLink href="/years">All years</ButtonLink>
+            {isValidYear(year + 1) && <ButtonLink href={`/years/${year + 1}`}>{year + 1} →</ButtonLink>}
+          </>
+        }
+      />
       <YearScreen
         key={year}
         initial={view}
@@ -32,6 +37,6 @@ export default async function YearPage({ params }: { params: Params }) {
         addCatalogAction={addFromCatalog}
         addManualAction={addManualAlbum}
       />
-    </main>
+    </>
   );
 }

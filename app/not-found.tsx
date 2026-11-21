@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 export default function NotFound() {
   return (
-    <main>
+    <>
       <PageHeader title="Page not found" />
       <EmptyState
         action={
@@ -15,6 +15,6 @@ export default function NotFound() {
       >
         This page doesn&apos;t exist, or what it pointed to has been removed.
       </EmptyState>
-    </main>
+    </>
   );
 }

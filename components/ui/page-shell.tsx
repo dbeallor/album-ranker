@@ -4,17 +4,16 @@ import { SiteHeader } from "./site-header";
 import styles from "./page-shell.module.css";
 
 /**
- * The header, then a centered content area at `--content-width`. Used once, in `app/layout.tsx`.
- * The content wrapper is a div for now because each page still renders its own `<main>`;
- * once pages stop doing that, this becomes the one `<main>`.
+ * The header, then the page's one `<main>`, a centered content area at `--content-width`. Used
+ * once, in `app/layout.tsx`, so pages and `not-found` render their content without a `<main>`.
  */
-export function PageShell({ className, children, ...rest }: ComponentPropsWithoutRef<"div">) {
+export function PageShell({ className, children, ...rest }: ComponentPropsWithoutRef<"main">) {
   return (
     <>
       <SiteHeader />
-      <div className={cx(styles.content, className)} {...rest}>
+      <main className={cx(styles.content, className)} {...rest}>
         {children}
-      </div>
+      </main>
     </>
   );
 }

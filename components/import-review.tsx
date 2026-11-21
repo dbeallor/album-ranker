@@ -156,7 +156,7 @@ export function ImportReview({
   actions: ReviewActions;
 }) {
   return (
-    <main>
+    <div>
       <h1>Import review</h1>
       <p>
         {counts.open} open, {counts.resolved} resolved, {counts.skipped} skipped
@@ -173,6 +173,6 @@ export function ImportReview({
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

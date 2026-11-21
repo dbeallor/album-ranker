@@ -1,7 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { DecadeList } from "@/components/decade-list";
+import { ButtonLink } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Stack } from "@/components/ui/stack";
+import { Tabs } from "@/components/ui/tabs";
 import { getDb } from "@/lib/db/server";
 import { loadDecadeView } from "@/lib/decade-service";
 import { accept, saveList } from "../actions";
@@ -17,17 +20,18 @@ export default async function DecadePage({ params }: { params: Promise<{ decade:
 
   const view = loadDecadeView(getDb(), decade);
 
+  const switcher = [
+    ...(decade > FIRST ? [{ href: `/decades/${decade - 10}`, label: `Previous: ${decade - 10}s` }] : []),
+    ...(decade < LAST ? [{ href: `/decades/${decade + 10}`, label: `Next: ${decade + 10}s` }] : []),
+  ];
+
   return (
-    <main>
-      <p>
-        <Link href="/decades">All decades</Link>
-      </p>
-      <h1>The {decade}s</h1>
-      <nav aria-label="Decades" style={{ display: "flex", gap: 16 }}>
-        {decade > FIRST ? <Link href={`/decades/${decade - 10}`}>Previous: {decade - 10}s</Link> : null}
-        {decade < LAST ? <Link href={`/decades/${decade + 10}`}>Next: {decade + 10}s</Link> : null}
-      </nav>
-      <DecadeList initial={view} saveAction={saveList} acceptAction={accept} />
-    </main>
+    <>
+      <PageHeader title={`The ${decade}s`} actions={<ButtonLink href="/decades">All decades</ButtonLink>} />
+      <Stack gap={5}>
+        <Tabs aria-label="Decades" items={switcher} />
+        <DecadeList initial={view} saveAction={saveList} acceptAction={accept} />
+      </Stack>
+    </>
   );
 }

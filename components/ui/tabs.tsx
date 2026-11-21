@@ -10,16 +10,23 @@ type TabsProps = Omit<ComponentPropsWithoutRef<"nav">, "children"> & {
   items: ReadonlyArray<{ href: string; label: string; current?: boolean }>;
 };
 
-/** A row of pill links. The current one gets `aria-current="page"`. */
+/** A row of pill links. The current one is a plain pill with `aria-current="page"`, not a link. */
 export function Tabs({ items, className, ...rest }: TabsProps) {
   return (
     <nav className={cx(styles.tabs, className)} {...rest}>
       <ul className={styles.list}>
         {items.map((item) => (
           <li key={item.href}>
-            <Link href={item.href} className={styles.tab} aria-current={item.current ? "page" : undefined}>
-              {item.label}
-            </Link>
+            {item.current ? (
+              // The current tab is not a link, so it is not offered as a destination.
+              <span className={styles.tab} aria-current="page">
+                {item.label}
+              </span>
+            ) : (
+              <Link href={item.href} className={styles.tab}>
+                {item.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>
