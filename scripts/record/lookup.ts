@@ -31,8 +31,10 @@ const commandOf = (pid: number) => run("ps", ["-o", "command=", "-p", String(pid
  * (`next dev` serves from a child process). A step that fails (no `lsof`, another user's process) leaves its field out.
  */
 export function listenerOn(port: number): Listener {
-  const [pid] = parseLsofPids(run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"]) ?? "");
-  if (pid === undefined) {
+  const pids = [...new Set(parseLsofPids(run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"]) ?? ""))];
+  // Two processes can listen on one port (one per address family); which one the browser reaches isn't known.
+  const [pid] = pids;
+  if (pids.length !== 1 || pid === undefined) {
     return {};
   }
   const listener: Listener = {};
