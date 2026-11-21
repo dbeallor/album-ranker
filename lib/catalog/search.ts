@@ -1,10 +1,9 @@
 import "server-only";
 import { getConfig } from "../config";
-import { CatalogError, createMusicBrainzClient } from "./musicbrainz";
+import { CatalogError, MAX_QUERY_LENGTH, createMusicBrainzClient } from "./musicbrainz";
 import type { CatalogAlbum, SearchResult } from "./types";
 
 const MIN_QUERY_LENGTH = 2;
-const MAX_QUERY_LENGTH = 200;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 500;
 

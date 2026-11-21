@@ -3,7 +3,7 @@ import type { CatalogAlbum } from "./types";
 
 const SEARCH_URL = "https://musicbrainz.org/ws/2/release-group";
 const COVER_URL = "https://coverartarchive.org/release-group";
-const MAX_QUERY_LENGTH = 200;
+export const MAX_QUERY_LENGTH = 200;
 const RESULT_LIMIT = 25;
 const REQUEST_SPACING_MS = 1100;
 const MAX_QUEUE_WAIT_MS = 5000;
