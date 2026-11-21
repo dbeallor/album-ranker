@@ -17,6 +17,10 @@ export default async function Home() {
       <p>
         <Link href="/matchups">Matchups</Link>
       </p>
+      <p>
+        <Link href="/artists">Artists</Link>
+      </p>
+
       {openItems > 0 && (
         <p>
           <Link href="/import">Import review: {openItems} to check</Link>

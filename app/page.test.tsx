@@ -26,6 +26,7 @@ describe("home page", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Album ranker" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Search albums" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Artists" }).getAttribute("href")).toBe("/artists");
   });
 
   it("has no import review link while nothing is open", async () => {
