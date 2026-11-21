@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-// Playwright loads this file as CommonJS (`__dirname`); `node scripts/record.ts` loads it as ESM (`import.meta`).
-const here = typeof __dirname === "string" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+// Playwright loads this file as CommonJS, which has `__dirname` but can't parse `import.meta`. `node scripts/record.ts`
+// loads it as ESM, which has no `__dirname`; `npm run` always starts it in the repo root, so use that folder.
+const here = typeof __dirname === "string" ? __dirname : path.resolve(process.cwd(), "e2e/recorder");
 
 /**
  * The script that `page.addInitScript` runs in every page and frame; it records only top-level http(s) pages. It is `recorder.ts`
