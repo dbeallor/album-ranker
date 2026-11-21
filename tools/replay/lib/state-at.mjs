@@ -1,5 +1,5 @@
 // The /api payload the team dashboard served at one instant of a recorded session, built from a timeline and the recorded gantt sessions.
-import { clipGantt } from './clip-gantt.mjs'
+import { clipGantt, isOpenAt } from './clip-gantt.mjs'
 
 // The groups of the dashboard's status layout (chief-of-staff status.md), in order, with the stages each one lists.
 const LAYOUT = [
@@ -37,11 +37,21 @@ function ticketsAt(timeMs, timeline) {
     for (const id of e.tickets) {
       const rec = out[id] ?? { id, ...timeline.tickets[id] }
       Object.assign(rec, e.set)
-      if (e.set.stage) Object.assign(rec, { list: 'board', stageAt: Date.parse(e.t), risk: e.set.risk })
+      if (e.set.stage) Object.assign(rec, { list: 'board', stageAt: Date.parse(e.t), risk: e.set.risk, boardedAt: rec.boardedAt ?? Date.parse(e.t) })
       out[id] = rec
     }
   }
   return out
+}
+
+const QUEUED = ['merge-queued', 'build-queued', 'spec-queued']
+
+/** A group's rows the way the dashboard orders them: queued stages by when they queued (the order they will start), the others newest issue activity first (the tracker's `updatedAt`); ties keep the order the tickets reached the board. */
+function ordered(rows, timeMs, timeline) {
+  const byBoard = [...rows].sort((a, b) => a.boardedAt - b.boardedAt)
+  if (rows.length && QUEUED.includes(rows[0].stage)) return byBoard.sort((a, b) => a.stageAt - b.stageAt)
+  const touched = (t) => Math.max(-Infinity, ...(timeline.tickets[t.id].updates ?? []).map(Date.parse).filter((u) => u <= timeMs))
+  return byBoard.sort((a, b) => touched(b) - touched(a))
 }
 
 const finishedAt = (s) => s.rows.reduce((m, r) => Math.max(m, r.end ?? 0), 0)
@@ -54,10 +64,15 @@ export function stateAt(timeMs, timeline, fixtures) {
   const tickets = Object.values(ticketsAt(timeMs, timeline))
   const ticketOf = (id) => sessions.find((m) => m.role === 'ticket' && m.ticket === id)
   // A helper's session joins the ticket it filed once it has finished.
-  const garrison = (id) => [...sessions.filter((m) => m.role === 'helper' && m.session.ticket === id && finishedAt(m.session) <= timeMs), ...sessions.filter((m) => m.ticket === id)]
+  const garrison = (id) => [...sessions.filter((m) => m.role === 'helper' && m.session.ticket === id && finishedAt(m.session) <= timeMs), ...sessions.filter((m) => m.role === 'ticket' && m.ticket === id)]
   const ganttOf = (id) => clipGantt(garrison(id).map((m) => m.session), timeMs).sort((a, b) => a.updatedAt - b.updatedAt)
 
-  const listRow = (t) => ({ id: t.id, title: t.title, risk: '', next: '', stage: '', issueUrl: `${repo.url}/issues/${num(t.id)}`, owner: repo.viewer })
+  const listRow = (t) => {
+    const row = { id: t.id, title: t.title, risk: '', next: '', stage: '', issueUrl: `${repo.url}/issues/${num(t.id)}`, owner: repo.viewer }
+    const gantt = ganttOf(t.id)
+    if (gantt.length) row.gantt = gantt
+    return row
+  }
   const boardRow = (t) => {
     const specUrl = t.specSha && `${repo.url}/blob/${t.specSha}/${t.specPath}`
     const prUrl = t.pr && `${repo.url}/pull/${t.pr}`
@@ -84,7 +99,7 @@ export function stateAt(timeMs, timeline, fixtures) {
     return row
   }
 
-  const groups = LAYOUT.map(([name, stages]) => ({ name, rows: tickets.filter((t) => t.list === 'board' && stages.includes(t.stage)).map(boardRow) }))
+  const groups = LAYOUT.map(([name, stages]) => ({ name, rows: ordered(tickets.filter((t) => t.list === 'board' && stages.includes(t.stage)), timeMs, timeline).map(boardRow) }))
   const todo = tickets.filter((t) => t.list === 'todo').sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
   groups.find((g) => g.name === 'Waiting to spec').rows.push(...todo.map(listRow))
   const status = groups.filter((g) => g.rows.length).map((g) => ({ ...g, count: g.rows.length }))
@@ -108,12 +123,14 @@ export function stateAt(timeMs, timeline, fixtures) {
       const prUrl = `${repo.url}/pull/${t.pr}`
       const gantt = ganttOf(t.id)
       const spend = { cost: gantt.reduce((n, s) => n + s.total, 0), tokens: gantt.reduce((n, s) => n + s.rows.reduce((k, r) => k + r.tokens, 0), 0) }
-      return { id: t.id, title: t.mergedTitle, prUrl, mergedAt: Date.parse(t.mergedAt), issueUrl: `${repo.url}/issues/${num(t.id)}`, owner: repo.viewer, spend, gantt, detail: { ...fixtures.prDetails[t.pr], url: prUrl } }
+      return { id: t.id, title: t.mergedTitle, prUrl, mergedAt: Date.parse(t.mergedAt), issueUrl: `${repo.url}/issues/${num(t.id)}`, owner: repo.viewer, spend, gantt, detail: { ...fixtures.prDetails[t.pr], url: prUrl }, ...(t.mergedSpecUrl ? { specUrl: t.mergedSpecUrl } : {}) }
     })
 
-  const chiefGantt = clipGantt(sessions.filter((m) => m.role === 'chief').map((m) => m.session), timeMs)
-  const running = chiefGantt.some((s) => s.rows.some((r) => r.end === null))
-  const chief = { state: running ? 'running' : 'idle', threadLink: repo.chiefThreadLink, gantt: chiefGantt }
+  // The dashboard shows the chief session written to last; a reset leaves the old one behind.
+  const chiefs = sessions.filter((m) => m.role === 'chief').map((m) => m.session)
+  const live = clipGantt(chiefs, timeMs).reduce((best, s) => (!best || s.updatedAt >= best.updatedAt ? s : best), null)
+  const turn = live && isOpenAt(chiefs.find((c) => c.sessionId === live.sessionId), timeMs)
+  const chief = { state: turn ? 'running' : 'idle', threadLink: repo.chiefThreadLink, ...(live ? { gantt: [live] } : {}) }
 
   return { generatedAt: timeMs, status, merged, viewer: repo.viewer, chief, pm: [], version: 'replay', restartError: null, trackerError: null, theme: 'dark' }
 }

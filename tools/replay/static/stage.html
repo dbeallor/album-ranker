@@ -33,7 +33,7 @@ button{font:inherit;color:inherit}
 .av.ar{background:none;color:#4aa3ff;font-size:11px;width:auto;border-radius:0}
 .s-sec{display:flex;align-items:center;padding:0 22px;height:30px;font-size:14px;color:#7c7c7c}
 .s-sec span{margin-left:auto;display:flex;align-items:center;gap:12px}
-.s-work{padding:0 10px 8px}
+.s-work{padding:0 10px 8px;display:flex;flex-direction:column;gap:7px}
 .s-foot{height:76px;flex:none;display:flex;align-items:center;gap:27px;padding:0 20px 0 28px;color:#8a8a8a}
 .s-foot .up{margin-left:auto;width:32px;height:32px;border-radius:50%;background:#1c1c1c;display:flex;align-items:center;justify-content:center;color:#cfcfcf}
 
@@ -44,6 +44,7 @@ button{font:inherit;color:inherit}
 #msgs[hidden],#tmsgs[hidden]{display:none}
 .u{align-self:flex-end;max-width:590px;background:#1d1d1d;border:1px solid #232323;border-radius:16px;padding:10px 14px 12px;font-size:15.5px;line-height:27px;color:#e2e2e2;margin:6px 0 34px;margin-left:50px}
 .u p{margin:0 0 12px}.u p:last-child{margin:0}
+.u .snd{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#7c7c7c;margin:0 0 4px;line-height:18px}
 .fchip{display:inline-flex;align-items:center;gap:7px;color:#41c776;font-size:15px;margin-bottom:6px}
 .fchip small{font-size:12px;color:#2f9a5a}
 .a{font-size:15.5px;line-height:27px;color:#d8d8d8;margin:0 0 20px}
@@ -56,7 +57,7 @@ button{font:inherit;color:inherit}
 .a code{background:#222;border:0;padding:1px 6px;border-radius:6px;font:13.5px ui-monospace,"SF Mono",Menlo,monospace;color:#d4d4d4}
 .a table{border-collapse:collapse;font-size:14px;width:100%}.a th,.a td{border:1px solid #2a2a2a;padding:5px 10px;text-align:left}.a th{background:#191919}
 .a a{color:#3fb8a6;text-decoration:none}.a a .ghi{vertical-align:-3px;margin-right:4px;color:#3fb8a6}
-.a pre{background:#1a1a1a;border-radius:8px;padding:10px 14px;overflow:hidden;font:13px/1.5 ui-monospace,Menlo,monospace}
+.a pre{background:#1a1a1a;border-radius:8px;padding:10px 14px;overflow:hidden;white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,Menlo,monospace}.a pre code{background:none;padding:0;font-size:13px}
 .worked{color:#6f6f6f;font-size:15.5px;display:flex;align-items:center;gap:6px;margin:6px 0 16px}
 .card{display:flex;align-items:center;gap:13px;padding:6px 0;margin:20px 0 12px;cursor:default}
 .cav{position:relative;width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center}
@@ -75,6 +76,10 @@ button{font:inherit;color:inherit}
 #wait{flex:none;height:46px;display:flex;align-items:center;gap:9px;padding:0 0 0 61px;font-size:14px;color:#6c6c6c;white-space:nowrap}
 #wait .t{max-width:380px;overflow:hidden;text-overflow:ellipsis}
 #wait b{color:#d0d0d0;font-weight:500}#wait .el{margin-right:6px}
+#wait .d{max-width:290px;overflow:hidden;text-overflow:ellipsis;color:#555}#wait .i{margin:0 12px 0 auto}#wait.multi{padding-right:58px}
+#pill{height:0;flex:none;position:relative;z-index:5}
+#pill div{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 14px 6px 12px;border-radius:99px;background:#232323;border:1px solid #333;color:#d8d8d8;font-size:13.5px;white-space:nowrap}
+#pill.on div{display:flex}
 #comp{flex:none;margin:0 58px 22px 60px;min-height:128px;display:flex;flex-direction:column;border-radius:22px;background:#181818;border:1px solid #1f1f1f;position:relative;padding:16px 22px 0;font-size:15.5px;line-height:27px;color:#e6e6e6}
 #ctext{white-space:pre-wrap;word-break:break-word;flex:1;min-height:28px;max-height:300px;overflow:hidden}
 #ctext .ph{color:#666}
@@ -90,8 +95,11 @@ button{font:inherit;color:inherit}
 #tabs{display:flex;gap:6px;min-width:0;flex:0 1 auto;align-items:center}
 .tab{height:32px;flex:0 1 170px;min-width:44px;display:flex;align-items:center;gap:7px;padding:0 12px;border-radius:10px;font-size:14px;color:#8a8a8a;white-space:nowrap;overflow:hidden}
 .tab span{overflow:hidden;text-overflow:ellipsis}
+#app.exp .tab{flex-basis:290px}
 .tab.on{background:#212121;color:#e8e8e8}
 .tab .ic{color:#8a8a8a}.tab.on .ic{color:#e8e8e8}
+.tab .x{margin-left:auto;flex:none;width:20px;height:20px;border-radius:6px;display:none;align-items:center;justify-content:center;color:#c8c8c8}
+.tab.on .x,.tab.hov .x{display:flex}.tab .x:hover,.tab.hov .x{background:#3a3a3a}
 .r-top .plus{color:#8a8a8a;padding:0 8px}
 .r-top .wc{position:absolute;right:20px;top:0;height:60px;display:flex;align-items:center;gap:19px;color:#a6a6a6}
 .wc .act{background:#222;border-radius:8px;padding:6px;margin:-6px}
@@ -156,7 +164,7 @@ button{font:inherit;color:inherit}
 .g-title{font-size:32px;line-height:1.25;font-weight:400;color:#eef2f3;margin:6px 0 12px;letter-spacing:-.01em}.g-title span{color:#8d9a9e}
 .g-st{display:flex;align-items:center;gap:12px;font-size:15px;color:#9aa6aa;margin-bottom:16px;flex-wrap:wrap;line-height:24px}
 .badge{display:inline-flex;align-items:center;gap:6px;background:#238636;color:#fff;border-radius:99px;padding:5px 14px;font-size:14px;font-weight:600}
-.badge.closed{background:#8957e5}
+.badge.closed{background:#8957e5}.badge.merged{background:#8957e5}
 .g-st code{background:#243b57;color:#58a6ff;padding:1px 7px;border-radius:6px;font:13px ui-monospace,Menlo,monospace}
 .g-tabs{display:flex;gap:4px;border-bottom:1px solid #2d383c;margin:0 0 20px}
 .g-tabs div{padding:11px 14px;font-size:15px;color:#9aa6aa;display:flex;align-items:center;gap:8px;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -172,7 +180,7 @@ button{font:inherit;color:inherit}
 .g-ca{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#d49a6a,#7b5a8e);flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:700}
 .g-cb{padding:14px 18px 2px}
 .g-cb .g-md>:first-child{margin-top:0}.g-cb .g-md{font-size:15px;line-height:24px}.g-cb .g-md h2{font-size:21px;margin:6px 0 12px}.g-cb .g-md code{font-size:13px}
-.g-merge{border:1px solid #2ea043;border-radius:9px;margin:20px 0}
+.g-merge{border:1px solid #2ea043;border-radius:9px;margin:20px 0}.g-merge.merged{border-color:#8957e5}.g-mi.pu{background:#8957e5;color:#fff}
 .g-mr{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid #2f3b40;font-size:15px}
 .g-mr:last-child{border:0}.g-mr .t{font-weight:600;color:#eef2f3}.g-mr .s{color:#9aa6aa;font-size:13.5px}
 .g-mi{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:#238636;color:#fff}
@@ -185,12 +193,14 @@ button{font:inherit;color:inherit}
 .g-dh .st{margin-left:auto;font:13px -apple-system,sans-serif;display:flex;gap:6px}
 .add{color:#3fb950}.del{color:#f85149}
 .g-dl{display:grid;grid-template-columns:44px 44px 22px 1fr;font:12.5px/20px ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;color:#d3dbde}
-.g-dl.ad{background:rgba(46,160,67,.15)}.g-dl.ad i{background:rgba(46,160,67,.3)}
+.g-dl.ad{background:rgba(46,160,67,.15)}.g-dl.ad i{background:rgba(46,160,67,.3)}.g-dl.dl{background:rgba(248,81,73,.15)}.g-dl.dl i{background:rgba(248,81,73,.3)}.g-dl.hid{color:#9aa6aa;background:#1f3350}
+.g-dh .tg{color:#9aa6aa;font:13px -apple-system,sans-serif}.g-dh.col{border-bottom:0}.g-note{padding:22px 14px;text-align:center;color:#9aa6aa;font-size:14px}
+.g-diff{margin:0 0 16px}.g-fl{border:1px solid #2f3b40;border-radius:9px;margin:0 0 18px;overflow:hidden}.g-fl div{display:flex;align-items:center;gap:10px;padding:7px 14px;font:13.5px ui-monospace,Menlo,monospace;border-bottom:1px solid #2a3438}.g-fl div:last-child{border:0}.g-fl .st{margin-left:auto;font:13px -apple-system,sans-serif;display:flex;gap:8px}
 .g-dl.h{background:#1f3350;color:#9aa6aa}
 .g-dl i{font-style:normal;text-align:right;padding-right:8px;color:#9aa6aa;user-select:none}
 .g-lbl{display:inline-flex;border-radius:99px;padding:0 10px;font-size:12.5px;font-weight:600;line-height:22px;color:#fff}
 
-#cap{position:absolute;left:0;right:0;top:1200px;height:80px;padding:0 140px;display:flex;align-items:center;justify-content:center;background:#000;text-align:center;font-size:26px;line-height:1.25;color:#fff;font-weight:500;z-index:40}
+#cap{position:absolute;left:0;right:0;top:1200px;height:80px;overflow:hidden;padding:0 140px;display:flex;align-items:center;justify-content:center;background:#000;text-align:center;font-size:26px;line-height:1.25;color:#fff;font-weight:500;z-index:40}
 #lapse{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:45;display:none;padding:6px 18px;border-radius:99px;background:rgba(20,20,20,.88);border:1px solid #3a3a3a;color:#f2f2f2;font-size:20px;font-weight:600;letter-spacing:.01em}
 #cur{position:absolute;left:0;top:0;width:26px;height:26px;z-index:50;pointer-events:none;margin:-3px 0 0 -3px}
 #cur svg{filter:drop-shadow(0 2px 3px #000a)}
@@ -205,6 +215,8 @@ button{font:inherit;color:inherit}
 <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
 <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
 <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+<symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
 <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M10 18h4"/></symbol>
 <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M12 10v6M9 13h6M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
@@ -258,6 +270,7 @@ button{font:inherit;color:inherit}
   <section id="center">
     <div class="c-head" id="chead"></div>
     <div id="msgs"></div><div id="tmsgs" hidden></div>
+    <div id="pill"><div id="toend">Scroll to end<svg class="ic" width="14" height="14"><use href="#i-arrow-down"/></svg></div></div>
     <div id="wait"></div>
     <div id="comp"><div id="ctext"></div><div class="foot"><svg class="ic" width="21" height="21"><use href="#i-clip"/></svg><div class="mp" id="mp"></div><svg class="ic" width="21" height="21"><use href="#i-mic"/></svg><div id="send"><svg class="ic" width="20" height="20" style="stroke-width:2.4"><use href="#i-arrow-up"/></svg></div></div></div>
   </section>
@@ -272,7 +285,7 @@ button{font:inherit;color:inherit}
 <div id="lapse"></div>
 <div id="rip"></div>
 <div id="cur"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 2l15 9-6.5 1.6L9.5 19z" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
-<div id="intro"><h1>Album Ranker</h1><p>Replay: the first session with the agent team</p></div>
+<div id="intro"><h1>Album Ranker</h1><p>Replay: one evening with the agent team</p></div>
 <script>
 const $ = id => document.getElementById(id)
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -292,6 +305,12 @@ function inl(s) {
 const indent = l => l.match(/^\s*/)[0].length
 const isLi = l => /^\s*([-*]|\d+\.)\s/.test(l)
 const strip = l => l.replace(/^\s*([-*]|\d+\.)\s/, '')
+function fence(lines, i) {
+  const code = [], pad = indent(lines[i])
+  i++
+  while (i < lines.length && !lines[i].trim().startsWith('```')) { const l = lines[i++]; code.push(l.slice(Math.min(pad, indent(l)))) }
+  return { html: `<pre><code>${esc(code.join('\n'))}</code></pre>`, i: i + 1 }
+}
 function list(lines, i) {
   const base = indent(lines[i]), tag = /^\s*\d+\./.test(lines[i]) ? 'ol' : 'ul', items = []
   while (i < lines.length) {
@@ -299,13 +318,13 @@ function list(lines, i) {
     if (!l.trim()) {
       let j = i + 1
       while (j < lines.length && !lines[j].trim()) j++
-      if (j < lines.length && isLi(lines[j]) && indent(lines[j]) >= base) { i = j; continue }
+      if (j < lines.length && (isLi(lines[j]) ? indent(lines[j]) >= base : indent(lines[j]) > base)) { i = j; continue }
       break
     }
     const ind = indent(l)
     if (isLi(l) && ind === base) { items.push({ t: strip(l), kids: '' }); i++; continue }
     if (ind > base && items.length) {
-      if (isLi(l)) { const r = list(lines, i); items.at(-1).kids += r.html; i = r.i } else { items.at(-1).t += ' ' + l.trim(); i++ }
+      if (l.trim().startsWith('```')) { const r = fence(lines, i); items.at(-1).kids += r.html; i = r.i } else if (isLi(l)) { const r = list(lines, i); items.at(-1).kids += r.html; i = r.i } else { items.at(-1).t += ' ' + l.trim(); i++ }
       continue
     }
     break
@@ -321,12 +340,9 @@ function md(src) {
     const l = lines[i]
     let m
     if (!l.trim()) { i++; continue }
-    if (l.startsWith('```')) {
-      const code = []
-      i++
-      while (i < lines.length && !lines[i].startsWith('```')) code.push(lines[i++])
-      i++
-      out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`)
+    if (l.trim().startsWith('```')) {
+      const r = fence(lines, i)
+      out.push(r.html); i = r.i
     } else if ((m = l.match(/^(#{1,4})\s+(.*)/))) {
       out.push(`<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`); i++
     } else if (/^---+\s*$/.test(l)) {
@@ -351,7 +367,7 @@ function md(src) {
   return out
 }
 
-const st = { project: '', avatar: '', thread: '', branch: 'main', model: '', effort: '', section: 'settled', label: null, age: 'now', children: {}, threads: {}, open: null, tabs: [], active: null, draft: { text: '', attach: null } }
+const st = { project: '', avatar: '', thread: '', branch: 'main', model: '', effort: '', section: 'settled', label: null, age: 'now', settled: 146, others: [], children: {}, threads: {}, open: null, tabs: [], active: null, hover: null, draft: { text: '', attach: null } }
 
 const FILL = [
   { proj: 'Gorpcore Studios', title: 'GORP - Chief of Staff', age: '5d', n: '1', av: '#3fae5a', ch: '' },
@@ -359,16 +375,18 @@ const FILL = [
   { proj: 'Collective Wisdom', title: 'WISE - Chief of Staff', age: '4d', n: '', av: '#8a8f98', ch: '' }
 ]
 const fillRow = r => `<div class="trow"><div class="tl1"><span class="av" style="background:${r.av}"></span>${ic('pin', 12)}<span>${r.proj}</span><span class="tr">${r.age}</span></div><div class="tt">${r.title}</div><div class="tl3"><span>main</span><span class="ics">${r.n ? ic('git', 13) + r.n : ''}${ic('claude', 17, 'cl')}</span></div></div>`
-function actRow() {
-  const wk = st.section === 'working'
-  const right = wk && st.label ? `${ic('loader', 15, 'spin')}${esc(st.label)}` : esc(st.age)
-  return `<div class="trow act"><div class="tl1"><span class="av ar">${esc(st.avatar)}</span><span>${esc(st.project)}</span><span class="tr">${right}</span></div><div class="tt">${esc(st.thread)}</div><div class="tl3"><span>${esc(st.branch)}</span><span class="ics">${ic('git', 13)}1<span class="glb">${ic('globe', 15)}</span>${ic('claude', 17, 'cl')}</span></div></div>`
+const ownRow = (o, act) => {
+  const right = o.working && o.label ? `${ic('loader', 15, 'spin')}${esc(o.label)}` : esc(o.age)
+  return `<div class="trow${act ? ' act' : ''}"><div class="tl1"><span class="av ar">${esc(st.avatar)}</span><span>${esc(st.project)}</span><span class="tr">${right}</span></div><div class="tt">${esc(o.title)}</div><div class="tl3"><span>${esc(o.branch || 'main')}</span><span class="ics">${act ? `${ic('git', 13)}1<span class="glb">${ic('globe', 15)}</span>` : ''}${ic('claude', 17, 'cl')}</span></div></div>`
 }
+const chiefRow = () => ownRow({ title: st.thread, branch: st.branch, working: st.section === 'working', label: st.label, age: st.age }, true)
 function renderSide() {
   const wk = st.section === 'working'
-  $('tlist').innerHTML = FILL.map(fillRow).join('') + (wk ? '' : actRow())
-  $('swork').innerHTML = wk ? `<div class="s-sec">Working<span>1${ic('chev-down', 14)}</span></div><div class="s-work">${actRow()}</div>` : ''
-  $('settled').textContent = wk ? '146' : '147'
+  const busy = st.others.filter(o => o.working)
+  const work = [...(wk ? [chiefRow()] : []), ...busy.map(o => ownRow(o, false))]
+  $('tlist').innerHTML = FILL.map(fillRow).join('') + (wk ? '' : chiefRow())
+  $('swork').innerHTML = work.length ? `<div class="s-sec">Working<span>${work.length}${ic('chev-down', 14)}</span></div><div class="s-work">${work.join('')}</div>` : ''
+  $('settled').textContent = st.settled + st.others.filter(o => !o.working).length
 }
 function renderHead() {
   const c = st.open && st.children[st.open]
@@ -381,8 +399,10 @@ function renderModel() {
 const chip = label => `<div class="fchip">${ic('file', 16)}<span>${esc(label.replace(/\s+\S+\s?[KM]B$/, ''))}</span><small>${esc((label.match(/\S+\s?[KM]B$/) || [''])[0])}</small></div>`
 
 const msgsEl = () => st.open ? $('tmsgs') : $('msgs')
-const userHtml = (text, attach) => `<div class="u">${attach ? chip(attach) : ''}${text.split(/\n\s*\n/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>`
+const userHtml = (text, attach, sender) => `<div class="u">${sender ? `<div class="snd">${esc(sender)}</div>` : ''}${attach ? chip(attach) : ''}${text.split(/\n\s*\n/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>`
 function append(html, el = $('msgs')) { el.insertAdjacentHTML('beforeend', html); return el.lastElementChild }
+const atEnd = m => m.scrollHeight - m.scrollTop - m.clientHeight < 60
+const showPill = () => $('pill').classList.toggle('on', !st.open && !atEnd($('msgs')))
 function renderThread(id) {
   $('tmsgs').innerHTML = (st.threads[id] || []).map(m => m.role === 'user' ? userHtml(m.md, null) : `<div class="a"><div class="body">${md(m.md).join('').replace(/<(p|h\d|ul|ol|table|pre|blockquote|hr)\b/g, '<$1 class="on"')}</div></div>`).join('')
 }
@@ -394,7 +414,7 @@ function cardHtml(c) {
 const scr = () => $('view').querySelector('.ghp.on .gsc')
 const activeTab = () => st.tabs.find(t => t.id === st.active)
 function renderTabs() {
-  $('tabs').innerHTML = st.tabs.map(t => `<div class="tab ${t.id === st.active ? 'on' : ''}" data-tab-id="${esc(t.id)}">${ic(t.favicon === 'github' ? 'gh' : 'activity', 16, t.favicon === 'github' ? 'fl' : '')}<span>${esc(t.title)}</span></div>`).join('')
+  $('tabs').innerHTML = st.tabs.map(t => `<div class="tab ${t.id === st.active ? 'on' : ''} ${t.id === st.hover ? 'hov' : ''}" data-tab-id="${esc(t.id)}">${ic(t.favicon === 'github' ? 'gh' : 'activity', 16, t.favicon === 'github' ? 'fl' : '')}<span>${esc(t.title)}</span>${t.kind === 'dash' ? '' : `<i class="x">${ic('x', 13)}</i>`}</div>`).join('')
 }
 function setUrl(url, select) {
   $('url').classList.toggle('sel', !!select)
@@ -443,19 +463,20 @@ const S = {
   ripple(p) { const r = $('rip'); r.style.transform = `translate(${S.cx}px,${S.cy}px) scale(${0.4 + p * 1.2})`; r.style.opacity = String(p <= 0 ? 0 : 1 - p) },
 
   setup(o) {
-    Object.assign(st, { project: o.project, avatar: o.projectAvatar, thread: o.thread, branch: o.branch || 'main' })
+    Object.assign(st, { project: o.project, avatar: o.projectAvatar, thread: o.thread, branch: o.branch || 'main', settled: o.settled ?? st.settled })
     S.setModel(o.model, o.effort)
     renderSide(); renderHead()
   },
   setModel(model, effort) { st.model = model; st.effort = effort; renderModel() },
   setSidebarStatus(o) { Object.assign(st, { section: o.section, label: o.label || null, age: o.age || st.age }); renderSide() },
+  setSidebarThreads(rows) { st.others = rows; renderSide() },
 
   composer(text, attach) {
     st.draft = { text, attach }
     $('ctext').innerHTML = (attach ? chip(attach) : '') + (text ? `${esc(text)}<span class="caret"></span>` : '<span class="ph">Ask anything. @ files, $ skills, / commands</span>')
     $('send').classList.toggle('on', !!text)
   },
-  addUser(text, attach) { append(userHtml(text, attach)); S.composer('', null); S.bottom() },
+  addUser(text, attach, sender) { append(userHtml(text, attach, sender)); S.composer('', null); S.bottom() },
   working(on) {
     let w = $('wrk')
     if (on && !w) { append('<div class="working" id="wrk"><i></i>Working</div>'); S.bottom() }
@@ -471,7 +492,9 @@ const S = {
     return b.children.length
   },
   reveal(k) { [...S.cur.children].forEach((c, i) => c.classList.toggle('on', i < k)); S.bottom() },
-  bottom() { const m = msgsEl(); m.scrollTop = m.scrollHeight },
+  bottom() { const m = msgsEl(); m.scrollTop = m.scrollHeight; showPill() },
+  chatScroll(y) { $('msgs').scrollTop = y; showPill() },
+  chatMetrics() { const m = $('msgs'); return { top: m.scrollTop, height: m.scrollHeight, view: m.clientHeight, messages: m.children.length } },
   addWorked(label) { append(`<div class="worked">${esc(label)}${ic('chev-right', 15)}</div>`); S.bottom() },
 
   addChildCard(c) {
@@ -486,7 +509,11 @@ const S = {
     if (st.open === id) { renderHead(); renderModel() }
   },
   setWaitBar(o) {
-    $('wait').innerHTML = o ? `<span class="spin">${ic('loader', 17)}</span><span class="t">Waiting · ${esc(o.title)}</span><span class="el">${esc(o.elapsed)}</span><b>Details</b><span>Open</span><b>Stop</b>` : ''
+    const w = $('wait')
+    w.classList.toggle('multi', !!(o && o.label))
+    w.innerHTML = !o ? '' : o.label
+      ? `<span class="spin">${ic('loader', 17)}</span><span class="t">${esc(o.label)}</span><span class="d">${esc(o.detail)}</span><span class="i">${ic('info', 17)}</span><b>Details</b><b>Stop</b>`
+      : `<span class="spin">${ic('loader', 17)}</span><span class="t">Waiting · ${esc(o.title)}</span><span class="el">${esc(o.elapsed)}</span><b>Details</b><span>Open</span><b>Stop</b>`
   },
   setThreadMessages(id, msgs) { st.threads[id] = msgs; if (st.open === id) renderThread(id) },
   openThread(id) {
@@ -497,7 +524,7 @@ const S = {
   closeThread() {
     st.open = null
     $('msgs').hidden = false; $('tmsgs').hidden = true; $('wait').style.visibility = ''
-    renderHead(); renderModel()
+    renderHead(); renderModel(); showPill()
   },
 
   browserTabs(list) {
@@ -516,6 +543,7 @@ const S = {
     renderTabs(); setUrl(ghUrl() || (t ? t.url : ''))
   },
   browserUrl(url, select) { setUrl(url, select) },
+  tabHover(id) { st.hover = id; renderTabs() },
   browserExpand(on) { $('app').classList.toggle('exp', on); $('wcx').innerHTML = ic(on ? 'shrink' : 'expand', 21) },
   ghPage(tabId, html) { $('gp-' + tabId).innerHTML = html; if (st.active === tabId) setUrl(ghUrl()) },
   ghScroll(y) { scr().scrollTop = y },
@@ -545,38 +573,52 @@ const S = {
         <span class="rt"><span class="raw">Raw${ic('copy', 19)}${ic('download', 19)}</span>${ic('pencil', 19)}${ic('chev-down', 15)}${ic('list', 21)}</span></div></div>
       <div class="gsc"><article class="g-md">${md(src).join('')}</article></div></main></div>`
   },
-  ghPrPage({ pr, bodyMd, comments, files, diffLines, checks, mergeable }) {
+  ghPrPage({ pr, state, bodyMd, comments, commits, files, checks, mergeable }) {
     const added = files.reduce((n, f) => n + f.additions, 0), removed = files.reduce((n, f) => n + f.deletions, 0)
     const author = pr.author || comments[0]?.author?.login || 'dbeallor'
+    const merged = state === 'MERGED', closed = state === 'CLOSED'
     const cm = comments.map(c => {
       const v = /Verdict:\s*(PASS|[A-Z ]+)/.exec(c.body)?.[1]
       return `<div class="g-cm"><div class="g-ch">${avatar(c.author.login)}<b>${esc(c.author.login)}</b> commented on ${day(c.createdAt)}${v ? `<span class="v ${v === 'PASS' ? 'pass' : 'fail'}" style="margin-left:auto">${esc(v)}</span>` : ''}</div><div class="g-cb"><div class="g-md">${md(c.body.replace(/^##\s*/, '### ')).join('')}</div></div></div>`
     }).join('')
     const checkRows = checks.length ? checks.map(k => `<div class="g-mr"><span class="g-mi ${k.state === 'success' ? '' : 'gr'}">${ic('check', 17)}</span><div><div class="t">${esc(k.name)}</div></div></div>`).join('') : `<div class="g-mr"><span class="g-mi gr">${ic('check', 17)}</span><div><div class="t">No checks configured</div><div class="s">This repository has no CI workflows.</div></div></div>`
-    const diff = diffLines.map((l, i) => `<div class="g-dl ad"><i></i><i>${i + 1}</i><span>+</span><span>${esc(l)}</span></div>`).join('')
+    const box = merged
+      ? `<div class="g-merge merged"><div class="g-mr"><span class="g-mi pu">${ic('pr', 17)}</span><div><div class="t">Pull request successfully merged and closed</div><div class="s">You're all set — the <code>${esc(pr.headRefName)}</code> branch can be safely deleted.</div></div></div></div>`
+      : `<div class="g-merge">${checkRows}
+          <div class="g-mr"><span class="g-mi ${mergeable ? '' : 'gr'}">${ic(mergeable ? 'check' : 'x', 17)}</span><div><div class="t">${mergeable ? 'This branch has no conflicts with the base branch' : 'This branch has conflicts that must be resolved'}</div><div class="s">${mergeable ? 'Merging can be performed automatically.' : ''}</div></div></div>
+          <div class="g-mr"><span class="g-mbtn"><span>${ic('pr', 16)}Merge pull request</span><span>${ic('chev-down', 14)}</span></span></div></div>`
+    const line = l => `<div class="g-dl ${l.k === '+' ? 'ad' : l.k === '-' ? 'dl' : ''}"><i>${l.o ?? ''}</i><i>${l.n ?? ''}</i><span>${l.k === ' ' ? '' : l.k}</span><span>${esc(l.t)}</span></div>`
+    const fileHtml = f => {
+      const tag = f.status === 'added' ? 'new file' : f.status === 'deleted' ? 'deleted' : ''
+      const head = `<div class="g-dh ${f.open ? '' : 'col'}">${ic(f.open ? 'chev-down' : 'chev-right', 15)}<span>${esc(f.status === 'renamed' ? `${f.oldPath} → ${f.path}` : f.path)}</span>${tag ? `<span class="tg">${tag}</span>` : ''}<span class="st"><span class="add">+${f.additions}</span><span class="del">−${f.deletions}</span></span></div>`
+      const body = f.open
+        ? f.hunks.map(h => `<div class="g-dl h"><i></i><i></i><span></span><span>${esc(h.header)}</span></div>${h.lines.map(line).join('')}`).join('') + (f.hidden ? `<div class="g-dl hid"><i></i><i></i><span></span><span>${f.hidden} more lines not shown</span></div>` : '')
+        : f.note ? `<div class="g-note">${esc(f.note)}</div>` : ''
+      return `<div class="g-diff">${head}${body}</div>`
+    }
     return `<div class="gsc"><div class="g-pad">
       <h1 class="g-title">${esc(pr.title)} <span>#${pr.number}</span></h1>
-      <div class="g-st"><span class="badge">${ic('pr', 16)}Open</span><span>${esc(author)} wants to merge 1 commit into <code>main</code> from <code>${esc(pr.headRefName)}</code></span></div>
-      <div class="g-tabs"><div class="on" data-n="0">Conversation<em>${comments.length + 1}</em></div><div>Commits${pr.commits ? `<em>${pr.commits}</em>` : ''}</div><div>Checks<em>${checks.length}</em></div><div data-n="1">Files changed<em>${files.length}</em></div></div>
+      <div class="g-st"><span class="badge ${merged ? 'merged' : closed ? 'closed' : ''}">${ic('pr', 16)}${merged ? 'Merged' : closed ? 'Closed' : 'Open'}</span><span>${esc(author)} ${merged ? 'merged' : 'wants to merge'} ${commits} commit${commits === 1 ? '' : 's'} into <code>main</code> from <code>${esc(pr.headRefName)}</code></span></div>
+      <div class="g-tabs"><div class="on" data-n="0">Conversation<em>${comments.length + 1}</em></div><div>Commits<em>${commits}</em></div><div>Checks<em>${checks.length}</em></div><div data-n="1">Files changed<em>${files.length}</em></div></div>
       <div class="pane on" data-suffix="">
         <div class="g-cm"><div class="g-ch">${avatar(author)}<b>${esc(author)}</b> opened this pull request<span class="own">Author</span></div><div class="g-cb"><div class="g-md">${md(bodyMd).join('')}</div></div></div>
         ${cm}
-        <div class="g-merge">${checkRows}
-          <div class="g-mr"><span class="g-mi ${mergeable ? '' : 'gr'}">${ic(mergeable ? 'check' : 'x', 17)}</span><div><div class="t">${mergeable ? 'This branch has no conflicts with the base branch' : 'This branch has conflicts that must be resolved'}</div><div class="s">${mergeable ? 'Merging can be performed automatically.' : ''}</div></div></div>
-          <div class="g-mr"><span class="g-mbtn"><span>${ic('pr', 16)}Merge pull request</span><span>${ic('chev-down', 14)}</span></span></div></div>
+        ${box}
       </div>
       <div class="pane" data-suffix="/files">
         <div class="g-sum">Showing ${files.length} changed file${files.length === 1 ? '' : 's'} with <b class="add">${added} additions</b> and <b class="del">${removed} deletions</b>.</div>
-        ${files.map(f => `<div class="g-diff"><div class="g-dh">${ic('chev-down', 15)}<span>${esc(f.path)}</span><span class="st"><span class="add">+${f.additions}</span><span class="del">−${f.deletions}</span></span></div>
-          <div class="g-dl h"><i></i><i></i><span></span><span>@@ -0,0 +1,${diffLines.length} @@</span></div>${diff}</div>`).join('')}
+        <div class="g-fl">${files.map(f => `<div>${ic('file', 15)}<span>${esc(f.path)}</span><span class="st"><span class="add">+${f.additions}</span><span class="del">−${f.deletions}</span></span></div>`).join('')}</div>
+        ${files.map(fileHtml).join('')}
       </div></div></div>`
   },
-  ghIssuePage({ number, title, state, author, bodyMd, labels }) {
+  ghIssuePage({ number, title, state, author, bodyMd, labels, comments }) {
     const open = state.toUpperCase() === 'OPEN'
+    const cm = comments.map(c => `<div class="g-cm"><div class="g-ch">${avatar(c.author.login)}<b>${esc(c.author.login)}</b> commented on ${day(c.createdAt)}</div><div class="g-cb"><div class="g-md">${md(c.body).join('')}</div></div></div>`).join('')
     return `<div class="gsc"><div class="g-pad">
       <h1 class="g-title">${esc(title)} <span>#${number}</span></h1>
       <div class="g-st"><span class="badge ${open ? '' : 'closed'}">${ic('issue', 16)}${open ? 'Open' : 'Closed'}</span><span>${esc(author)} opened this issue</span>${labels.map(l => `<span class="g-lbl" style="background:#${l.color || '3a474c'}">${esc(l.name)}</span>`).join('')}</div>
       <div class="g-cm"><div class="g-ch">${avatar(author)}<b>${esc(author)}</b> opened<span class="own">Owner</span></div><div class="g-cb"><div class="g-md">${md(bodyMd).join('')}</div></div></div>
+      ${cm}
     </div></div>`
   }
 }

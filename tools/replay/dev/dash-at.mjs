@@ -1,4 +1,4 @@
-// node dev/dash-at.mjs <iso time> [ship|backlog|done|cos] [--open ALBUM-2:agents|details ...]
+// node dev/dash-at.mjs <iso time> [ship|backlog|done|cos] [--session 2026-11-21] [--open ALBUM-2:agents|details ...]
 // Serves only the dashboard with stateAt(<iso time>) and the fake clock, and screenshots it to out/dash-at/.
 import fs from 'fs'
 import http from 'http'
@@ -14,10 +14,11 @@ const CHROME_PATH = process.env.CHROME_PATH || '/Applications/Google Chrome.app/
 const [iso, ...rest] = process.argv.slice(2)
 const tab = rest.find((a) => ['ship', 'backlog', 'done', 'cos'].includes(a)) ?? 'ship'
 const opens = rest.flatMap((a, i) => (rest[i - 1] === '--open' ? [[a.slice(0, a.lastIndexOf(':')), a.slice(a.lastIndexOf(':') + 1)]] : []))
-if (!iso || Number.isNaN(Date.parse(iso))) throw new Error('usage: dash-at.mjs <iso time> [tab] [--open ALBUM-2:agents]')
+const session = rest.find((a, i) => rest[i - 1] === '--session') ?? '2026-11-21'
+if (!iso || Number.isNaN(Date.parse(iso))) throw new Error('usage: dash-at.mjs <iso time> [tab] [--session 2026-11-21] [--open ALBUM-2:agents]')
 
-const timeline = JSON.parse(fs.readFileSync(path.join(ROOT, 'timeline/2026-11-20.json'), 'utf8'))
-const fixtures = await loadFixtures(path.join(ROOT, 'fixtures/2026-11-20'))
+const timeline = JSON.parse(fs.readFileSync(path.join(ROOT, `timeline/${session}.json`), 'utf8'))
+const fixtures = await loadFixtures(path.join(ROOT, `fixtures/${session}`))
 const timeMs = Date.parse(iso)
 const dash = await loadDash(path.join(ROOT, '../../.agent-team'))
 const route = dashRoutes(dash, () => stateAt(timeMs, timeline, fixtures))

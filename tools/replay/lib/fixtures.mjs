@@ -16,7 +16,7 @@ export async function loadFixtures(dir) {
   const sessions = Object.fromEntries(fs.readdirSync(path.join(dir, 'gantt')).map((f) => read(path.join(dir, 'gantt', f))).map((s) => [s.sessionId, s]))
   const live = read(path.join(dir, 'live-api.json'))
   const specs = {}
-  for (const f of fs.readdirSync(dir).filter((n) => /^spec-[0-9a-f]{7}\.md$/.test(n))) specs[f.slice(5, 12)] = await specSections(fs.readFileSync(path.join(dir, f), 'utf8'))
+  for (const f of fs.readdirSync(dir).filter((n) => /^spec-(?:[A-Z]+-\d+-)?[0-9a-f]{7}\.md$/.test(n))) specs[f.slice(-10, -3)] = await specSections(fs.readFileSync(path.join(dir, f), 'utf8'))
   for (const row of live.status.flatMap((g) => g.rows)) if (row.detail?.kind === 'spec') specs[row.specUrl.match(/blob\/([0-9a-f]{7})/)[1]] = row.detail.sections
   const prDetails = Object.fromEntries(live.merged.map(({ detail, prUrl }) => [prUrl.split('/').pop(), detail]))
   return { sessions, specs, prDetails }
