@@ -8,8 +8,8 @@ import { synthesize } from './voice.mjs'
 const seconds = (f) => parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString())
 
 /** Speaks `text` and returns the audio file's path and length in seconds. */
-export async function speak(text, dir, name) {
-  const file = await synthesize(text, dir, name)
+export async function speak(text, dir, name, near) {
+  const file = await synthesize(text, dir, name, near)
   return { file, seconds: seconds(file) }
 }
 

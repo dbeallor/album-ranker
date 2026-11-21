@@ -22,7 +22,7 @@ await launch(meta, path.join(OUT, 'frames'))
 const narrated = []
 for (const [i, beat] of beats.entries()) {
   if (only && !only.includes(i)) { startBeat(beat.say, null); await beat.run(); await endBeat(); continue }
-  const voice = await speak(beat.say, AUDIO, `beat${i}`)
+  const voice = await speak(beat.say, AUDIO, `beat${i}`, { previous: beats[i - 1]?.say, next: beats[i + 1]?.say })
   startBeat(beat.say, voice.seconds)
   await beat.run()
   const scene = await endBeat()

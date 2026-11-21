@@ -29,7 +29,19 @@ The default voice is the user's cloned ElevenLabs voice. Set `ELEVENLABS_VOICE_I
 security add-generic-password -a "$USER" -s elevenlabs-api-key -w <key> -U
 ```
 
-The key never goes in a file. Without a key or voice id the render uses macOS `say`; `TTS=say` forces that. `ELEVENLABS_MODEL` overrides the model (default `eleven_multilingual_v2`); the voice settings are constants in `lib/voice.mjs`.
+The key never goes in a file. Without a key or voice id the render uses macOS `say`; `TTS=say` forces that.
+
+Overrides (env, no code change; all are part of the cache key):
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ELEVENLABS_MODEL` | `eleven_multilingual_v2` | `eleven_v3` also works for the clone |
+| `ELEVENLABS_STABILITY` | `0.4` | 0 to 1. On v3 the API snaps it to Creative 0, Natural 0.5, Robust 1 |
+| `ELEVENLABS_SIMILARITY` | `0.8` | 0 to 1 |
+| `ELEVENLABS_STYLE` | `0` | 0 to 1 |
+| `ELEVENLABS_SPEED` | `0.92` | 0.7 to 1.2 (the API's range); other values fail fast |
+
+Narration markup, converted per model by `lib/narration.mjs`: `{pause}` and `{pause:long}` become `<break time="0.4s" />` and `0.8s` on v2, `[pause]` and `[long pause]` on v3; `{tag:thoughtful}` becomes `[thoughtful]` on v3 and is dropped elsewhere. Captions drop the markers; `say` turns pauses into silences. Keep a few pauses per beat, many break tags cause artifacts. The neighbouring beats' text goes along as `previous_text` / `next_text` for continuity (not on v3, which rejects them).
 
 ElevenLabs bills per character, so synthesized audio is cached in `out/voice-cache/` keyed by provider, voice, model, settings and text. Re-renders and `BEATS` subsets reuse it; only changed narration is synthesized. Each render logs cache hits and fresh synthesis, and ends with the characters synthesized. If an ElevenLabs call fails (401 bad key, 402/429 quota, 422 bad voice id) the render stops and does not fall back to `say`.
 

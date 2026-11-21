@@ -1,6 +1,7 @@
 // Frame capture and timing: a page screenshot becomes a video frame with a duration, and each beat knows how long its narration is.
 import fs from 'fs'
 import path from 'path'
+import { plain } from './narration.mjs'
 
 export const FPS = 12
 export const STEP = 1000 / FPS
@@ -18,7 +19,8 @@ export function begin(p, dir) {
 export function startBeat(text, seconds) {
   skipping = seconds === null
   narrationS = seconds ?? 0
-  sentences = text.match(/.+?[.!?](?=\s|$)/g)?.map((s) => s.trim()) ?? [text]
+  const spoken = plain(text)
+  sentences = spoken.match(/.+?[.!?](?=\s|$)/g)?.map((s) => s.trim()) ?? [spoken]
   beatMs = 0; shown = null
 }
 

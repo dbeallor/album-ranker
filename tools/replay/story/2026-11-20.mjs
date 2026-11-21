@@ -162,14 +162,14 @@ const SPEC3 = { id: 's3', title: 'ALBUM-3 Choose stack and scaffold', subtitle: 
 
 export const beats = [
   {
-    say: "This is a replay of my first working session with an agent team for a new project, an album ranker. It is rebuilt from the chat history and the team's own records, so the dashboard always shows what it looked like at that moment. When the clock jumps ahead, a fast forward badge shows at the top.",
+    say: "Okay, so this is a replay of my first session with an agent team, on a new project, an album ranker. {pause} It's rebuilt from the chat history and the team's own records, so the dashboard shows what it actually looked like at each moment. When the clock jumps ahead, you'll see a fast forward badge up top.",
     run: async () => {
       await clock('23:01:00')
       await intro(true); await until(0.85); await intro(false); await hold(300)
     },
   },
   {
-    say: 'I start with one line: set up this repo. The chief of staff writes a small config file, opens a pull request for it, and tells me exactly what is left to do. I merge that pull request myself, and then tell it to start the team.',
+    say: "Alright, I start with one line. Set up this repo. {pause} The chief of staff writes a small config file, opens a pull request for it, and tells me what's left. I merge that one myself, then tell it to start the team.",
     run: async () => {
       await clock('23:01:19')
       await type('set up this repo')
@@ -178,7 +178,7 @@ export const beats = [
     },
   },
   {
-    say: 'Once I say start the team, it creates the labels it uses to track tickets, and opens its dashboard in the browser on the right. It reports that there is nothing to do yet, because the repo has no tickets.',
+    say: "So, start the team. {pause} It makes the labels it uses to track tickets, and opens its dashboard over here on the right. Nothing to do yet though, the repo has no tickets.",
     run: async () => {
       await clock('23:03:20')
       await type('start the team')
@@ -190,7 +190,7 @@ export const beats = [
     },
   },
   {
-    say: 'Now the real work. I attach my spreadsheet of favorite albums by year, explain how I use it, and say I have never liked its scoring. I ask for a first ticket that specs out the MVP, and a wave of follow up tickets. A ticket helper takes over, and the Backlog tab shows it writing tickets, minute by minute.',
+    say: "Okay, now the real work. I attach my spreadsheet of favorite albums by year, and explain how I use it. I've never liked the scoring, so I say that too. {pause} Then I ask for one ticket that specs out the MVP, plus a wave of follow-up tickets. A ticket helper picks it up, and on the Backlog tab I can watch it write them, minute by minute.",
     run: async () => {
       await clock('23:07:11')
       await type(REQUEST, { attach: 'Best Albums.xlsx 299 KB', ms: 5200 })
@@ -206,7 +206,7 @@ export const beats = [
     },
   },
   {
-    say: 'The helper finishes with nine tickets, all in the Backlog, and lists which ones block which. The dashboard shows the same nine. Only the spec ticket has no blockers. Everything else waits on it.',
+    say: "Nine tickets, all in the Backlog. {pause} It lists which ones block which, and the dashboard shows the same nine. Only the spec ticket has no blockers. Everything else waits on it.",
     run: async () => {
       await reply(M.tickets2, { think: 800, reveal: 3200 })
       await until(0.5)
@@ -216,7 +216,7 @@ export const beats = [
     },
   },
   {
-    say: 'I cannot quite say what I dislike about my scoring, so I ask it to create an epic, then critique the scoring and propose something better, maybe not score based at all. It reads all my rows, and finds my year weight mostly measures how much I logged, not how good the year was. A second helper creates the epic, and it appears in the Backlog.',
+    say: "Hm, I can't quite say what I don't like about the scoring. So I ask for an epic, a critique, and a better idea, maybe not score based at all. {pause} It reads all my rows, and basically says the year weight measures how much I logged, not how good the year was. Fair. A second helper creates the epic, and it shows up in the Backlog.",
     run: async () => {
       await ff('23:11:58', { ms: 1500 })
       await type(EPIC, { ms: 3600 })
@@ -229,7 +229,7 @@ export const beats = [
     },
   },
   {
-    say: 'Time to start. On the Backlog, I click Start shipping on ticket two. That is the trigger. A spec child, running on the bigger Opus model, picks it up and starts writing. On the Ship loop tab I open its Agents panel, and the chart unfolds as it works.',
+    say: "Right, time to start. On the Backlog I click Start shipping on ticket two. {pause} A spec child picks it up, running on the bigger Opus model. Then on the Ship loop tab I open its agents panel, and the chart fills in as it works.",
     run: async () => {
       await ff('23:14:34', { ms: 1500 })
       await press('todo', 'ALBUM-2')
@@ -243,7 +243,7 @@ export const beats = [
     },
   },
   {
-    say: 'When the spec is ready, ticket two moves to Awaiting build approval, flagged high risk. I click View spec to read it on GitHub. In the scoring section, the child proposes a brand new medal table next to my old scoring. That is not what I want.',
+    say: "Spec's ready. Ticket two moves to Awaiting build approval, flagged high risk. {pause} I click View spec to read it on GitHub. And in the scoring section, the child wants a brand new medal table next to my old scoring. Nope, that's not what I want.",
     run: async () => {
       await clock('23:20:45')
       await reply(M.spec1, { think: 600, reveal: 2600 })
@@ -258,7 +258,7 @@ export const beats = [
     },
   },
   {
-    say: 'So I click Changes, and the thread opens with my reply started. I add two instructions: no multiple algorithm support, and go with head to head Elo, where I pick which of two albums I like more. The ticket goes back to being written, and its chart picks up a new changes row.',
+    say: "So I click Changes, and the thread opens with my reply already started. I add two things. No multiple algorithms, and go with head to head Elo, where I just pick which of two albums I like more. {pause} The ticket goes back to being written, and the chart gets a new changes row.",
     run: async () => {
       await clock('23:24:20')
       await pressChanges('ALBUM-2', 'ditch multiple algorithm support\n\ngo with head to head elo algorithm')
@@ -270,7 +270,7 @@ export const beats = [
     },
   },
   {
-    say: 'The revised spec comes back. Before approving, I click View spec again and read the real document. The new scoring section is head to head Elo: one rating per album, seeded from my yearly rankings, so the app is useful from day one. That is what I asked for, so I click Approve, and the card switches to the smaller model for the build.',
+    say: "Okay, the revised spec's back. Before I approve, I click View spec again and read the actual document. {pause} {tag:thoughtful} The scoring section is head to head Elo now. One rating per album, seeded from my yearly rankings, so the app's useful from day one. {pause} That's what I asked for. So I click Approve, and the card switches to the smaller model for the build.",
     run: async () => {
       await clock('23:27:10')
       await reply(M.spec2, { think: 600, reveal: 2200 })
@@ -286,7 +286,7 @@ export const beats = [
     },
   },
   {
-    say: 'The chief passes my approval to the child, which opens a pull request and runs code reviews. Meanwhile a helper rewrites the follow up tickets to match the Elo approach, and adds a new ticket to deploy the app behind a password. On the chart, the review agents appear one by one.',
+    say: "Now the chief passes my approval to the child, and it opens a pull request and starts the code reviews. {pause} Meanwhile a helper rewrites the follow-up tickets to match the Elo approach, and adds a new one to deploy the app behind a password. On the chart, the review agents show up one by one.",
     run: async () => {
       await clock('23:43:36')
       await reply(M.approved, { think: 700, reveal: 2200 })
@@ -304,7 +304,7 @@ export const beats = [
     },
   },
   {
-    say: 'Now it is ready to merge. Again I do not just trust the summary. I click View PR. The description explains the change, and the review comments are right there. In Files changed it is one new spec file, docs only. Four code review passes and a security check came back clean. Looks right, so I click Approve.',
+    say: "Okay, ready to merge. I still don't just trust the summary, so I click View PR. {pause} There's the description, and the review comments are right there. Files changed is one new spec file, docs only. Four code review passes and a security check, all clean. Looks right, so I click Approve.",
     run: async () => {
       await clock('23:51:05')
       await reply(M.mergeready, { think: 500, reveal: 2800 })
@@ -325,7 +325,7 @@ export const beats = [
     },
   },
   {
-    say: 'The child merges it, the ticket closes, and the spec now lives in the repo. The Done tab shows the finished work and what it cost, and the chart shows every agent that touched it, from the first helper to the merge.',
+    say: "And it merges. The ticket closes, and the spec now lives in the repo. {pause} The Done tab shows the finished work and what it cost, and the chart shows every agent that touched it, from the first helper to the merge.",
     run: async () => {
       await clock('23:53:41')
       await reply(M.merging, { think: 500, reveal: 1600 })
@@ -338,7 +338,7 @@ export const beats = [
     },
   },
   {
-    say: 'Then a few housekeeping commands in one message, with no button for them, so I type it. Mark the epic done, so nobody tries to build it. Make the ranking screen wait on the Elo engine. And start the next ticket, the app scaffold. A new spec child starts on Opus, next to another small helper.',
+    say: "Then a few housekeeping things, all in one message, since there's no button for them. Mark the epic done so nobody tries to build it. Make the ranking screen wait on the Elo engine. {pause} And start the next ticket, the app scaffold. A new spec child starts on Opus, next to another small helper.",
     run: async () => {
       await ff('23:55:18', { ms: 1400 })
       await type('11 is done\n\nlink 6 and 7\n\nmark 3 todo', { ms: 1800 })
@@ -353,7 +353,7 @@ export const beats = [
     },
   },
   {
-    say: 'And the scaffold spec comes back for my approval: a Next.js app, real test, lint and typecheck commands, and no album features yet. That is the loop. I describe what I want, the team writes the spec, I read it and approve, it builds and reviews, and I approve the merge.',
+    say: "And the scaffold spec comes back for my approval. A Next.js app, real test, lint and typecheck commands, no album features yet. {pause} So that's the loop. I say what I want, the team writes the spec, I read it and approve. It builds and reviews, and I approve the merge.",
     run: async () => {
       await clock('23:57:21')
       await reply(M.spec3, { think: 500, reveal: 3000 })

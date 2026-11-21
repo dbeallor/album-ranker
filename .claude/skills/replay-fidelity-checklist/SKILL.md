@@ -42,6 +42,18 @@ Used by `replay-thread-video` while authoring (`tools/replay/story/`, `timeline/
 16. Never overwrite an earlier video; use a versioned name. Reason: the user compares versions.
 17. Real UTC timestamps in the timeline; no invented events.
 
+## Narration style
+
+The narration is the user thinking out loud while working on their own project: first person, spoken, not written.
+- Contractions; varied, mostly short sentences.
+- React to what is on screen and what is being decided and why, instead of announcing every click. Do not read UI labels or lists verbatim.
+- Sparing fillers and restarts ("okay so", "hm", "let me check", "right"): some beats, never all.
+- Less during fast actions, more where there is a decision.
+- Spoken numbers, no symbols or ids a voice would mangle ("ticket two", "pull request thirteen").
+- No marketing words. Facts must match what happens on screen in that beat.
+- Pauses: `{pause}` / `{pause:long}` between thoughts, at most about three per beat; `{tag:thoughtful}` (v3 only) very rarely. The voice layer converts them per model.
+- Voice settings come from `ELEVENLABS_*` env (see README), not from the story.
+
 ## Frame QA recipe
 
 Extract frames at the start of each beat and at every clock jump, approval and GitHub view (video time from `out/frames.txt` or the render log):
