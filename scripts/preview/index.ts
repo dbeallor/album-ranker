@@ -28,12 +28,14 @@ import {
   type Worktree,
 } from "./rules.ts";
 
-type PreviewRecord = {
+export type PreviewRecord = {
   pid: number;
   port: number;
   target: string;
   branch: string | null;
   startedAt: string;
+  /** Full HEAD SHA of the checkout when the preview started (for main, before the build). Missing in records from before ALBUM-30. */
+  commit?: string;
 };
 
 type StartCommand = Extract<Command, { kind: "start" }>;
@@ -52,7 +54,7 @@ function unwrap<T>(result: Result<T>): T {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-function listWorktrees(): Worktree[] {
+export function listWorktrees(): Worktree[] {
   const text = execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" });
   return parseWorktrees(text);
 }
@@ -61,7 +63,7 @@ function previewDir(checkout: string): string {
   return join(checkout, ".preview");
 }
 
-function recordFiles(checkout: string): string[] {
+export function recordFiles(checkout: string): string[] {
   const dir = previewDir(checkout);
   if (!existsSync(dir)) {
     return [];
@@ -71,7 +73,7 @@ function recordFiles(checkout: string): string[] {
     .map((name) => join(dir, name));
 }
 
-function readRecord(file: string): PreviewRecord | null {
+export function readRecord(file: string): PreviewRecord | null {
   try {
     const record = JSON.parse(readFileSync(file, "utf8")) as PreviewRecord;
     return Number.isInteger(record?.pid) && record.pid > 1 ? record : null;
@@ -80,7 +82,7 @@ function readRecord(file: string): PreviewRecord | null {
   }
 }
 
-function groupAlive(pid: number): boolean {
+export function groupAlive(pid: number): boolean {
   try {
     process.kill(-pid, 0);
     return true;
@@ -316,6 +318,7 @@ async function launch(spec: Launch): Promise<void> {
     target: spec.label,
     branch: spec.branch,
     startedAt: new Date().toISOString(),
+    commit: headOf(spec.checkout),
   };
   writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
 
@@ -406,6 +409,15 @@ async function start(command: StartCommand): Promise<void> {
     anyStatus: true,
     argv: [nextBin(found.path), "dev", "--port", String(port), "--hostname", HOST],
   });
+}
+
+/** The full HEAD SHA, or undefined when git can't say. */
+function headOf(checkout: string): string | undefined {
+  try {
+    return execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function commitOf(checkout: string): string {
