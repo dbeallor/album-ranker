@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { DecadeListEntry } from "./types";
+import { transaction } from "./transaction";
+import { DataError, type DecadeListEntry } from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -57,4 +58,42 @@ export function getDecadeList(db: DatabaseSync, decade: number): DecadeListEntry
     .prepare("SELECT * FROM decade_list_entries WHERE decade = ? ORDER BY position")
     .all(decade)
     .map(toEntry);
+}
+
+export function listDecadeLists(db: DatabaseSync): DecadeListEntry[] {
+  return db.prepare("SELECT * FROM decade_list_entries ORDER BY decade, position").all().map(toEntry);
+}
+
+export const MAX_DECADE_LIST = 25;
+
+/**
+ * Replaces a decade's list with these albums in order (position 1 first). Each album needs a ranked or
+ * honorable mention year entry in the decade; at most 25 albums, none repeated.
+ */
+export function setDecadeList(db: DatabaseSync, decade: number, albumIds: number[]): DecadeListEntry[] {
+  return transaction(db, () => {
+    if (!Number.isInteger(decade) || decade % 10 !== 0 || decade < 1900 || decade > 2100) {
+      throw new DataError("invalid_input", `Decade must be a multiple of 10 from 1900 to 2100, got ${decade}.`);
+    }
+    if (albumIds.length > MAX_DECADE_LIST) {
+      throw new DataError("invalid_input", `A decade list holds at most ${MAX_DECADE_LIST} albums.`);
+    }
+    if (new Set(albumIds).size !== albumIds.length) {
+      throw new DataError("invalid_input", "An album can be on a decade list only once.");
+    }
+    const eligible = db.prepare(
+      `SELECT 1 FROM year_entries
+       WHERE album_id = ? AND placement IN ('ranked', 'honorable_mention') AND year >= ? AND year < ?`,
+    );
+    for (const albumId of albumIds) {
+      if (!eligible.get(albumId, decade, decade + 10)) {
+        throw new DataError(
+          "not_eligible_for_decade",
+          `Album ${albumId} needs a ranked or honorable mention entry in the ${decade}s.`,
+        );
+      }
+    }
+    rewriteDecade(db, decade, albumIds);
+    return getDecadeList(db, decade);
+  });
 }
