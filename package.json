@@ -11,7 +11,8 @@
     "start": "next start",
     "test": "vitest run",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node scripts/migrate.ts"
   },
   "dependencies": {
     "next": "^16.4.6",
