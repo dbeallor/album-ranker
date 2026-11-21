@@ -10,6 +10,26 @@ Personal Favorite Album Ranker
 5. `npm run dev`
 6. Open <http://localhost:3000>.
 
+## Preview branches
+
+Run `main` and any ticket's worktree side by side, each on its own port and its own SQLite file.
+
+| Command | What it does |
+|---|---|
+| `npm run preview -- main` | Builds the root checkout (on `main`) and serves it on <http://localhost:4000> |
+| `npm run preview -- 20` | Runs the worktree whose branch contains `album-20-` on <http://localhost:4020> |
+| `npm run preview -- feat/album-20-local-previews` | Same, found by branch name |
+| `npm run preview -- list` | Shows each running preview: target, port, URL, pid, commit |
+| `npm run preview -- stop 20` | Stops one preview (`stop main` and `stop all` work too) |
+
+Any checkout can run these. A ticket preview needs a worktree for its branch, for example `git worktree add ../album-ranker-20 -b feat/album-20-short-title origin/main`. Previews are bound to 127.0.0.1 only, so other machines on the network can't reach them. Previews run in the background; the pid file and log are in `.preview/` in the checkout being served (gitignored).
+
+- **Ports:** main is 4000, a ticket is `4000 + N` (1 to 999). A branch without a ticket number, or a number of 1000 or more, needs `--port <p>` (1024 to 65535). Plain `npm run dev` stays on 3000. A taken port fails with the preview that holds it, or an `lsof` hint.
+- **Data:** main uses the root checkout's `data/album-ranker.db`, the same file `npm run dev` there uses. A ticket preview uses `data/preview.db` in its own worktree, so migrations and test data never reach main. It keeps that file between runs. `--empty` deletes it first; `--copy-main-data` replaces it with a copy of main's file.
+- **Setup:** the script runs `npm install` in the checkout when `node_modules` is missing or `package-lock.json` is newer, and copies `.env.example` to `.env` when `.env` is missing.
+- **Refresh after a merge:** run `npm run preview -- main` again. It stops the running main preview, rebuilds and starts it. If the root checkout is behind `origin/main`, it warns and prints the `git pull --ff-only` command; it never pulls.
+- **Stop:** `npm run preview -- stop <main|N|branch|all>`.
+
 ## Search albums
 
 Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive.
@@ -26,11 +46,21 @@ Ratings are never stored. Every request replays the year placements (ranked over
 
 Open <http://localhost:3000/artists> to see artists ranked by score, overall or one decade at a time (1950s to 2020s). Open an artist to see their placed albums with year, placement and rating. Scores come from the replayed ratings on every request. Details are in [the ALBUM-8 spec](docs/superpowers/specs/2026-11-21-album-8-artist-views.md).
 
+## Browser tests
+
+Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.
+
+1. One time: `npx playwright install chromium`
+2. `npm run test:e2e`
+
+Each test also records what it does in the page (clicks, typing, form submits, route changes) and writes it as `events.json` in that test's folder under `test-results/e2e/`, for the replay renderer. The format is in [docs/event-log-format.md](docs/event-log-format.md). The recorder is injected by the test; the app's own code never contains it.
+
 Checks:
 
 - `npm test`
 - `npm run lint`
 - `npm run typecheck`
 - `npm run build`
+- `npm run test:e2e` (needs the one-time Chromium install above)
 
 The stack and the reasons for it are in [docs/stack.md](docs/stack.md).
