@@ -11,4 +11,5 @@
 - `Tabs` renders the current item as a `span` with `aria-current="page"`, not a link.
 - `Table` is a focusable, labelled scroll region (`label` prop required).
 - The years and decades pickers are card grids, not plain row lists; artist page covers are 80px.
+- Undo on the matchup screen is a secondary button, not ghost, to match Tie and Skip.
 - `/import` has no page-level change; `ImportReview` renders its own `PageHeader`.

@@ -13,7 +13,7 @@ type TabsProps = Omit<ComponentPropsWithoutRef<"nav">, "children"> & {
 /** A row of pill links. The current one is a plain pill with `aria-current="page"`, not a link. */
 export function Tabs({ items, className, ...rest }: TabsProps) {
   return (
-    <nav className={cx(styles.tabs, className)} {...rest}>
+    <nav className={className} {...rest}>
       <ul className={styles.list}>
         {items.map((item) => (
           <li key={item.href}>

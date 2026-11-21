@@ -28,7 +28,7 @@ export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRe
         <Link href="/" className={styles.brand}>
           Album ranker
         </Link>
-        <nav aria-label="Main" className={styles.nav}>
+        <nav aria-label="Main">
           <ul className={styles.list}>
             {NAV_ITEMS.map((item) => (
               <li key={item.href}>

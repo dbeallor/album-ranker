@@ -12,7 +12,7 @@ export function Cover({ src, alt, size = DEFAULT_SIZE }: { src: string | null; a
 
   if (failed || src === null) {
     return (
-      <div role="img" aria-label={`No cover for ${alt}`} className={cx(styles.cover, styles.placeholder)} style={{ "--cover-size": `${size}px` } as CSSProperties}>
+      <div role="img" aria-label={`No cover for ${alt.replace(/^Cover of /, "")}`} className={cx(styles.cover, styles.placeholder)} style={{ "--cover-size": `${size}px` } as CSSProperties}>
         ♪
       </div>
     );
