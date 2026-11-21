@@ -23,7 +23,7 @@ Backups go to `~/.album-ranker/backups/`, outside every checkout, so they surviv
 | `npm run db:restore -- latest` | Restores the newest backup |
 | `npm run db:restore -- <file>` | Restores a backup, given as a path or as a file name in this database's backup folder |
 
-- **Restore:** stop the app first (`npm run dev`, and any preview using that file). If a database already exists, it shows what would be replaced and asks you to type `yes`. `--yes` skips the question; with no terminal and no `--yes` it refuses and changes nothing.
+- **Restore:** stop the app first (`npm run dev`, and any preview using that file). If a database already exists, it shows what would be replaced and asks you to type `yes`. `--yes` skips the question; with no terminal and no `--yes` it refuses and changes nothing. If the file is still open in another process (the app is running), the restore stops without replacing it. A damaged file that can't be opened is replaced after you confirm, and its raw files are kept in the backup folder as `*-pre-restore-unreadable.db.bak`.
 - **Undo a restore:** the replaced data is saved as a `pre-restore` backup, and restore prints its path. Run `npm run db:restore -- <that file>` to go back.
 - **Migrations:** when `npm run db:migrate` or the app finds a pending migration in an existing database, it takes a `pre-migrate` backup first. If that backup fails, no migration runs.
 

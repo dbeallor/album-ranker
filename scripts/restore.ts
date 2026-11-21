@@ -10,7 +10,7 @@ function describe(counts: Counts): string {
 
 async function confirmReplace(summary: RestoreSummary, yes: boolean): Promise<boolean> {
   console.log(`A database already exists at ${summary.targetPath}.`);
-  console.log(`  Now:     ${describe(summary.current)}`);
+  console.log(`  Now:     ${summary.currentUnreadable ? "unreadable (damaged); its files are kept before it is replaced" : describe(summary.current)}`);
   console.log(`  Backup:  ${describe(summary.backup)}`);
   for (const warning of summary.warnings) console.warn(`Warning: ${warning}`);
   if (yes) return true;

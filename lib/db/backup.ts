@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { migrationVersions } from "./migrate.ts";
 
@@ -101,9 +101,10 @@ export function listBackups(sourcePath: string, backupDir: string): BackupFile[]
   return found.map((entry) => entry.file);
 }
 
-function prune(sourcePath: string, backupDir: string): void {
+/** Deletes the oldest past KEEP_BACKUPS, but never `keep`: a clock set back could otherwise sort the file just written out of the newest 10. */
+function prune(sourcePath: string, backupDir: string, keep: string): void {
   for (const file of listBackups(sourcePath, backupDir).slice(KEEP_BACKUPS)) {
-    removeFile(file.path);
+    if (file.path !== keep) removeFile(file.path);
   }
 }
 
@@ -136,7 +137,7 @@ export function backupDatabase(db: DatabaseSync, sourcePath: string, reason: Bac
     removeFile(temp);
     throw new Error(`Backup failed: ${error instanceof Error ? error.message : error}`, { cause: error });
   }
-  prune(sourcePath, backupDir);
+  prune(sourcePath, backupDir, target);
   return target;
 }
 
@@ -158,6 +159,8 @@ export type RestoreSummary = {
   targetPath: string;
   backupPath: string;
   current: Counts;
+  /** True when the existing file could not be read (damaged); `current` is then all zeros and meaningless. */
+  currentUnreadable?: boolean;
   backup: Counts;
   warnings: string[];
 };
@@ -193,6 +196,22 @@ function copyBeside(backupFile: string, targetPath: string): string {
   return temp;
 }
 
+/** For a live file that can't be opened: copies it (and its `-wal` and `-shm`) into the backup folder under a name no listing or pruning touches, and returns the main file's path. */
+function keepRawFiles(targetPath: string, backupDir: string): string {
+  const folder = backupFolder(targetPath, backupDir);
+  mkdirSync(folder, { recursive: true, mode: 0o700 });
+  const base = join(folder, `${timestamp(new Date())}-pre-restore-unreadable.db.bak`);
+  let kept = base;
+  for (let n = 2; existsSync(kept); n++) kept = `${base}-${n}`;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (existsSync(targetPath + suffix)) {
+      copyFileSync(targetPath + suffix, kept + suffix);
+      chmodSync(kept + suffix, 0o600);
+    }
+  }
+  return kept;
+}
+
 /** Drops the old `-wal` and `-shm` and renames `temp` over the live file. The old WAL must go: left in place, SQLite would replay it onto the restored file. */
 function swapIn(temp: string, targetPath: string): void {
   removeFile(`${targetPath}-wal`);
@@ -221,18 +240,35 @@ export async function restoreDatabase(options: RestoreOptions): Promise<RestoreR
     return { restored: true, summary };
   }
 
-  const live = new DatabaseSync(targetPath);
+  let live: DatabaseSync | undefined;
   try {
+    live = new DatabaseSync(targetPath);
     live.exec("PRAGMA busy_timeout = 5000");
     summary.current = countRows(live);
+  } catch {
+    // A damaged file is a main reason to restore, so go on and keep its raw files instead of a VACUUM copy.
+    if (live?.isOpen) live.close();
+    live = undefined;
+    summary.currentUnreadable = true;
+  }
+  try {
     if (!(await options.confirm(summary))) {
       return { restored: false, summary };
     }
     // Copy first: the pre-restore backup can prune the very file being restored.
     const temp = copyBeside(backupFile, targetPath);
     try {
-      const preRestorePath = backupDatabase(live, targetPath, "pre-restore", backupDir);
-      live.close();
+      let preRestorePath: string;
+      if (live) {
+        preRestorePath = backupDatabase(live, targetPath, "pre-restore", backupDir);
+        live.close();
+        if (existsSync(`${targetPath}-wal`)) {
+          // SQLite deletes the -wal when the last connection closes, so one that is left means another process has the file open.
+          throw new Error("The database is still open in another process (is the app running?). Nothing was replaced. Stop it and run again.");
+        }
+      } else {
+        preRestorePath = keepRawFiles(targetPath, backupDir);
+      }
       swapIn(temp, targetPath);
       return { restored: true, summary, preRestorePath };
     } catch (error) {
@@ -240,6 +276,6 @@ export async function restoreDatabase(options: RestoreOptions): Promise<RestoreR
       throw error;
     }
   } finally {
-    if (live.isOpen) live.close();
+    if (live?.isOpen) live.close();
   }
 }

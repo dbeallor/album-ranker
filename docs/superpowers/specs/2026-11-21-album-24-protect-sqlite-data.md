@@ -2,7 +2,7 @@
 
 **Status:** Shipped
 **Date:** 2026-11-21
-**Shipped:** in PR #29, as specified
+**Shipped:** in PR #29, with differences: [as-built](../as-built/2026-11-21-album-24-protect-sqlite-data.md)
 **Ticket:** [ALBUM-24](https://github.com/dbeallor/album-ranker/issues/24)
 **Follows:** [data model and storage](2026-11-21-album-4-data-model-storage.md) § Storage, [local previews](2026-11-21-album-20-local-previews.md)
 

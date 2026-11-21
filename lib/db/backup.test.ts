@@ -93,6 +93,18 @@ describe("backupDatabase", () => {
     expect(existsSync(older[3])).toBe(true);
   });
 
+  it("never prunes the backup it just wrote, even when ten later-dated ones exist", () => {
+    const { db, path } = seededDb("live.db", 1);
+    const folder = backupFolder(path, backupDir);
+    const first = backupDatabase(db, path, "manual", backupDir);
+    for (let i = 0; i < KEEP_BACKUPS; i++) copyFileSync(first, join(folder, `20990101T0000${String(i).padStart(2, "0")}Z-manual.db`));
+
+    const written = backupDatabase(db, path, "pre-restore", backupDir);
+    db.close();
+
+    expect(existsSync(written)).toBe(true);
+  });
+
   it("does not prune another database's backups", () => {
     const a = seededDb("a.db", 1);
     const b = seededDb("b.db", 1);
@@ -135,6 +147,8 @@ describe("restoreDatabase", () => {
     const live = seededDb("live.db", 1);
     expect(statSync(`${live.path}-wal`).size).toBeGreaterThan(0);
     const before = readFileSync(live.path);
+    // Replacing needs the app stopped, so only the unconfirmed run keeps the connection open.
+    if (restored) live.db.close();
 
     const result = await restoreDatabase({ backupFile: backupPath, targetPath: live.path, backupDir, confirm });
 
@@ -159,7 +173,6 @@ describe("restoreDatabase", () => {
     const old = new DatabaseSync(kept[0].path, { readOnly: true });
     expect(countRows(old).albums).toBe(1);
     old.close();
-    live.db.close();
   });
 
   it("can restore the oldest of a full set of backups", async () => {
@@ -199,6 +212,43 @@ describe("restoreDatabase", () => {
 
     expect(readFileSync(live.path)).toEqual(before);
     expect(listBackups(live.path, backupDir)).toEqual([]);
+  });
+
+  it("replaces a damaged live file after confirming, keeping its raw files", async () => {
+    const source = seededDb("source.db", 3);
+    const backup = backupDatabase(source.db, source.path, "manual", backupDir);
+    source.db.close();
+    const livePath = join(root, "live.db");
+    writeFileSync(livePath, "damaged, not a database");
+
+    const result = await restoreDatabase({
+      backupFile: backup,
+      targetPath: livePath,
+      backupDir,
+      confirm: (summary) => summary.currentUnreadable === true,
+    });
+
+    expect(result.restored).toBe(true);
+    expect(readFileSync(result.preRestorePath!, "utf8")).toBe("damaged, not a database");
+    const db = new DatabaseSync(livePath, { readOnly: true });
+    expect(countRows(db).albums).toBe(3);
+    db.close();
+  });
+
+  it("stops without replacing anything while another process still has the database open", async () => {
+    const source = seededDb("source.db", 3);
+    const backup = backupDatabase(source.db, source.path, "manual", backupDir);
+    source.db.close();
+    const live = seededDb("live.db", 1);
+    const before = countRows(live.db);
+
+    await expect(
+      restoreDatabase({ backupFile: backup, targetPath: live.path, backupDir, confirm: yes }),
+    ).rejects.toThrow(/still open in another process/);
+
+    expect(countRows(live.db)).toEqual(before);
+    live.db.close();
+    expect(readdirSync(root).filter((name) => name.includes(".restore-"))).toEqual([]);
   });
 
   it("warns, but restores, a backup from a newer schema", async () => {
