@@ -17,8 +17,15 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Cover } from "@/components/cover";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Cluster } from "@/components/ui/cluster";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Message } from "@/components/ui/message";
+import { Select } from "@/components/ui/select";
+import { Stack } from "@/components/ui/stack";
 import { YearAddPanel, type ManualInput } from "@/components/year-add-panel";
 import type { CatalogAlbum, SearchResult } from "@/lib/catalog/types";
 import type { AddResult, Conflict, RemovedDecadeEntry, YearActionResult, YearAlbum, YearView } from "@/lib/year-service";
@@ -32,6 +39,7 @@ import {
   type Area,
   type Placements,
 } from "@/lib/year-placements";
+import styles from "./year-screen.module.css";
 
 type Props = {
   initial: YearView;
@@ -126,74 +134,71 @@ function AlbumCard({ album, area, position, disabled, onMoveUp, onMoveDown, onMo
     },
     [setNodeRef, setDropRef, setActivatorNodeRef],
   );
-  const style: CSSProperties = {
-    display: "flex",
-    gap: 12,
-    padding: 8,
-    border: "1px solid #a3a3a3",
-    background: "#fff",
-    touchAction: "manipulation",
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    position: "relative",
-    zIndex: isDragging ? 10 : undefined,
-    opacity: isDragging ? 0.85 : undefined,
-  };
   const others = AREAS.filter((target) => target !== area);
 
   return (
-    <div
+    <Card
       ref={ref}
+      className={styles.album}
       aria-label={album.title}
-      style={style}
+      data-dragging={isDragging || undefined}
+      style={{
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        zIndex: isDragging ? 10 : undefined,
+        opacity: isDragging ? 0.85 : undefined,
+      }}
       {...attributes}
       {...listeners}
     >
-      <div style={{ flexShrink: 0 }}>
-        <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <strong>{album.title}</strong>
-        <div>{album.artist}</div>
-        {album.rating !== null && <div>Rating {album.rating}</div>}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-          {position && (
-            <>
-              <button type="button" disabled={disabled || position.index === 0} onClick={onMoveUp}>
-                Move up
-              </button>
-              <button type="button" disabled={disabled || position.index === position.count - 1} onClick={onMoveDown}>
-                Move down
-              </button>
-            </>
-          )}
-          <select
-            aria-label="Move to"
-            value=""
-            disabled={disabled}
-            onChange={(event) => {
-              if (event.target.value) onMoveTo(event.target.value as Area);
-            }}
-          >
-            <option value="">Move to…</option>
-            {others.map((target) => (
-              <option key={target} value={target}>
-                {AREA_NAMES[target]}
-              </option>
-            ))}
-          </select>
-          <button type="button" disabled={disabled} onClick={onRemove}>
-            Remove
-          </button>
+      <div className={styles.top}>
+        <div className={styles.cover}>
+          <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
+        </div>
+        <div className={styles.text}>
+          <strong className={styles.title}>{album.title}</strong>
+          <span className={styles.artist}>{album.artist}</span>
+          {album.rating !== null && <span className={styles.muted}>Rating {album.rating}</span>}
         </div>
       </div>
-    </div>
+      <Cluster gap={2}>
+        {position && (
+          <>
+            <Button type="button" disabled={disabled || position.index === 0} onClick={onMoveUp}>
+              Move up
+            </Button>
+            <Button type="button" disabled={disabled || position.index === position.count - 1} onClick={onMoveDown}>
+              Move down
+            </Button>
+          </>
+        )}
+        <Select
+          aria-label="Move to"
+          fieldClassName={styles.moveTo}
+          value=""
+          disabled={disabled}
+          onChange={(event) => {
+            if (event.target.value) onMoveTo(event.target.value as Area);
+          }}
+        >
+          <option value="">Move to…</option>
+          {others.map((target) => (
+            <option key={target} value={target}>
+              {AREA_NAMES[target]}
+            </option>
+          ))}
+        </Select>
+        <Button type="button" disabled={disabled} onClick={onRemove}>
+          Remove
+        </Button>
+      </Cluster>
+    </Card>
   );
 }
 
-function DropZone({ id, children, style }: { id: string; children: ReactNode; style?: CSSProperties }) {
+function DropZone({ id, children }: { id: string; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} style={{ ...style, outline: isOver ? "2px dashed #2563eb" : undefined }}>
+    <div ref={setNodeRef} className={styles.zone} data-over={isOver || undefined}>
       {children}
     </div>
   );
@@ -203,10 +208,7 @@ function DropZone({ id, children, style }: { id: string; children: ReactNode; st
 function Slot({ id, filled, children }: { id: string; filled: boolean; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: filled });
   return (
-    <li
-      ref={setNodeRef}
-      style={{ display: "flex", gap: 8, alignItems: "center", outline: isOver ? "2px dashed #2563eb" : undefined }}
-    >
+    <li ref={setNodeRef} className={styles.slot} data-over={isOver || undefined}>
       {children}
     </li>
   );
@@ -367,17 +369,16 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
   const { ranked, honorableMentions, listed } = placements;
   const rankedFull = ranked.length >= MAX_RANKED;
   const isEmpty = ranked.length + honorableMentions.length + listed.length === 0;
-  const grid: CSSProperties = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" };
 
   function unranked(area: Area, unsorted: number[], emptyText: string) {
     // Always by artist, then title, as the server loads them, so a card lands in the same place before and after a reload.
     const ids = [...unsorted].sort((a, b) => byArtistThenTitle(albums.get(a)!, albums.get(b)!));
     return (
-      <section aria-labelledby={`${area}-heading`}>
+      <Stack as="section" gap={3} aria-labelledby={`${area}-heading`}>
         <h2 id={`${area}-heading`}>{AREA_NAMES[area]}</h2>
-        <DropZone id={`area-${area}`} style={{ ...grid, minHeight: 40, padding: 4 }}>
+        <DropZone id={`area-${area}`}>
           {ids.length === 0 ? (
-            <p>{emptyText}</p>
+            <EmptyState className={styles.empty}>{emptyText}</EmptyState>
           ) : (
             ids.map((id) => {
               const album = albums.get(id)!;
@@ -385,31 +386,43 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
             })
           )}
         </DropZone>
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <div>
-      {error && <p role="alert">{error}</p>}
+    <Stack gap={5}>
+      {error && (
+        <Message tone="error" role="alert">
+          {error}
+        </Message>
+      )}
       {notices.length > 0 && (
-        <div role="status">
+        <Message tone="info" role="status">
           {notices.map((notice) => (
             <p key={notice}>{notice}</p>
           ))}
-        </div>
+        </Message>
       )}
-      {saving && <p aria-live="polite">Saving…</p>}
-      {conflict && (
-        <p role="alertdialog" aria-label="Move album">
-          {conflict.text}{" "}
-          <button type="button" disabled={blocked} onClick={conflict.move}>
-            Move
-          </button>{" "}
-          <button type="button" onClick={() => setConflict(null)}>
-            Cancel
-          </button>
+      {saving && (
+        <p className={styles.muted} aria-live="polite">
+          Saving…
         </p>
+      )}
+      {conflict && (
+        <Message tone="info" role="alertdialog" aria-label="Move album">
+          <Stack gap={3}>
+            <p>{conflict.text}</p>
+            <Cluster>
+              <Button type="button" variant="primary" disabled={blocked} onClick={conflict.move}>
+                Move
+              </Button>
+              <Button type="button" onClick={() => setConflict(null)}>
+                Cancel
+              </Button>
+            </Cluster>
+          </Stack>
+        </Message>
       )}
 
       <DndContext
@@ -419,22 +432,22 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
         onDragEnd={onDragEnd}
         accessibility={{ announcements }}
       >
-        {isEmpty && <p>No albums for {year} yet. Search below to add one.</p>}
+        <Stack gap={5}>
+          {isEmpty && <EmptyState>No albums for {year} yet. Search below to add one.</EmptyState>}
 
-        <section aria-labelledby="ranked-heading">
-          <h2 id="ranked-heading">Ranked</h2>
-          <ol style={{ listStyle: "none", padding: 0, display: "grid", gap: 8, maxWidth: 420 }}>
-            {SLOTS.map((slot) => {
-              const index = layout ? layout.indexOf(slot) : slot - 1 < ranked.length ? slot - 1 : -1;
-              const id = index === -1 ? undefined : ranked[index];
-              return (
-                <Slot key={slot} id={`slot-${slot}`} filled={id !== undefined}>
-                  <span style={{ minWidth: 24, textAlign: "right" }}>{slot}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+          <Stack as="section" gap={3} aria-labelledby="ranked-heading">
+            <h2 id="ranked-heading">Ranked</h2>
+            <ol className={styles.ranked}>
+              {SLOTS.map((slot) => {
+                const index = layout ? layout.indexOf(slot) : slot - 1 < ranked.length ? slot - 1 : -1;
+                const id = index === -1 ? undefined : ranked[index];
+                return (
+                  <Slot key={slot} id={`slot-${slot}`} filled={id !== undefined}>
+                    <span className={styles.rank}>{slot}</span>
                     {id === undefined ? (
-                      <div style={{ padding: 8, border: "1px dashed #a3a3a3", color: "#525252" }}>
+                      <Card variant="dashed" className={styles.emptySlot}>
                         Empty
-                      </div>
+                      </Card>
                     ) : (
                       <AlbumCard
                         album={albums.get(id)!}
@@ -443,15 +456,15 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
                         {...cardProps(id)}
                       />
                     )}
-                  </div>
-                </Slot>
-              );
-            })}
-          </ol>
-        </section>
+                  </Slot>
+                );
+              })}
+            </ol>
+          </Stack>
 
-        {unranked("honorable_mention", honorableMentions, "No honorable mentions yet")}
-        {unranked("listed", listed, "No listed albums yet")}
+          {unranked("honorable_mention", honorableMentions, "No honorable mentions yet")}
+          {unranked("listed", listed, "No listed albums yet")}
+        </Stack>
       </DndContext>
 
       <YearAddPanel
@@ -461,6 +474,6 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
         onAddCatalog={(album, area) => addCatalog(album, area)}
         onAddManual={(input) => runAdd(() => addManualAction(year, input))}
       />
-    </div>
+    </Stack>
   );
 }

@@ -1,0 +1,22 @@
+/* --cover-size is set inline from the `size` prop, the one inline style Cover keeps. */
+.cover {
+  display: block;
+  flex: none;
+  width: var(--cover-size);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  object-fit: cover;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: calc(var(--cover-size) * 0.38);
+  line-height: 1;
+}

@@ -14,6 +14,7 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
 | Spreadsheet reader | `read-excel-file`, read-only, used by the import script (`npm run import`). `write-excel-file` (dev dependency) generates the test fixture. See [the import spec](superpowers/specs/2026-11-21-album-10-spreadsheet-import.md) |
 | Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
+| Styling | Plain CSS, no library: design tokens, dark theme and base styles in `app/globals.css`, layout in CSS Modules next to each component, and shared components in `components/ui/`. `lib/design-system.test.ts` keeps raw colors and inline styles out of everything else. See [the ALBUM-31 spec](superpowers/specs/2026-11-21-album-31-restyle-design-system.md) |
 | Drag and drop | `@dnd-kit/core`, `@dnd-kit/sortable` and `@dnd-kit/utilities`: mouse, touch (200 ms hold) and keyboard in one model, with Move up and Move down buttons as the alternative. Used by the decade lists and the year page. See [the ALBUM-9 spec](superpowers/specs/2026-11-21-album-9-decade-top-25.md) and [the ALBUM-6 spec](superpowers/specs/2026-11-21-album-6-year-ranking-screen.md) |
 
 TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
@@ -30,5 +31,6 @@ TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
 ## Turned down
 
 - SvelteKit or Remix / React Router: both fit; Next.js has the largest ecosystem, which matters for a solo project built mostly by agents.
+- Tailwind (or another CSS library): it adds a build plugin and a second vocabulary for a dozen screens. Plain CSS tokens with CSS Modules cover it.
 - A separate API server plus a Vite single-page app: two processes for one user's app.
 - Python with a JavaScript frontend: two languages, and drag and drop still needs JavaScript.

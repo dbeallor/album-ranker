@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Stack } from "@/components/ui/stack";
+import { Table } from "@/components/ui/table";
+import { Tabs } from "@/components/ui/tabs";
 import { loadArtistList } from "@/lib/artists";
 import { getDb } from "@/lib/db/server";
 
@@ -22,51 +27,41 @@ export default async function ArtistsPage({ searchParams }: { searchParams: Sear
   const choices = [
     { label: "Overall", decade: undefined, href: "/artists" },
     ...DECADES.map((d) => ({ label: `${d}s`, decade: d, href: `/artists?decade=${d}` })),
-  ];
+  ].map((choice) => ({ href: choice.href, label: choice.label, current: choice.decade === decade }));
 
   return (
-    <main>
-      <h1>Artists</h1>
-      <nav aria-label="Decade">
-        <ul style={{ listStyle: "none", padding: 0, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {choices.map((choice) => (
-            <li key={choice.label}>
-              {choice.decade === decade ? (
-                <span aria-current="page">{choice.label}</span>
-              ) : (
-                <Link href={choice.href}>{choice.label}</Link>
-              )}
-            </li>
-          ))}
-        </ul>
-      </nav>
+    <>
+      <PageHeader title="Artists" />
+      <Stack gap={5}>
+        <Tabs aria-label="Decade" items={choices} />
 
-      {rows.length === 0 ? (
-        <p>{decade === undefined ? "No rated albums yet." : `No rated albums in the ${decade}s yet.`}</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Artist</th>
-              <th>Score</th>
-              <th>Rated albums</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.artistId}>
-                <td>{row.rank}</td>
-                <td>
-                  <Link href={`/artists/${row.artistId}`}>{row.artistName}</Link>
-                </td>
-                <td>{Math.round(row.score)}</td>
-                <td>{row.ratedAlbumCount}</td>
+        {rows.length === 0 ? (
+          <EmptyState>{decade === undefined ? "No rated albums yet." : `No rated albums in the ${decade}s yet.`}</EmptyState>
+        ) : (
+          <Table label="Artist ranking">
+            <thead>
+              <tr>
+                <th data-numeric>Rank</th>
+                <th>Artist</th>
+                <th data-numeric>Score</th>
+                <th data-numeric>Rated albums</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </main>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.artistId}>
+                  <td data-numeric>{row.rank}</td>
+                  <td>
+                    <Link href={`/artists/${row.artistId}`}>{row.artistName}</Link>
+                  </td>
+                  <td data-numeric>{Math.round(row.score)}</td>
+                  <td data-numeric>{row.ratedAlbumCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Stack>
+    </>
   );
 }

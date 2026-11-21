@@ -1,0 +1,19 @@
+.card {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.dashed {
+  border: 1px dashed var(--color-border-strong);
+  background: transparent;
+  box-shadow: none;
+}
+
+.card[data-over="true"] {
+  border: 1px dashed var(--color-accent);
+  background: var(--color-accent-soft);
+}

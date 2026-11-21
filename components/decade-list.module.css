@@ -1,0 +1,79 @@
+.list {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The sortable transform, transition, opacity and z-index are set inline by dnd-kit. */
+.item {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.item:first-child {
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
+.item:last-child {
+  border-bottom: 0;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.item[data-dragging="true"] {
+  box-shadow: var(--shadow-md);
+}
+
+.lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.position {
+  min-width: 3ch;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.handle {
+  touch-action: none;
+  cursor: grab;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.row {
+  flex: 1 1 12rem;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.plain {
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.plain > li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plain > li:last-child {
+  border-bottom: 0;
+}

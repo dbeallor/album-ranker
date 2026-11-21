@@ -1,5 +1,8 @@
-import Link from "next/link";
 import { connection } from "next/server";
+import { CardGrid } from "@/components/ui/card-grid";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LinkCard } from "@/components/ui/link-card";
+import { PageHeader } from "@/components/ui/page-header";
 import { getDb } from "@/lib/db/server";
 import { loadDecadePicker } from "@/lib/decade-service";
 import { MAX_LIST } from "@/lib/decades";
@@ -9,21 +12,22 @@ export default async function DecadesPage() {
   const rows = loadDecadePicker(getDb());
 
   return (
-    <main>
-      <h1>Decade lists</h1>
+    <>
+      <PageHeader title="Decade lists" />
       {rows.length === 0 ? (
-        <p>No albums are placed in a year yet.</p>
+        <EmptyState>No albums are placed in a year yet.</EmptyState>
       ) : (
-        <ul>
+        <CardGrid>
           {rows.map((row) => (
-            <li key={row.decade}>
-              <Link href={`/decades/${row.decade}`}>{row.decade}s</Link>:{" "}
-              {row.listCount === 0 ? "no list yet" : `${row.listCount} of ${MAX_LIST} on the list`}, {row.eligibleCount}{" "}
-              eligible
-            </li>
+            <LinkCard
+              key={row.decade}
+              href={`/decades/${row.decade}`}
+              title={`${row.decade}s`}
+              description={`${row.listCount === 0 ? "no list yet" : `${row.listCount} of ${MAX_LIST} on the list`}, ${row.eligibleCount} eligible`}
+            />
           ))}
-        </ul>
+        </CardGrid>
       )}
-    </main>
+    </>
   );
 }

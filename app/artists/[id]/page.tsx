@@ -1,7 +1,12 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
+import { ButtonLink } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { CardGrid } from "@/components/ui/card-grid";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListRow } from "@/components/ui/list-row";
+import { PageHeader } from "@/components/ui/page-header";
 import { loadArtistPage, type ArtistPageAlbum } from "@/lib/artists";
 import { getDb } from "@/lib/db/server";
 
@@ -19,34 +24,37 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
   if (!artist) notFound();
 
   return (
-    <main>
-      <p>
-        <Link href="/artists">All artists</Link>
-      </p>
-      <h1>{artist.name}</h1>
-      <p>
-        {artist.score === null
-          ? "No rated albums"
-          : `Score ${Math.round(artist.score)} from ${artist.ratedAlbumCount} rated ${artist.ratedAlbumCount === 1 ? "album" : "albums"}`}
-      </p>
+    <>
+      <PageHeader
+        title={artist.name}
+        description={
+          artist.score === null
+            ? "No rated albums"
+            : `Score ${Math.round(artist.score)} from ${artist.ratedAlbumCount} rated ${artist.ratedAlbumCount === 1 ? "album" : "albums"}`
+        }
+        actions={<ButtonLink href="/artists">All artists</ButtonLink>}
+      />
 
       {artist.albums.length === 0 ? (
-        <p>No placed albums.</p>
+        <EmptyState>No placed albums.</EmptyState>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0 }}>
+        <CardGrid>
           {artist.albums.map((album) => (
-            <li key={album.albumId} style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-              <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} />
-              <div>
-                <strong>{album.title}</strong>
-                <div>{album.year}</div>
-                <div>{placementText(album)}</div>
-                <div>{album.rating === null ? "No rating" : `Rating ${Math.round(album.rating)}`}</div>
-              </div>
-            </li>
+            <Card as="li" key={album.albumId}>
+              <ListRow
+                cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />}
+                title={album.title}
+                subtitle={album.year}
+                meta={
+                  <>
+                    <span>{placementText(album)}</span> · <span>{album.rating === null ? "No rating" : `Rating ${Math.round(album.rating)}`}</span>
+                  </>
+                }
+              />
+            </Card>
           ))}
-        </ul>
+        </CardGrid>
       )}
-    </main>
+    </>
   );
 }

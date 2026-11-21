@@ -1,5 +1,16 @@
 import { Cover } from "@/components/cover";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Cluster } from "@/components/ui/cluster";
+import { EmptyState } from "@/components/ui/empty-state";
+import { InlineForm } from "@/components/ui/inline-form";
+import { ListRow } from "@/components/ui/list-row";
+import { Message } from "@/components/ui/message";
+import { PageHeader } from "@/components/ui/page-header";
+import { Stack } from "@/components/ui/stack";
+import { TextField } from "@/components/ui/text-field";
 import type { CatalogCandidate, ImportReviewItem } from "@/lib/db/types";
+import styles from "./import-review.module.css";
 
 type FormAction = (formData: FormData) => void | Promise<void>;
 
@@ -60,32 +71,32 @@ function HiddenFields({ item, candidate }: { item: ImportReviewItem; candidate: 
   );
 }
 
+const COVER = 80;
+
 function Candidate({ item, candidate, actions }: { item: ImportReviewItem; candidate: CandidateView; actions: ReviewActions }) {
   return (
-    <li style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-      {candidate.coverUrl ? (
-        <Cover src={candidate.coverUrl} alt={`Cover of ${candidate.title}`} />
-      ) : (
-        <div role="img" aria-label={`No cover for ${candidate.title}`} style={{ width: 125, height: 125, background: "#d4d4d4" }} />
-      )}
-      <div>
-        <strong>{candidate.title}</strong>
-        <div>{candidate.artist}</div>
-        <div>{candidate.releaseYear ?? "Unknown year"}</div>
-        {candidate.onYearPage !== null && <div>Already on the {candidate.onYearPage} year page.</div>}
+    <ListRow
+      as="li"
+      cover={<Cover src={candidate.coverUrl} alt={`Cover of ${candidate.title}`} size={COVER} />}
+      title={candidate.title}
+      subtitle={candidate.artist}
+      meta={candidate.releaseYear ?? "Unknown year"}
+      actions={
         <form action={actions.chooseAlbum}>
           <HiddenFields item={item} candidate={candidate} />
           {candidate.onYearPage !== null && <input type="hidden" name="moveHere" value="1" />}
-          <button type="submit">{candidate.onYearPage !== null ? "Move it here" : "Use this album"}</button>
+          <Button type="submit">{candidate.onYearPage !== null ? "Move it here" : "Use this album"}</Button>
         </form>
-      </div>
-    </li>
+      }
+    >
+      {candidate.onYearPage !== null && <span className={styles.note}>Already on the {candidate.onYearPage} year page.</span>}
+    </ListRow>
   );
 }
 
 function CandidateList({ item, candidates, actions }: { item: ImportReviewItem; candidates: CandidateView[]; actions: ReviewActions }) {
   return (
-    <ul style={{ listStyle: "none", padding: 0 }}>
+    <ul className={styles.candidates}>
       {candidates.map((candidate) => (
         <Candidate key={candidate.catalogId} item={item} candidate={candidate} actions={actions} />
       ))}
@@ -96,45 +107,62 @@ function CandidateList({ item, candidates, actions }: { item: ImportReviewItem; 
 function ReviewItem({ view, actions }: { view: ReviewItemView; actions: ReviewActions }) {
   const { item, search } = view;
   return (
-    <li style={{ marginBottom: 32 }}>
-      <h3>
-        {item.source.title} - {item.source.artist} ({item.source.year}), {describeRow(item)}
-      </h3>
-      <p>{describeReason(item)}</p>
-      {view.error && <p role="alert">{view.error}</p>}
+    <Card as="li">
+      <Stack gap={4}>
+        <Stack gap={1}>
+          <h3>
+            {item.source.title} - {item.source.artist} ({item.source.year}), {describeRow(item)}
+          </h3>
+          <p className={styles.reason}>{describeReason(item)}</p>
+        </Stack>
+        {view.error && (
+          <Message tone="error" role="alert">
+            {view.error}
+          </Message>
+        )}
 
-      {view.candidates.length > 0 && (
-        <>
-          <h4>Candidates</h4>
-          <CandidateList item={item} candidates={view.candidates} actions={actions} />
-        </>
-      )}
+        {view.candidates.length > 0 && (
+          <Stack gap={2}>
+            <h4>Candidates</h4>
+            <CandidateList item={item} candidates={view.candidates} actions={actions} />
+          </Stack>
+        )}
 
-      <form method="get" action="/import">
-        <input type="hidden" name="search" value={item.id} />
-        <input type="search" name="q" defaultValue={search.query} aria-label={`Search the catalog for ${item.source.title}`} />
-        <button type="submit">Search</button>
-      </form>
-      {search.error && <p role="alert">{search.error}</p>}
-      {search.results && search.results.length === 0 && <p>No albums found for &quot;{search.query}&quot;.</p>}
-      {search.results && search.results.length > 0 && (
-        <>
-          <h4>Search results</h4>
-          <CandidateList item={item} candidates={search.results} actions={actions} />
-        </>
-      )}
+        <InlineForm method="get" action="/import">
+          <TextField
+            type="search"
+            name="q"
+            defaultValue={search.query}
+            aria-label={`Search the catalog for ${item.source.title}`}
+          />
+          <Button type="submit">Search</Button>
+          <input type="hidden" name="search" value={item.id} />
+        </InlineForm>
+        {search.error && (
+          <Message tone="error" role="alert">
+            {search.error}
+          </Message>
+        )}
+        {search.results && search.results.length === 0 && <p>No albums found for &quot;{search.query}&quot;.</p>}
+        {search.results && search.results.length > 0 && (
+          <Stack gap={2}>
+            <h4>Search results</h4>
+            <CandidateList item={item} candidates={search.results} actions={actions} />
+          </Stack>
+        )}
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <form action={actions.keepManual}>
-          <input type="hidden" name="itemId" value={item.id} />
-          <button type="submit">Keep as manual album</button>
-        </form>
-        <form action={actions.skip}>
-          <input type="hidden" name="itemId" value={item.id} />
-          <button type="submit">Skip</button>
-        </form>
-      </div>
-    </li>
+        <Cluster>
+          <form action={actions.keepManual}>
+            <input type="hidden" name="itemId" value={item.id} />
+            <Button type="submit">Keep as manual album</Button>
+          </form>
+          <form action={actions.skip}>
+            <input type="hidden" name="itemId" value={item.id} />
+            <Button type="submit">Skip</Button>
+          </form>
+        </Cluster>
+      </Stack>
+    </Card>
   );
 }
 
@@ -156,23 +184,37 @@ export function ImportReview({
   actions: ReviewActions;
 }) {
   return (
-    <main>
-      <h1>Import review</h1>
-      <p>
-        {counts.open} open, {counts.resolved} resolved, {counts.skipped} skipped
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {removedNotice && <p role="status">{removedNotice}</p>}
-      {fullNotice && <p role="status">{fullNotice}</p>}
-      {items.length === 0 ? (
-        <p>Nothing to check.</p>
-      ) : (
-        <ul style={{ listStyle: "none", padding: 0 }}>
-          {items.map((view) => (
-            <ReviewItem key={view.item.id} view={view} actions={actions} />
-          ))}
-        </ul>
-      )}
-    </main>
+    <>
+      <PageHeader title="Import review" />
+      <Stack gap={4}>
+        <Message tone="info">
+          {counts.open} open, {counts.resolved} resolved, {counts.skipped} skipped
+        </Message>
+        {error && (
+          <Message tone="error" role="alert">
+            {error}
+          </Message>
+        )}
+        {removedNotice && (
+          <Message tone="info" role="status">
+            {removedNotice}
+          </Message>
+        )}
+        {fullNotice && (
+          <Message tone="info" role="status">
+            {fullNotice}
+          </Message>
+        )}
+        {items.length === 0 ? (
+          <EmptyState>Nothing to check.</EmptyState>
+        ) : (
+          <Stack as="ul" gap={4}>
+            {items.map((view) => (
+              <ReviewItem key={view.item.id} view={view} actions={actions} />
+            ))}
+          </Stack>
+        )}
+      </Stack>
+    </>
   );
 }

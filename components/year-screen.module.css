@@ -1,0 +1,100 @@
+/* The drag transform, z-index and opacity of a dragged card are set inline by dnd-kit. */
+.album {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  touch-action: manipulation;
+}
+
+.album[data-dragging="true"] {
+  box-shadow: var(--shadow-md);
+}
+
+.top {
+  display: flex;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cover {
+  flex: none;
+}
+
+.text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.title {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.artist {
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.moveTo {
+  flex: 0 1 10rem;
+}
+
+.ranked {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.slot {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+}
+
+.slot[data-over="true"],
+.zone[data-over="true"] {
+  border-color: var(--color-accent);
+  border-style: dashed;
+  background: var(--color-accent-soft);
+}
+
+.rank {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.emptySlot {
+  min-height: var(--control-height);
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.zone {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-3);
+  min-height: 3rem;
+  /* Padding and border give the drop highlight room; the negative margin keeps the cards lined up with the heading. */
+  margin: calc(-1 * (var(--space-1) + 1px));
+  padding: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+}
+
+.zone .empty {
+  grid-column: 1 / -1;
+  padding: var(--space-4);
+}

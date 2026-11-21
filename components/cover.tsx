@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
+import { cx } from "@/components/ui/cx";
+import styles from "./cover.module.css";
 
 const DEFAULT_SIZE = 125;
 
@@ -10,20 +12,7 @@ export function Cover({ src, alt, size = DEFAULT_SIZE }: { src: string | null; a
 
   if (failed || src === null) {
     return (
-      <div
-        role="img"
-        aria-label={`No cover for ${alt}`}
-        style={{
-          width: size,
-          height: size,
-          background: "#d4d4d4",
-          color: "#737373",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: Math.round(size * 0.38),
-        }}
-      >
+      <div role="img" aria-label={`No cover for ${alt.replace(/^Cover of /, "")}`} className={cx(styles.cover, styles.placeholder)} style={{ "--cover-size": `${size}px` } as CSSProperties}>
         ♪
       </div>
     );
@@ -36,6 +25,8 @@ export function Cover({ src, alt, size = DEFAULT_SIZE }: { src: string | null; a
       alt={alt}
       width={size}
       height={size}
+      className={styles.cover}
+      style={{ "--cover-size": `${size}px` } as CSSProperties}
       loading="lazy"
       onError={() => setFailed(true)}
       ref={(img) => {
