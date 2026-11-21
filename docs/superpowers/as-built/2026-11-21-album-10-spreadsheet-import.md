@@ -1,6 +1,6 @@
 # As-built: Spreadsheet import
 
-**Shipped:** in PR #TBD
+**Shipped:** in PR #22
 **Ticket:** ALBUM-10
 **Spec:** [2026-11-21-album-10-spreadsheet-import.md](../specs/2026-11-21-album-10-spreadsheet-import.md)
 
