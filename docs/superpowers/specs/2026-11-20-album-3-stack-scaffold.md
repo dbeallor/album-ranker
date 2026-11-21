@@ -1,7 +1,8 @@
 # Tech stack and app scaffold
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-20
+**Shipped:** in PR #16, with differences: [as-built](../as-built/2026-11-20-album-3-stack-scaffold.md)
 **Ticket:** [ALBUM-3](https://github.com/dbeallor/album-ranker/issues/3), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Users and shape
 
