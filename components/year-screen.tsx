@@ -113,12 +113,15 @@ function AlbumCard({ album, area, position, disabled, onMoveUp, onMoveDown, onMo
     attributes: { role: "group" },
   });
   // One stable callback, so React doesn't detach and re-attach the node on every render.
+  // Each card is also a drop target under the same id, which dnd-kit's keyboard movement needs to find its way around.
+  const { setNodeRef: setDropRef } = useDroppable({ id: `album-${album.id}` });
   const ref = useCallback(
     (node: HTMLDivElement | null) => {
       setNodeRef(node);
+      setDropRef(node);
       setActivatorNodeRef(node);
     },
-    [setNodeRef, setActivatorNodeRef],
+    [setNodeRef, setDropRef, setActivatorNodeRef],
   );
   const style: CSSProperties = {
     display: "flex",
@@ -142,7 +145,9 @@ function AlbumCard({ album, area, position, disabled, onMoveUp, onMoveDown, onMo
       {...attributes}
       {...listeners}
     >
-      <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
+      <div style={{ flexShrink: 0 }}>
+        <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
+      </div>
       <div style={{ minWidth: 0 }}>
         <strong>{album.title}</strong>
         <div>{album.artist}</div>
@@ -191,8 +196,9 @@ function DropZone({ id, children, style }: { id: string; children: ReactNode; st
   );
 }
 
-function Slot({ id, children }: { id: string; children: ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+/** A filled slot is not a drop target of its own: the card in it is, so keyboard moves don't stop twice. */
+function Slot({ id, filled, children }: { id: string; filled: boolean; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: filled });
   return (
     <li
       ref={setNodeRef}
@@ -283,7 +289,9 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
 
   /** The one function behind drops and the card buttons. */
   function move(albumId: number, target: { area: Area; index?: number }) {
-    change(applyMove(latest.current, albumId, target));
+    const result = applyMove(latest.current, albumId, target);
+    if (JSON.stringify(result.placements) === JSON.stringify(latest.current)) return; // dropped where it was
+    change(result);
   }
 
   /** Ranked index for a drop on a slot: the album sitting there, or the end of the list for an empty slot. */
@@ -298,9 +306,15 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
 
   function onDragEnd({ active, over }: DragEndEvent) {
     if (!over) return;
-    const albumId = Number(String(active.id).replace("album-", ""));
+    const albumId = Number(String(active.id).slice(6));
     const target = String(over.id);
-    if (target.startsWith("slot-")) {
+    if (target.startsWith("album-")) {
+      // Dropped on another card: ranked cards give their position, the other areas give their area.
+      const onto = Number(target.slice(6));
+      const area = areaOf(latest.current, onto);
+      if (area === "ranked") move(albumId, { area, index: latest.current.ranked.indexOf(onto) });
+      else if (area) move(albumId, { area });
+    } else if (target.startsWith("slot-")) {
       move(albumId, { area: "ranked", index: indexForSlot(Number(target.slice(5))) });
     } else if (target === "area-honorable_mention" || target === "area-listed") {
       const area = target.slice(5) as Area;
@@ -342,15 +356,22 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
     );
   }
 
+  const albumIdOf = (id: UniqueIdentifier) => Number(String(id).replace("album-", ""));
+  const overLabel = (id: UniqueIdentifier): string => {
+    const value = String(id);
+    if (value.startsWith("slot-")) return `rank ${value.slice(5)}`;
+    if (value.startsWith("album-")) return titleOf(albumIdOf(value));
+    return value === "area-honorable_mention" ? "honorable mentions" : "listed";
+  };
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${titleOf(Number(String(active.id).replace("album-", "")))}.`,
+    onDragStart: ({ active }) => `Picked up ${titleOf(albumIdOf(active.id))}.`,
     onDragOver: ({ active, over }) =>
-      `${titleOf(Number(String(active.id).replace("album-", "")))} is ${over ? `over ${overLabel(over.id)}` : "not over a drop area"}.`,
+      `${titleOf(albumIdOf(active.id))} is ${over ? `over ${overLabel(over.id)}` : "not over a drop area"}.`,
     onDragEnd: ({ active, over }) =>
       over
-        ? `Dropped ${titleOf(Number(String(active.id).replace("album-", "")))} on ${overLabel(over.id)}.`
-        : `${titleOf(Number(String(active.id).replace("album-", "")))} was dropped outside a drop area.`,
-    onDragCancel: ({ active }) => `Moving ${titleOf(Number(String(active.id).replace("album-", "")))} was cancelled.`,
+        ? `Dropped ${titleOf(albumIdOf(active.id))} on ${overLabel(over.id)}.`
+        : `${titleOf(albumIdOf(active.id))} was dropped outside a drop area.`,
+    onDragCancel: ({ active }) => `Moving ${titleOf(albumIdOf(active.id))} was cancelled.`,
   };
 
   const cardProps = (id: number) => ({
@@ -418,12 +439,12 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
 
         <section aria-labelledby="ranked-heading">
           <h2 id="ranked-heading">Ranked</h2>
-          <ol style={{ listStyle: "none", padding: 0, ...grid }}>
+          <ol style={{ listStyle: "none", padding: 0, display: "grid", gap: 8, maxWidth: 420 }}>
             {SLOTS.map((slot) => {
               const index = layout ? layout.indexOf(slot) : slot - 1 < ranked.length ? slot - 1 : -1;
               const id = index === -1 ? undefined : ranked[index];
               return (
-                <Slot key={slot} id={`slot-${slot}`}>
+                <Slot key={slot} id={`slot-${slot}`} filled={id !== undefined}>
                   <span style={{ minWidth: 24, textAlign: "right" }}>{slot}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {id === undefined ? (
@@ -458,12 +479,4 @@ export function YearScreen({ initial, saveAction, searchAction, addCatalogAction
       />
     </div>
   );
-}
-
-function overLabel(id: UniqueIdentifier): string {
-  const value = String(id);
-  if (value.startsWith("slot-")) return `rank ${value.slice(5)}`;
-  if (value === "area-honorable_mention") return "honorable mentions";
-  if (value === "area-listed") return "listed";
-  return value;
 }
