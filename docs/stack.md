@@ -12,10 +12,9 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Lint | ESLint with the Next.js config (flat config) |
 | Typecheck | `tsc --noEmit` |
 | Album catalog | MusicBrainz search (release groups) with Cover Art Archive covers, called from the server and cached in memory. See [the catalog search spec](superpowers/specs/2026-11-21-album-5-catalog-search.md) |
-| Drag and drop | `@dnd-kit/core` and `@dnd-kit/sortable`: mouse, touch and keyboard sensors in one model, for the year page. See [the ALBUM-6 spec](superpowers/specs/2026-11-21-album-6-year-ranking-screen.md) |
 | Spreadsheet reader | `read-excel-file`, read-only, used by the import script (`npm run import`). `write-excel-file` (dev dependency) generates the test fixture. See [the import spec](superpowers/specs/2026-11-21-album-10-spreadsheet-import.md) |
 | Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
-| Drag and drop | `@dnd-kit/core`, `@dnd-kit/sortable` and `@dnd-kit/utilities`: mouse, touch (200 ms hold) and keyboard in one model, with Move up and Move down buttons as the alternative. Used by the decade lists. See [the ALBUM-9 spec](superpowers/specs/2026-11-21-album-9-decade-top-25.md) |
+| Drag and drop | `@dnd-kit/core`, `@dnd-kit/sortable` and `@dnd-kit/utilities`: mouse, touch (200 ms hold) and keyboard in one model, with Move up and Move down buttons as the alternative. Used by the decade lists and the year page. See [the ALBUM-9 spec](superpowers/specs/2026-11-21-album-9-decade-top-25.md) and [the ALBUM-6 spec](superpowers/specs/2026-11-21-album-6-year-ranking-screen.md) |
 
 TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
 

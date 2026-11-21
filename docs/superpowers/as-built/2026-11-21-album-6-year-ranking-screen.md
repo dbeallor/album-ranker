@@ -13,3 +13,4 @@
 - Not in the spec: card controls are disabled while an add is running, and the add buttons are disabled while a save is pending. Dropping a card on itself saves nothing.
 - A whole-year save from a stale tab (another tab added an album since the page loaded) removes the albums the stale page does not know about. Accepted for a single user on localhost.
 - The spec says catalog albums are stored with the artist by name only, because search results carry no artist id. Search results now carry one (ALBUM-10), so a catalog add stores the artist with that catalog id, matching imported albums, and the server accepts it as an optional string.
+- The spec calls `@dnd-kit` a new dependency. ALBUM-9 (decade lists) added it to main first, so this PR adds no dependency changes and uses the same packages.
