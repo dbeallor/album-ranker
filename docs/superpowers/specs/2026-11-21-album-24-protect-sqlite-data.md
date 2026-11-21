@@ -1,7 +1,8 @@
 # Protect the local SQLite data
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #29, as specified
 **Ticket:** [ALBUM-24](https://github.com/dbeallor/album-ranker/issues/24)
 **Follows:** [data model and storage](2026-11-21-album-4-data-model-storage.md) § Storage, [local previews](2026-11-21-album-20-local-previews.md)
 
