@@ -15,6 +15,9 @@ export default async function Home() {
         <Link href="/search">Search albums</Link>
       </p>
       <p>
+        <Link href="/years">Year rankings</Link>
+      </p>
+      <p>
         <Link href="/matchups">Matchups</Link>
       </p>
       <p>
