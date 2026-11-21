@@ -32,4 +32,12 @@ describe("migrate", () => {
     expect(migrate(db)).toEqual([]);
     expect(db.prepare("SELECT * FROM schema_migrations").all()).toEqual(before);
   });
+
+  it("adds the import columns", () => {
+    const db = memoryDb();
+    const columns = (table: string) =>
+      db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name);
+    expect(columns("year_entries")).toContain("source_decade_rank");
+    expect(columns("import_review_items")).toEqual(expect.arrayContaining(["reason", "reason_detail"]));
+  });
 });

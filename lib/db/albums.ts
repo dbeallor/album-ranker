@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { now, transaction } from "./transaction";
-import { DataError, type Album, type Artist } from "./types";
+import { now, transaction } from "./transaction.ts";
+import { DataError, type Album, type Artist } from "./types.ts";
 
 type Row = Record<string, unknown>;
 
