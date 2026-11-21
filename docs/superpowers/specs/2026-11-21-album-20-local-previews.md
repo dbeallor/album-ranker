@@ -1,7 +1,8 @@
 # Local preview environments
 
-**Status:** Draft
+**Status:** Shipped
 **Date:** 2026-11-21
+**Shipped:** in PR #23, as specified
 **Ticket:** [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)
 **Follows:** [stack and scaffold](2026-11-20-album-3-stack-scaffold.md), [data model and storage](2026-11-21-album-4-data-model-storage.md) § Storage
 
