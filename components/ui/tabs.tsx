@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { ComponentPropsWithoutRef } from "react";
-import { cx } from "./cx";
 import styles from "./tabs.module.css";
 
 type TabsProps = Omit<ComponentPropsWithoutRef<"nav">, "children"> & {
