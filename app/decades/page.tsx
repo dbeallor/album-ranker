@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { connection } from "next/server";
-import { Card } from "@/components/ui/card";
+import { CardGrid } from "@/components/ui/card-grid";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListRow } from "@/components/ui/list-row";
+import { LinkCard } from "@/components/ui/link-card";
 import { PageHeader } from "@/components/ui/page-header";
-import { Stack } from "@/components/ui/stack";
 import { getDb } from "@/lib/db/server";
 import { loadDecadePicker } from "@/lib/decade-service";
 import { MAX_LIST } from "@/lib/decades";
@@ -19,16 +17,16 @@ export default async function DecadesPage() {
       {rows.length === 0 ? (
         <EmptyState>No albums are placed in a year yet.</EmptyState>
       ) : (
-        <Stack as="ul" gap={3}>
+        <CardGrid>
           {rows.map((row) => (
-            <Card as="li" key={row.decade}>
-              <ListRow
-                title={<Link href={`/decades/${row.decade}`}>{row.decade}s</Link>}
-                meta={`${row.listCount === 0 ? "no list yet" : `${row.listCount} of ${MAX_LIST} on the list`}, ${row.eligibleCount} eligible`}
-              />
-            </Card>
+            <LinkCard
+              key={row.decade}
+              href={`/decades/${row.decade}`}
+              title={`${row.decade}s`}
+              description={`${row.listCount === 0 ? "no list yet" : `${row.listCount} of ${MAX_LIST} on the list`}, ${row.eligibleCount} eligible`}
+            />
           ))}
-        </Stack>
+        </CardGrid>
       )}
     </>
   );

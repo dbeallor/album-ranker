@@ -3,10 +3,10 @@ import { connection } from "next/server";
 import { Cover } from "@/components/cover";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CardGrid } from "@/components/ui/card-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
 import { PageHeader } from "@/components/ui/page-header";
-import { Stack } from "@/components/ui/stack";
 import { loadArtistPage, type ArtistPageAlbum } from "@/lib/artists";
 import { getDb } from "@/lib/db/server";
 
@@ -38,11 +38,11 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
       {artist.albums.length === 0 ? (
         <EmptyState>No placed albums.</EmptyState>
       ) : (
-        <Stack as="ul" gap={3}>
+        <CardGrid>
           {artist.albums.map((album) => (
             <Card as="li" key={album.albumId}>
               <ListRow
-                cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} />}
+                cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />}
                 title={album.title}
                 subtitle={album.year}
                 meta={
@@ -53,7 +53,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
               />
             </Card>
           ))}
-        </Stack>
+        </CardGrid>
       )}
     </>
   );

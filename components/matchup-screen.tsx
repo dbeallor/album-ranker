@@ -117,7 +117,7 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
       )}
 
       <Cluster justify="between">
-        <Button type="button" variant="ghost" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
+        <Button type="button" variant="secondary" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
           Undo
         </Button>
         <p className={styles.muted}>{view.count} matchups played</p>

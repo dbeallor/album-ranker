@@ -50,7 +50,7 @@
 .ranked {
   display: grid;
   gap: var(--space-3);
-  max-width: 32rem;
+  max-width: 40rem;
 }
 
 .slot {
@@ -87,6 +87,8 @@
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
   gap: var(--space-3);
   min-height: 3rem;
+  /* Padding and border give the drop highlight room; the negative margin keeps the cards lined up with the heading. */
+  margin: calc(-1 * (var(--space-1) + 1px));
   padding: var(--space-1);
   border: 1px solid transparent;
   border-radius: var(--radius-lg);

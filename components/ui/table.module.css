@@ -5,15 +5,24 @@
   background: var(--color-surface);
 }
 
-.table {
-  min-width: max-content;
+.table th,
+.table td {
+  padding-inline: var(--space-3);
+}
+
+.table td {
+  overflow-wrap: anywhere;
+}
+
+/* Keeps a name readable on a phone; the wrapper scrolls if the columns still don't fit. */
+.table td:not([data-numeric]) {
+  min-width: 6rem;
 }
 
 .table th {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  white-space: nowrap;
 }
 
 .table thead th {
@@ -34,5 +43,6 @@
 
 .table [data-numeric] {
   text-align: right;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

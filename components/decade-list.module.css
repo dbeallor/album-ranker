@@ -39,7 +39,7 @@
 }
 
 .position {
-  min-width: 2ch;
+  min-width: 3ch;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -55,7 +55,7 @@
 }
 
 .row {
-  flex: 1 1 14rem;
+  flex: 1 1 12rem;
 }
 
 .count {
