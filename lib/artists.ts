@@ -1,15 +1,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import { listAlbums } from "./db/albums";
-import { listAllYearEntries } from "./db/year-entries";
-import type { Placement } from "./db/types";
+import { listLibrary } from "./db/library";
 import { artistScore } from "./elo/artist-score";
 import { loadRatings } from "./ratings";
+import { decadeOf } from "./scopes";
 
 export type RatedAlbum = {
   albumId: number;
   artistId: number;
   artistName: string;
-  /** The year page the album is placed on (not the catalog release year). */
+  /** The year the album is grouped under in the library (not the catalog release year). */
   year: number;
   rating: number;
 };
@@ -23,13 +23,8 @@ export type ArtistRow = {
   ratedAlbumCount: number;
 };
 
-/** The decade a year belongs to (1970 means 1970 to 1979). */
-function decadeOf(year: number): number {
-  return Math.floor(year / 10) * 10;
-}
-
 /**
- * One row per artist with a rated album in scope (all albums, or those placed in `decade`), best score first.
+ * One row per artist with a rated album in scope (all albums, or those in the library under `decade`), best score first.
  * A score tie goes to the artist name (case-insensitive), then the artist id. Ranks run 1 to n with no shared ranks.
  */
 export function buildArtistList(albums: RatedAlbum[], decade?: number): ArtistRow[] {
@@ -65,7 +60,7 @@ export function loadArtistList(db: DatabaseSync, decade?: number): ArtistRow[] {
 
 function loadRatedAlbums(db: DatabaseSync): RatedAlbum[] {
   const { ratings } = loadRatings(db);
-  const years = new Map(listAllYearEntries(db).map((entry) => [entry.albumId, entry.year]));
+  const years = new Map(listLibrary(db).map((entry) => [entry.albumId, entry.year]));
   return listAlbums(db).flatMap((album) => {
     const rating = ratings.get(album.id);
     const year = years.get(album.id);
@@ -79,54 +74,48 @@ export type ArtistPageAlbum = {
   title: string;
   coverUrl: string | null;
   year: number;
-  placement: Placement;
-  /** The rank within the year; only for a ranked album. */
-  rank: number | null;
-  /** Null for a listed album. */
-  rating: number | null;
+  rating: number;
 };
 
 export type ArtistPage = {
   id: number;
   name: string;
-  /** Null when the artist has no rated albums. */
+  /** Null when the artist has no library albums. */
   score: number | null;
   ratedAlbumCount: number;
   albums: ArtistPageAlbum[];
 };
 
-/** The artist with their placed albums (year entry, rated or listed) by year then album id; undefined if unknown. */
+/** The artist with their library albums by year then album id; undefined if unknown. */
 export function loadArtistPage(db: DatabaseSync, artistId: number): ArtistPage | undefined {
   const owned = listAlbums(db).filter((album) => album.artist.id === artistId);
   if (owned.length === 0) return undefined;
 
   const { ratings } = loadRatings(db);
-  const entries = new Map(listAllYearEntries(db).map((entry) => [entry.albumId, entry]));
+  const entries = new Map(listLibrary(db).map((entry) => [entry.albumId, entry]));
 
   const albums = owned
     .flatMap((album) => {
       const entry = entries.get(album.id);
-      if (!entry) return [];
+      const rating = ratings.get(album.id);
+      if (!entry || rating === undefined) return [];
       return [
         {
           albumId: album.id,
           title: album.title,
           coverUrl: album.coverUrl,
           year: entry.year,
-          placement: entry.placement,
-          rank: entry.rank,
-          rating: ratings.get(album.id) ?? null,
+          rating,
         },
       ];
     })
     .sort((a, b) => a.year - b.year || a.albumId - b.albumId);
 
-  const rated = albums.flatMap((album) => (album.rating === null ? [] : [album.rating]));
   return {
     id: artistId,
     name: owned[0].artist.name,
-    score: artistScore(rated) ?? null,
-    ratedAlbumCount: rated.length,
+    score: artistScore(albums.map((album) => album.rating)) ?? null,
+    ratedAlbumCount: albums.length,
     albums,
   };
 }

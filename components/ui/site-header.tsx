@@ -7,9 +7,6 @@ import styles from "./site-header.module.css";
 
 const NAV_ITEMS = [
   { href: "/search", label: "Search" },
-  { href: "/years", label: "Years" },
-  { href: "/decades", label: "Decades" },
-  { href: "/artists", label: "Artists" },
   { href: "/matchups", label: "Matchups" },
   { href: "/import", label: "Import" },
 ] as const;

@@ -12,7 +12,7 @@ export const KEEP_BACKUPS = 10;
 const BACKUP_FILE = /^(\d{8}T\d{6}Z)-(manual|pre-migrate|pre-restore)(?:-(\d+))?\.db$/;
 
 export type BackupFile = { name: string; path: string; reason: BackupReason; size: number; mtimeMs: number };
-export type Counts = { albums: number; yearEntries: number; matchups: number };
+export type Counts = { albums: number; libraryAlbums: number; matchups: number };
 
 /** The backup subfolder for one database file: its name plus a short hash of its absolute path, so two checkouts never share one. */
 export function backupFolder(sourcePath: string, backupDir: string): string {
@@ -62,7 +62,10 @@ function inspectBackup(path: string): number[] {
   }
 }
 
-/** Album, year entry and matchup counts of an open database; zeros when the tables don't exist yet. */
+/**
+ * Album, library album and matchup counts of an open database; zeros when the tables don't exist yet.
+ * A database from before migration 003 has no library table: its year entries count, since 003 turns each into a library album.
+ */
 export function countRows(db: DatabaseSync): Counts {
   const count = (table: string): number => {
     try {
@@ -72,7 +75,12 @@ export function countRows(db: DatabaseSync): Counts {
       throw error;
     }
   };
-  return { albums: count("albums"), yearEntries: count("year_entries"), matchups: count("matchups") };
+  const hasLibrary = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_albums'").get();
+  return {
+    albums: count("albums"),
+    libraryAlbums: count(hasLibrary ? "library_albums" : "year_entries"),
+    matchups: count("matchups"),
+  };
 }
 
 /** Counts rows of the database file at `path`, opened read-only. */
@@ -230,7 +238,7 @@ export async function restoreDatabase(options: RestoreOptions): Promise<RestoreR
   const summary: RestoreSummary = {
     targetPath,
     backupPath: backupFile,
-    current: { albums: 0, yearEntries: 0, matchups: 0 },
+    current: { albums: 0, libraryAlbums: 0, matchups: 0 },
     backup: countRowsAt(backupFile),
     warnings,
   };

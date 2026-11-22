@@ -5,7 +5,7 @@ import { resolveBackupFile, restoreDatabase, type Counts, type RestoreSummary } 
 const { databasePath, backupDir } = getConfig();
 
 function describe(counts: Counts): string {
-  return `${counts.albums} albums, ${counts.yearEntries} year entries, ${counts.matchups} matchups`;
+  return `${counts.albums} albums, ${counts.libraryAlbums} library albums, ${counts.matchups} matchups`;
 }
 
 async function confirmReplace(summary: RestoreSummary, yes: boolean): Promise<boolean> {

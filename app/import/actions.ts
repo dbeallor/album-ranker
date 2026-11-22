@@ -1,7 +1,6 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { getAlbum } from "@/lib/db/albums";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
 import { resolveReviewItem, skipReviewItem, type ResolveChoice } from "@/lib/import/resolve";
@@ -40,17 +39,9 @@ function candidateFrom(formData: FormData): CatalogCandidate | null {
 }
 
 function resolve(itemId: number, choice: ResolveChoice): never {
-  const db = getDb();
-  const result = resolveReviewItem(db, itemId, choice);
+  const result = resolveReviewItem(getDb(), itemId, choice);
   if (!result.ok) return fail(itemId, result.message);
-  const params: Record<string, string> = {};
-  const title = getAlbum(db, result.albumId)?.title ?? "The album";
-  if (result.removedDecadeEntries.length > 0) {
-    params.removed = String(result.removedDecadeEntries.length);
-    params.album = title;
-  }
-  if (result.decade?.status === "full") params.full = title;
-  return back(params);
+  return back({});
 }
 
 /** Use this album (a candidate or a search result), or Move it here when `moveHere` is set. */

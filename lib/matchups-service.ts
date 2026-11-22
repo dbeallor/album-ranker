@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DataError, type MatchupResult } from "./db/types";
-import { listAllYearEntries } from "./db/year-entries";
+import { getLibraryEntry } from "./db/library";
 import { countMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
 import { pairKey } from "./elo/pick";
 import { loadAlbumCard, loadMatchupState, loadRatings, type AlbumCard } from "./ratings";
@@ -67,8 +67,7 @@ export function answerMatchup(
     return { error: "That answer wasn't valid. Try again." };
   }
   const before = loadRatings(db).ratings;
-  const entries = listAllYearEntries(db);
-  const yearOf = (id: number) => entries.find((entry) => entry.albumId === id)?.year;
+  const yearOf = (id: number) => getLibraryEntry(db, id)?.year;
   if (!before.has(albumAId) || !before.has(albumBId) || yearOf(albumAId) === yearOf(albumBId)) {
     return { error: "Those two albums can't be compared. Skip them or reload the page." };
   }

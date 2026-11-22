@@ -20,8 +20,8 @@ export type ReviewActions = {
   skip: FormAction;
 };
 
-/** A catalog album the user can pick; `onYearPage` is the year it already sits on, if any. */
-export type CandidateView = CatalogCandidate & { onYearPage: number | null };
+/** A catalog album the user can pick; `inLibraryYear` is the library year it already has, if any. */
+export type CandidateView = CatalogCandidate & { inLibraryYear: number | null };
 
 export type ReviewItemView = {
   item: ImportReviewItem;
@@ -51,7 +51,7 @@ export function describeReason(item: ImportReviewItem): string {
     case "ambiguous":
       return "Several albums match. Pick the right one.";
     case "duplicate_album":
-      return `The matched album is already on the ${item.reasonDetail} year page.`;
+      return `The matched album is already in your library (${item.reasonDetail}).`;
     case "rank_taken":
       return `Rank ${item.sourceRank} in ${item.source.year} is already held by ${item.reasonDetail}.`;
   }
@@ -84,12 +84,12 @@ function Candidate({ item, candidate, actions }: { item: ImportReviewItem; candi
       actions={
         <form action={actions.chooseAlbum}>
           <HiddenFields item={item} candidate={candidate} />
-          {candidate.onYearPage !== null && <input type="hidden" name="moveHere" value="1" />}
-          <Button type="submit">{candidate.onYearPage !== null ? "Move it here" : "Use this album"}</Button>
+          {candidate.inLibraryYear !== null && <input type="hidden" name="moveHere" value="1" />}
+          <Button type="submit">{candidate.inLibraryYear !== null ? "Move it here" : "Use this album"}</Button>
         </form>
       }
     >
-      {candidate.onYearPage !== null && <span className={styles.note}>Already on the {candidate.onYearPage} year page.</span>}
+      {candidate.inLibraryYear !== null && <span className={styles.note}>In your library ({candidate.inLibraryYear}).</span>}
     </ListRow>
   );
 }
@@ -170,17 +170,12 @@ export function ImportReview({
   items,
   counts,
   error,
-  removedNotice,
-  fullNotice,
   actions,
 }: {
   items: ReviewItemView[];
   counts: ReviewCounts;
   /** A failure for an item that is not on the page (already resolved, or unknown). */
   error: string | null;
-  removedNotice: string | null;
-  /** Set when the album went on its year page but the decade list was already full. */
-  fullNotice: string | null;
   actions: ReviewActions;
 }) {
   return (
@@ -193,16 +188,6 @@ export function ImportReview({
         {error && (
           <Message tone="error" role="alert">
             {error}
-          </Message>
-        )}
-        {removedNotice && (
-          <Message tone="info" role="status">
-            {removedNotice}
-          </Message>
-        )}
-        {fullNotice && (
-          <Message tone="info" role="status">
-            {fullNotice}
           </Message>
         )}
         {items.length === 0 ? (

@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAlbum } from "@/lib/db/albums";
-import { MAX_DECADE_LIST, setDecadeList } from "@/lib/db/decade-lists";
 import { createImportReviewItem } from "@/lib/db/import-review";
+import { listLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
-import { addYearEntry } from "@/lib/db/year-entries";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }));
 
@@ -14,7 +12,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { keepManualAction } from "./actions";
+import { keepManualAction, skipAction } from "./actions";
 
 async function redirectOf(action: Promise<void>): Promise<URL> {
   const message = await action.then(
@@ -31,23 +29,14 @@ describe("import review actions", () => {
   });
   afterEach(() => vi.clearAllMocks());
 
-  function form(itemId: number): FormData {
+  function form(itemId: number | string): FormData {
     const data = new FormData();
     data.set("itemId", String(itemId));
     return data;
   }
 
-  function seed(fullList: boolean) {
-    const db = state.db as ReturnType<typeof memoryDb>;
-    if (fullList) {
-      const ids = Array.from({ length: MAX_DECADE_LIST }, (_, i) => {
-        const album = createAlbum(db, { title: `Fake Filler ${i}`, artist: { name: `Fake Filler Artist ${i}` } });
-        addYearEntry(db, { albumId: album.id, year: 2002, placement: "honorable_mention" });
-        return album.id;
-      });
-      setDecadeList(db, 2000, ids);
-    }
-    return createImportReviewItem(db, {
+  function seed() {
+    return createImportReviewItem(state.db as ReturnType<typeof memoryDb>, {
       source: { title: "Fake Album <One>", artist: "Fake Artist A", year: 2001 },
       sourcePlacement: "honorable_mention",
       sourceDecadeRank: 2,
@@ -55,16 +44,25 @@ describe("import review actions", () => {
     });
   }
 
-  it("sends the album title in `full` when the decade list is full", async () => {
-    const review = seed(true);
+  it("keeping a manual album adds it to the library and goes back to /import with nothing in the query", async () => {
+    const review = seed();
     const url = await redirectOf(keepManualAction(form(review.id)));
     expect(url.pathname).toBe("/import");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ full: "Fake Album <One>" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toHaveLength(1);
   });
 
-  it("sends no `full` when the album went on the decade list", async () => {
-    const review = seed(false);
-    const url = await redirectOf(keepManualAction(form(review.id)));
+  it("skipping goes back to /import with nothing in the query and adds nothing", async () => {
+    const review = seed();
+    const url = await redirectOf(skipAction(form(review.id)));
     expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toEqual([]);
+  });
+
+  it("an item that is already resolved comes back with its message", async () => {
+    const review = seed();
+    await redirectOf(keepManualAction(form(review.id)));
+    const url = await redirectOf(keepManualAction(form(review.id)));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "This item is already resolved.", item: String(review.id) });
   });
 });

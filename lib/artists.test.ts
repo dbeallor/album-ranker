@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildArtistList, loadArtistList, loadArtistPage, type RatedAlbum } from "./artists";
 import { createAlbum } from "./db/albums";
 import { memoryDb } from "./db/test-db";
-import { addYearEntry } from "./db/year-entries";
+import { addToLibrary } from "./db/library";
 import { answerMatchup } from "./matchups-service";
 
 let nextAlbum = 1;
@@ -92,47 +92,47 @@ describe("loaders against a database", () => {
     const a2 = createAlbum(db, { title: "A Two", artist: { name: "Aardvark" } }).id;
     const a3 = createAlbum(db, { title: "A Unplaced", artist: { name: "Aardvark" } }).id;
     const c1 = createAlbum(db, { title: "C Listed", artist: { name: "Cat" } }).id;
-    addYearEntry(db, { albumId: a1, year: 1971, placement: "ranked", rank: 1 });
-    addYearEntry(db, { albumId: b1, year: 1972, placement: "ranked", rank: 1 });
-    addYearEntry(db, { albumId: a2, year: 1969, placement: "honorable_mention" });
-    addYearEntry(db, { albumId: c1, year: 1971, placement: "listed" });
+    addToLibrary(db, { albumId: a1, year: 1971 });
+    addToLibrary(db, { albumId: b1, year: 1972 });
+    addToLibrary(db, { albumId: a2, year: 1969 });
+    addToLibrary(db, { albumId: c1, year: 1971 });
     return { db, a1, b1, a2, a3, c1 };
   }
 
   it("a matchup swaps the order overall and in the decade both albums sit in", () => {
     const { db, a1, b1 } = seed();
-    expect(loadArtistList(db).map((r) => r.artistName)).toEqual(["Aardvark", "Bear"]);
-    expect(loadArtistList(db, 1970).map((r) => r.artistName)).toEqual(["Aardvark", "Bear"]);
+    // Every album starts at 1500, so the artists tie on score and the name decides.
+    expect(loadArtistList(db).map((r) => r.artistName)).toEqual(["Aardvark", "Bear", "Cat"]);
+    expect(loadArtistList(db, 1970).map((r) => r.artistName)).toEqual(["Aardvark", "Bear", "Cat"]);
 
     const result = answerMatchup(db, a1, b1, "b", [], () => 0);
     expect("error" in result).toBe(false);
 
-    expect(loadArtistList(db).map((r) => r.artistName)).toEqual(["Bear", "Aardvark"]);
-    expect(loadArtistList(db, 1970).map((r) => r.artistName)).toEqual(["Bear", "Aardvark"]);
+    expect(loadArtistList(db).map((r) => r.artistName)).toEqual(["Bear", "Cat", "Aardvark"]);
+    expect(loadArtistList(db, 1970).map((r) => r.artistName)).toEqual(["Bear", "Cat", "Aardvark"]);
   });
 
-  it("leaves out listed and unplaced albums", () => {
+  it("counts only albums in the library", () => {
     const { db } = seed();
-    expect(loadArtistList(db).map((r) => r.artistName)).not.toContain("Cat");
-    expect(loadArtistList(db)[0].ratedAlbumCount).toBe(2);
+    expect(loadArtistList(db).find((r) => r.artistName === "Aardvark")!.ratedAlbumCount).toBe(2);
   });
 
-  it("loads an artist page with placed albums by year, listed ones without a rating", () => {
+  it("loads an artist page with library albums by year and their ratings", () => {
     const { db, a1, a2, c1 } = seed();
     const aardvarkId = loadArtistList(db).find((r) => r.artistName === "Aardvark")!.artistId;
     const page = loadArtistPage(db, aardvarkId)!;
 
     expect(page.name).toBe("Aardvark");
     expect(page.ratedAlbumCount).toBe(2);
-    expect(page.albums.map((x) => [x.albumId, x.year, x.placement, x.rank, x.coverUrl === null])).toEqual([
-      [a2, 1969, "honorable_mention", null, true],
-      [a1, 1971, "ranked", 1, false],
+    expect(page.albums.map((x) => [x.albumId, x.year, x.rating, x.coverUrl === null])).toEqual([
+      [a2, 1969, 1500, true],
+      [a1, 1971, 1500, false],
     ]);
 
     const cat = loadArtistPage(db, db.prepare("SELECT id FROM artists WHERE name = 'Cat'").get()!.id as number)!;
-    expect(cat.albums).toMatchObject([{ albumId: c1, placement: "listed", rating: null }]);
-    expect(cat.score).toBeNull();
-    expect(cat.ratedAlbumCount).toBe(0);
+    expect(cat.albums).toMatchObject([{ albumId: c1, rating: 1500 }]);
+    expect(cat.score).toBe(1500);
+    expect(cat.ratedAlbumCount).toBe(1);
   });
 
   it("an unknown artist is undefined", () => {

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { countMatchups, listMatchups } from "./db/matchups";
-import { addYearEntry } from "./db/year-entries";
+import { addToLibrary } from "./db/library";
 import { memoryDb, seedAlbums } from "./db/test-db";
 import { answerMatchup, skipMatchup, undoMatchup, type MatchupView } from "./matchups-service";
 import { loadMatchupState, loadRatings } from "./ratings";
@@ -20,12 +20,8 @@ describe("matchup actions", () => {
   beforeEach(() => {
     db = memoryDb();
     ids = seedAlbums(db, 6);
-    // 0 and 1 in 2000, 2 in 2001, 3 a honorable mention in 2002, 4 listed in 2003, 5 has no year entry.
-    addYearEntry(db, { albumId: ids[0], year: 2000, placement: "ranked", rank: 1 });
-    addYearEntry(db, { albumId: ids[1], year: 2000, placement: "ranked", rank: 2 });
-    addYearEntry(db, { albumId: ids[2], year: 2001, placement: "ranked", rank: 1 });
-    addYearEntry(db, { albumId: ids[3], year: 2002, placement: "honorable_mention" });
-    addYearEntry(db, { albumId: ids[4], year: 2003, placement: "listed" });
+    // 0 and 1 in 2000, 2 in 2001, 3 in 2002, 4 in 2003, 5 is not in the library.
+    [2000, 2000, 2001, 2002, 2003].forEach((year, i) => addToLibrary(db, { albumId: ids[i], year }));
   });
 
   it("an answer moves both ratings and counts the matchup", () => {
@@ -73,8 +69,7 @@ describe("matchup actions", () => {
 
   it.each([
     { name: "same year", a: 0, b: 1 },
-    { name: "a listed album", a: 0, b: 4 },
-    { name: "an album with no year entry", a: 0, b: 5 },
+    { name: "an album not in the library", a: 0, b: 5 },
     { name: "an unknown album", a: 0, b: -1 },
     { name: "the same album twice", a: 0, b: 0 },
   ])("refuses $name and stores nothing", ({ a, b }) => {
@@ -91,13 +86,12 @@ describe("matchup actions", () => {
     expect(countMatchups(db)).toBe(0);
   });
 
-  it("never serves a listed or unplaced album", () => {
+  it("never serves an album outside the library", () => {
     const served = new Set<number>();
     for (const value of [0, 0.3, 0.6, 0.99]) {
       const { pair } = loadMatchupState(db, new Set(), () => value);
       served.add(pair!.a.id).add(pair!.b.id);
     }
-    expect(served.has(ids[4])).toBe(false);
     expect(served.has(ids[5])).toBe(false);
   });
 });

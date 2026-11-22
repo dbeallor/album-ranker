@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 
 import { createAlbum } from "@/lib/db/albums";
 import { memoryDb } from "@/lib/db/test-db";
-import { addYearEntry } from "@/lib/db/year-entries";
+import { addToLibrary } from "@/lib/db/library";
 import ArtistsPage from "./page";
 
 async function renderPage(decade?: string | string[]) {
@@ -25,8 +25,8 @@ describe("artists page", () => {
     state.db = memoryDb();
     const a = createAlbum(state.db, { title: "One", artist: { name: "Aardvark" } }).id;
     const b = createAlbum(state.db, { title: "Two", artist: { name: "Bear" } }).id;
-    addYearEntry(state.db, { albumId: a, year: 1971, placement: "ranked", rank: 1 });
-    addYearEntry(state.db, { albumId: b, year: 1985, placement: "honorable_mention" });
+    addToLibrary(state.db, { albumId: a, year: 1971 });
+    addToLibrary(state.db, { albumId: b, year: 1985 });
   });
   afterEach(cleanup);
 

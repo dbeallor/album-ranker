@@ -7,13 +7,8 @@ import { CardGrid } from "@/components/ui/card-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
 import { PageHeader } from "@/components/ui/page-header";
-import { loadArtistPage, type ArtistPageAlbum } from "@/lib/artists";
+import { loadArtistPage } from "@/lib/artists";
 import { getDb } from "@/lib/db/server";
-
-function placementText(album: ArtistPageAlbum): string {
-  if (album.placement === "ranked") return `Ranked #${album.rank}`;
-  return album.placement === "honorable_mention" ? "Honorable mention" : "Listed";
-}
 
 export default async function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   await connection(); // ratings are replayed per request, not at build time
@@ -29,14 +24,14 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
         title={artist.name}
         description={
           artist.score === null
-            ? "No rated albums"
-            : `Score ${Math.round(artist.score)} from ${artist.ratedAlbumCount} rated ${artist.ratedAlbumCount === 1 ? "album" : "albums"}`
+            ? "No albums in the library"
+            : `Score ${Math.round(artist.score)} from ${artist.ratedAlbumCount} ${artist.ratedAlbumCount === 1 ? "album" : "albums"}`
         }
         actions={<ButtonLink href="/artists">All artists</ButtonLink>}
       />
 
       {artist.albums.length === 0 ? (
-        <EmptyState>No placed albums.</EmptyState>
+        <EmptyState>No albums in the library.</EmptyState>
       ) : (
         <CardGrid>
           {artist.albums.map((album) => (
@@ -45,11 +40,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
                 cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />}
                 title={album.title}
                 subtitle={album.year}
-                meta={
-                  <>
-                    <span>{placementText(album)}</span> · <span>{album.rating === null ? "No rating" : `Rating ${Math.round(album.rating)}`}</span>
-                  </>
-                }
+                meta={`Rating ${Math.round(album.rating)}`}
               />
             </Card>
           ))}
