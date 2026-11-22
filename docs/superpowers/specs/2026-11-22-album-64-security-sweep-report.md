@@ -6,11 +6,11 @@
 **Spec:** [2026-11-22-album-64-security-sweep.md](2026-11-22-album-64-security-sweep.md)
 
 - Model: `claude-fable-5-2`, high effort. Skill: `owasp-security` (OWASP Top 10:2025, ASVS 5.0).
-- Commit reviewed: `c66e8804295c6ab0743521560458c11b6c9cd2da` (`origin/main`). The branch HEAD `43dd0af` adds only the spec.
+- Commit reviewed: `c66e8804295c6ab0743521560458c11b6c9cd2da` (`origin/main`). The branch adds only the spec and this report.
 - Method: code reading of every tracked file under `app/`, `components/`, `lib/`, `scripts/`, `e2e/`, plus config; `npm audit --package-lock-only`; a scan of all 830 commits reachable from any local ref (34 of them on `origin/main`); two local checks with no network (regex timing, an in-memory SQLite check). No attack traffic was sent and no server was started.
 - Limits:
   - This worktree has no `node_modules`, and installing would write into the repo, so **the test suite was not run**.
-  - Next.js behaviour was read from the Next 16.4.6 docs and source installed in the root checkout (`/Users/david_beallor/Documents/album-ranker/node_modules/next`), the version `package-lock.json` pins.
+  - Next.js behaviour was read from the Next 16.4.6 docs and source installed in the root checkout (`node_modules/next` in the root checkout), the version `package-lock.json` pins.
   - The unmerged #14 branches that exist locally (`feat/album-14-deploy-password-gate`, `feat/album-14-aws-terraform-deploy`) were not reviewed.
 - Severity is judged for the app once #14 ships (on the internet, behind a password gate). Each finding says how it stands today.
 
