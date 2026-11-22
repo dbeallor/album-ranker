@@ -37,3 +37,7 @@
 .choose {
   width: 100%;
 }
+
+.counts {
+  text-align: right;
+}

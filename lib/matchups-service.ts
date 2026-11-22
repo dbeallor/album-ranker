@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { DataError, type MatchupResult } from "./db/types";
 import { countMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
 import { pairKey } from "./elo/pick";
-import { loadAlbumCard, loadMatchupState, loadRatings, type AlbumCard } from "./ratings";
+import type { RankingProgress } from "./elo/progress";
+import { loadAlbumCard, loadMatchupState, loadRatings, progressOf, type AlbumCard } from "./ratings";
 
 export type MatchupView = {
   pair: { a: AlbumCard; b: AlbumCard } | null;
@@ -10,6 +11,8 @@ export type MatchupView = {
   count: number;
   lastAnswer: { text: string } | null;
   canUndo: boolean;
+  /** How far the library is from an approximately right order; null with fewer than two albums. */
+  progress: RankingProgress | null;
 };
 
 export type MatchupActionResult = MatchupView | { error: string };
@@ -29,8 +32,8 @@ function parseAvoid(avoid: unknown): Set<string> {
 }
 
 function view(db: DatabaseSync, avoid: Set<string>, random: () => number, lastAnswer: MatchupView["lastAnswer"]): MatchupView {
-  const { pair, count } = loadMatchupState(db, avoid, random);
-  return { pair, count, lastAnswer, canUndo: count > 0 };
+  const { pair, count, progress } = loadMatchupState(db, avoid, random);
+  return { pair, count, lastAnswer, canUndo: count > 0, progress };
 }
 
 function round(rating: number): number {
@@ -104,7 +107,8 @@ export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => numb
   const undone = undoLastMatchup(db);
   if (!undone) return { error: "There is nothing to undo." };
 
-  const after = loadRatings(db).ratings;
+  const afterState = loadRatings(db);
+  const after = afterState.ratings;
   const a = loadAlbumCard(db, undone.albumAId);
   const b = loadAlbumCard(db, undone.albumBId);
   const text = a && b ? changeText(before, after, [a, b], "Undone: ") : null;
@@ -112,7 +116,7 @@ export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => numb
 
   if (a && b && after.has(a.id) && after.has(b.id)) {
     const count = countMatchups(db);
-    return { pair: { a, b }, count, lastAnswer, canUndo: count > 0 };
+    return { pair: { a, b }, count, lastAnswer, canUndo: count > 0, progress: progressOf(afterState) };
   }
   // One of the albums has lost its placement since, so the pair can't be asked again.
   return view(db, parseAvoid(avoid), random, lastAnswer);

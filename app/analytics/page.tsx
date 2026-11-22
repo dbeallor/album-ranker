@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
+import { RankingProgress } from "@/components/ranking-progress";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -42,7 +43,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
     scope = parsed;
   }
 
-  const { data, libraryAlbums } = loadAnalytics(getDb(), view, scope);
+  const { data, libraryAlbums, progress } = loadAnalytics(getDb(), view, scope);
   const ranked = view === "albums" || view === "artists";
   const choices = scopeChoices(libraryAlbums, scope);
   const scopeEmpty = ranked && scope.kind !== "lifetime";
@@ -60,6 +61,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         description={ranked ? `${view === "albums" ? "Album" : "Artist"} ranking · ${scopeLabel(scope)}` : undefined}
       />
       <Stack gap={5}>
+        <RankingProgress progress={progress} />
         <Stack gap={2}>
           <p className={styles.label}>Show</p>
           <Tabs

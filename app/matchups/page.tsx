@@ -7,13 +7,13 @@ import { answerMatchup, skipMatchup, undoMatchup } from "./actions";
 
 export default async function MatchupsPage() {
   await connection(); // read the database per request, not at build time
-  const { pair, count } = loadMatchupState(getDb(), new Set(), Math.random);
+  const { pair, count, progress } = loadMatchupState(getDb(), new Set(), Math.random);
 
   return (
     <>
       <PageHeader title="Matchups" />
       <MatchupScreen
-        initial={{ pair, count, lastAnswer: null, canUndo: count > 0 }}
+        initial={{ pair, count, lastAnswer: null, canUndo: count > 0, progress }}
         answerAction={answerMatchup}
         skipAction={skipMatchup}
         undoAction={undoMatchup}
