@@ -1,28 +1,19 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/matchups/42" }));
 
-import { SiteHeader } from "./site-header";
-
-// jsdom has no showModal or close on a dialog; these stand in for the open attribute they toggle.
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = function showModal() {
-    this.setAttribute("open", "");
-  };
-  HTMLDialogElement.prototype.close = function close() {
-    this.removeAttribute("open");
-  };
-});
+import { NAV_ITEMS, SiteHeader } from "./site-header";
 
 afterEach(cleanup);
 
-describe("site header menu", () => {
-  it("marks only the link for the section you are in as the current page", () => {
+describe("site header links", () => {
+  it("shows the four page links in the bar and marks only the current section", () => {
     render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
 
     const links = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(NAV_ITEMS.map((item) => item.href));
     expect(links.filter((link) => link.getAttribute("aria-current") === "page").map((link) => link.getAttribute("href"))).toEqual(["/matchups"]);
+    expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
   });
 });

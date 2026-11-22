@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
 import { cx } from "./cx";
 import styles from "./site-header.module.css";
 
@@ -19,19 +18,11 @@ function isCurrent(pathname: string, href: string): boolean {
 }
 
 /**
- * A slim bar with the app name and a Menu button. The button opens a full-screen native
- * `<dialog>` that lists the nav as large numbered links; the dialog traps focus, closes on
- * Escape and gives focus back to the Menu button. The link for the section you are in gets
- * `aria-current="page"`.
+ * A slim bar with the app name and a link to each page. The link for the section you are in
+ * gets `aria-current="page"`.
  */
 export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRef<"header">) {
   const pathname = usePathname();
-  const dialog = useRef<HTMLDialogElement>(null);
-
-  // Back and forward change the route without a click on a menu link, so close the menu here too.
-  useEffect(() => {
-    dialog.current?.close();
-  }, [pathname]);
 
   return (
     <header className={cx(styles.header, className)} {...rest}>
@@ -39,37 +30,22 @@ export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRe
         <Link href="/" className={styles.brand}>
           Album ranker
         </Link>
-        <button type="button" className={styles.toggle} onClick={() => dialog.current?.showModal()}>
-          Menu
-        </button>
-      </div>
-      <dialog ref={dialog} className={styles.dialog} aria-label="Menu">
-        <div className={cx(styles.inner, styles.dialogBar)}>
-          <span className={styles.brand}>Album ranker</span>
-          <button type="button" className={styles.toggle} onClick={() => dialog.current?.close()}>
-            Close
-          </button>
-        </div>
         <nav aria-label="Main" className={styles.nav}>
-          <ol className={styles.list}>
-            {NAV_ITEMS.map((item, index) => (
+          <ul className={styles.list}>
+            {NAV_ITEMS.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
                   className={styles.link}
                   aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
-                  onClick={() => dialog.current?.close()}
                 >
-                  <span className={styles.number} aria-hidden="true">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
                   {item.label}
                 </Link>
               </li>
             ))}
-          </ol>
+          </ul>
         </nav>
-      </dialog>
+      </div>
     </header>
   );
 }
