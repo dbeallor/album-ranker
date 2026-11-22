@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { securityHeaders } from "./lib/security-headers";
 import { proxy } from "./proxy";
 
 const PASSWORD = "correct horse battery";
@@ -45,6 +46,7 @@ describe("proxy", () => {
 
     expect(response.status).toBe(status);
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    for (const { key, value } of securityHeaders({ development: false })) expect(response.headers.get(key)).toBe(value);
     expect(response.headers.get("cache-control")).toBe(noStore ? "no-store" : null);
     expect(warn.mock.calls.map(([line]) => line)).toEqual(log?.level === "warn" ? [log.line] : []);
     expect(error.mock.calls.map(([line]) => line)).toEqual(log?.level === "error" ? [log.line] : []);
