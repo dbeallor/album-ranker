@@ -3,7 +3,7 @@
   width: 100%;
   height: var(--space-3);
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: 0;
   background: var(--color-surface-sunken);
   overflow: hidden;
   appearance: none;
@@ -14,11 +14,9 @@
 }
 
 .progress::-webkit-progress-value {
-  border-radius: var(--radius-full);
   background: var(--color-accent);
 }
 
 .progress::-moz-progress-bar {
-  border-radius: var(--radius-full);
   background: var(--color-accent);
 }
