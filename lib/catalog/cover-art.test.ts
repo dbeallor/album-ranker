@@ -13,8 +13,8 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function deezerAlbum(title: string, artist: string, cover: unknown = DEEZER_COVER) {
-  return { title, cover_medium: cover, artist: { name: artist } };
+function deezerAlbum(title: string, artist: string, cover: unknown = DEEZER_COVER, md5Image: unknown = "abc") {
+  return { title, cover_medium: cover, md5_image: md5Image, artist: { name: artist } };
 }
 
 /** A fake fetch: `caa` answers the Cover Art Archive HEAD, `deezer` answers the Deezer search. */
@@ -137,6 +137,9 @@ describe("the Deezer fallback", () => {
     { name: "a cover over plain http", reply: json({ data: [deezerAlbum("Kind of Blue", "Miles Davis", "http://cdn-images.dzcdn.net/c.jpg")] }) },
     { name: "a cover URL over 300 characters", reply: json({ data: [deezerAlbum("Kind of Blue", "Miles Davis", `https://cdn-images.dzcdn.net/${"x".repeat(300)}`)] }) },
     { name: "a match with no cover", reply: json({ data: [{ title: "Kind of Blue", artist: { name: "Miles Davis" } }] }) },
+    { name: "Deezer's stock no-artwork cover (empty md5_image)", reply: json({ data: [deezerAlbum("Kind of Blue", "Miles Davis", "https://cdn-images.dzcdn.net/images/cover//250x250-000000-80-0-0.jpg", "")] }) },
+    { name: "a match with no md5_image", reply: json({ data: [{ title: "Kind of Blue", cover_medium: DEEZER_COVER, artist: { name: "Miles Davis" } }] }) },
+    { name: "a cover URL with an empty cover path segment", reply: json({ data: [deezerAlbum("Kind of Blue", "Miles Davis", "https://cdn-images.dzcdn.net/images/cover//250x250.jpg")] }) },
     { name: "a result with no artist", reply: json({ data: [{ title: "Kind of Blue", cover_medium: DEEZER_COVER }] }) },
     { name: "a 500", reply: new Response("oops", { status: 500 }) },
     { name: "a network error", reply: new TypeError("fetch failed") },
@@ -158,10 +161,11 @@ describe("the Deezer fallback", () => {
     expect(log).toHaveBeenCalledOnce();
   });
 
-  it("returns null when the title normalises to nothing, so another all-punctuation title can't match it", async () => {
-    const { resolveCover } = setup(noCover, json({ data: [deezerAlbum("???", "Miles Davis")] }));
+  it("returns null without asking Deezer when the title normalises to nothing, so another all-punctuation title can't match it", async () => {
+    const { resolveCover, deezerCalls } = setup(noCover, json({ data: [deezerAlbum("???", "Miles Davis")] }));
 
     expect(await resolveCover({ ...ALBUM, title: "!!!" })).toBeNull();
+    expect(deezerCalls()).toHaveLength(0);
   });
 });
 
@@ -186,6 +190,8 @@ describe("normalizeForMatch", () => {
   it.each([
     { name: "a live album", a: "Abbey Road", b: "Abbey Road Live" },
     { name: "a bracketed tag that is not an edition tag", a: "Abbey Road (Live)", b: "Abbey Road" },
+    { name: "a (Live Version) tag", a: "Abbey Road (Live Version)", b: "Abbey Road" },
+    { name: "a [Acoustic Edition] tag", a: "Unplugged [Acoustic Edition]", b: "Unplugged" },
     { name: "a different artist", a: "Miles Davis", b: "Miles Davies" },
     { name: "a tag in the middle", a: "Abbey (Deluxe) Road", b: "Abbey Road" },
     { name: "a different title", a: "Blue", b: "Kind of Blue" },

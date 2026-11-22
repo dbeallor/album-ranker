@@ -12,7 +12,7 @@ const CATALOG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const COVER_HOSTS = new Set(["coverartarchive.org", "cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net"]);
 const DEEZER_COVER_HOSTS = new Set(["cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net"]);
 
-const EDITION_TAG = /\s*[([][^()[\]]*(?:deluxe|edition|remaster|expanded|anniversary|bonus|version)[^()[\]]*[)\]]\s*$/;
+const EDITION_TAG = /\s*[([](?![^()[\]]*\b(?:live|acoustic|instrumental|demo|mono)\b)[^()[\]]*(?:deluxe|edition|remaster|expanded|anniversary|bonus|version)[^()[\]]*[)\]]\s*$/;
 
 /**
  * Reduces an album title or artist name to letters and digits so two spellings of one name compare equal:
@@ -68,6 +68,11 @@ export function createResolveCover(deps: CoverArtDeps) {
   const log = deps.log ?? ((message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])));
 
   async function askDeezer(title: string, artist: string): Promise<string | null> {
+    // An empty name (such as "!!!") normalises to nothing and would match any other such name.
+    const wantedTitle = normalizeForMatch(title);
+    const wantedArtist = normalizeForMatch(artist);
+    if (wantedTitle === "" || wantedArtist === "") return null;
+
     const params = new URLSearchParams({ q: deezerQuery(title, artist), limit: String(DEEZER_RESULT_LIMIT) });
     try {
       const response = await deps.fetch(`${DEEZER_SEARCH_URL}?${params}`, {
@@ -84,17 +89,15 @@ export function createResolveCover(deps: CoverArtDeps) {
         return null;
       }
 
-      const wantedTitle = normalizeForMatch(title);
-      const wantedArtist = normalizeForMatch(artist);
-      // An empty name (such as "!!!") normalises to nothing and would match any other such name.
-      if (wantedTitle === "" || wantedArtist === "") return null;
-
       for (const entry of data) {
-        const album = entry as { title?: unknown; cover_medium?: unknown; artist?: { name?: unknown } } | null;
+        const album = entry as { title?: unknown; cover_medium?: unknown; md5_image?: unknown; artist?: { name?: unknown } } | null;
         if (typeof album?.title !== "string" || typeof album.artist?.name !== "string") continue;
         if (normalizeForMatch(album.title) !== wantedTitle || normalizeForMatch(album.artist.name) !== wantedArtist) continue;
         const cover = album.cover_medium;
-        return typeof cover === "string" && isHttpsUrlOn(cover, DEEZER_COVER_HOSTS) ? cover : null;
+        // Deezer's stock "no artwork" image has an empty md5, so its URL path contains "/cover//".
+        if (typeof album.md5_image !== "string" || album.md5_image === "") return null;
+        if (typeof cover !== "string" || cover.includes("/cover//")) return null;
+        return isHttpsUrlOn(cover, DEEZER_COVER_HOSTS) ? cover : null;
       }
       return null;
     } catch (error) {
