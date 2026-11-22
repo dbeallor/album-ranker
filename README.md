@@ -69,7 +69,7 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 
 The header has a link to each of the four pages: Add albums, Library, Play and Rankings. The home page is the start of the same flow, with a search box, the library count, your ranking progress and the top five albums; it links to Import review only while spreadsheet rows wait for review.
 
-Open <http://localhost:3000/search> (Add albums) and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups. When an album is added (from search, import review or the import script) and the Cover Art Archive has no front cover for it, the server looks for a cover on Deezer, accepting only an album with the same title and artist, and stores it; with no match the grey placeholder stays. Results on the search page still show only Cover Art Archive covers, and albums already in your library are not changed.
+Open <http://localhost:3000/search> (Add albums) and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups. When an album is added (from search, import review or the import script) and the Cover Art Archive has no front cover for it, the server looks for a cover on Deezer, accepting only an album with the same title and artist, and stores it; with no match the grey placeholder stays. Results on the search page still show only Cover Art Archive covers, and adding an album does not change albums already in your library; `npm run backfill-covers` fills missing covers for those (see Backfill covers).
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
@@ -108,6 +108,13 @@ Reading the summary the script prints at the end:
 - `Merged duplicates` and `Conflicting placement` (a rank and an honorable mention on one row) name the rows that need a look. Ranks, honorable mentions and decade ranks are read from the sheet but no longer used.
 - `Invalid, skipped` rows are left out, each with its reason; fix the sheet and run again.
 - `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
+
+## Backfill covers
+
+`npm run backfill-covers` fills the cover of library albums saved without one (added before Deezer was a fallback, or while the Cover Art Archive had none). It uses the same lookup as adding an album: the Cover Art Archive first, then a Deezer album with the same title and artist. It looks at one album at a time, never touches an album that already has a cover, and skips albums with no catalog id (manual albums).
+
+- The summary counts `Filled`, `Still none` (no cover on either service), `Failed` (a lookup failed, so the album is left alone: run it again to retry) and `Skipped`. It exits 0 even with failed albums.
+- Running it again only looks at albums still without a cover. Set `MUSICBRAINZ_USER_AGENT` in `.env` first; it is sent to the Cover Art Archive.
 
 ## Browser tests
 

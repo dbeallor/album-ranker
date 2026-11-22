@@ -63,19 +63,22 @@ function deezerQuery(title: string, artist: string): string {
   return `artist:"${clean(artist)}" album:"${clean(title)}"`;
 }
 
-/**
- * Builds `resolveCover`, which gives the cover to store for a catalog album: the Cover Art Archive's when it
- * has one, else Deezer's cover for an album with the same title and artist, else null. Never throws. A catalog
- * id that isn't a UUID, or a title or artist over 300 characters, gets null without a request: the browser can send anything.
- */
-export function createResolveCover(deps: CoverArtDeps) {
+export type CoverLookup = { kind: "found"; url: string } | { kind: "none" } | { kind: "failed" };
+
+/** Where a failed lookup failed, so `resolveCover` can keep the CAA URL after a CAA failure but not after a Deezer one. */
+type FinderResult =
+  | Exclude<CoverLookup, { kind: "failed" }>
+  | { kind: "failed"; at: "caa"; caaUrl: string }
+  | { kind: "failed"; at: "deezer" };
+
+function createCoverFinder(deps: CoverArtDeps) {
   const log = deps.log ?? ((message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])));
 
-  async function askDeezer(title: string, artist: string): Promise<string | null> {
+  async function askDeezer(title: string, artist: string): Promise<FinderResult> {
     // An empty name (such as "!!!") normalises to nothing and would match any other such name.
     const wantedTitle = normalizeForMatch(title);
     const wantedArtist = normalizeForMatch(artist);
-    if (wantedTitle === "" || wantedArtist === "") return null;
+    if (wantedTitle === "" || wantedArtist === "") return { kind: "none" };
 
     const params = new URLSearchParams({ q: deezerQuery(title, artist), limit: String(DEEZER_RESULT_LIMIT) });
     try {
@@ -85,12 +88,12 @@ export function createResolveCover(deps: CoverArtDeps) {
       });
       if (!response.ok) {
         log(`Deezer cover search for "${title}" answered ${response.status}`);
-        return null;
+        return { kind: "failed", at: "deezer" };
       }
       const data = ((await response.json()) as { data?: unknown } | null)?.data;
       if (!Array.isArray(data)) {
         log(`Deezer cover search for "${title}" had no result list`);
-        return null;
+        return { kind: "failed", at: "deezer" };
       }
 
       for (const entry of data) {
@@ -99,19 +102,19 @@ export function createResolveCover(deps: CoverArtDeps) {
         if (normalizeForMatch(album.title) !== wantedTitle || normalizeForMatch(album.artist.name) !== wantedArtist) continue;
         const cover = album.cover_medium;
         // Deezer's stock "no artwork" image has an empty md5, so its URL path contains "/cover//".
-        if (typeof album.md5_image !== "string" || album.md5_image === "") return null;
-        if (typeof cover !== "string" || cover.includes("/cover//")) return null;
-        return isHttpsUrlOn(cover, DEEZER_COVER_HOSTS) ? cover : null;
+        if (typeof album.md5_image !== "string" || album.md5_image === "") return { kind: "none" };
+        if (typeof cover !== "string" || cover.includes("/cover//")) return { kind: "none" };
+        return isHttpsUrlOn(cover, DEEZER_COVER_HOSTS) ? { kind: "found", url: cover } : { kind: "none" };
       }
-      return null;
+      return { kind: "none" };
     } catch (error) {
       log(`Deezer cover search for "${title}" failed`, error);
-      return null;
+      return { kind: "failed", at: "deezer" };
     }
   }
 
-  return async function resolveCover({ catalogId, title, artist }: CoverQuery): Promise<string | null> {
-    if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return null;
+  return async function find({ catalogId, title, artist }: CoverQuery): Promise<FinderResult> {
+    if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return { kind: "none" };
     const id = catalogId.toLowerCase();
     // Only the HEAD check uses the configurable base; what gets stored is always the canonical URL.
     const checkUrl = `${deps.caaUrl?.() ?? DEFAULT_CAA_URL}/release-group/${id}/front-250`;
@@ -123,16 +126,47 @@ export function createResolveCover(deps: CoverArtDeps) {
         headers: deps.userAgent ? { "User-Agent": deps.userAgent() } : undefined,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+      if (response.status < 400) return { kind: "found", url: caaUrl };
       if (response.status !== 404) {
-        if (response.status >= 400) log(`Cover Art Archive answered ${response.status} for ${catalogId}`);
-        return caaUrl;
+        log(`Cover Art Archive answered ${response.status} for ${catalogId}`);
+        return { kind: "failed", at: "caa", caaUrl };
       }
     } catch (error) {
-      // Can't tell whether CAA has a cover; keep its URL and let the browser's placeholder cover a broken link.
       log(`Cover Art Archive check failed for ${catalogId}`, error);
-      return caaUrl;
+      return { kind: "failed", at: "caa", caaUrl };
     }
     return askDeezer(title, artist);
+  };
+}
+
+/**
+ * Builds `lookupCover`, which finds the cover for a catalog album: the Cover Art Archive's when it has one, else
+ * Deezer's cover for an album with the same title and artist. It tells "no cover" (`none`) from "couldn't tell"
+ * (`failed`: a CAA answer other than 2xx, 3xx or 404, a network error or timeout, or a failed Deezer search).
+ * Never throws. A catalog id that isn't a UUID, or a title or artist over 300 characters, is `none` without a request.
+ */
+export function createLookupCover(deps: CoverArtDeps) {
+  const find = createCoverFinder(deps);
+  return async function lookupCover(query: CoverQuery): Promise<CoverLookup> {
+    const result = await find(query);
+    return result.kind === "failed" ? { kind: "failed" } : result;
+  };
+}
+
+export type LookupCover = ReturnType<typeof createLookupCover>;
+
+/**
+ * Builds `resolveCover`, which gives the cover to store for a catalog album when it is added: the lookup's
+ * cover, or null when there is none. When the Cover Art Archive can't be reached it gives the CAA URL anyway,
+ * and lets the browser's placeholder cover a broken link; a failed Deezer search gives null. Never throws.
+ */
+export function createResolveCover(deps: CoverArtDeps) {
+  const find = createCoverFinder(deps);
+  return async function resolveCover(query: CoverQuery): Promise<string | null> {
+    const result = await find(query);
+    if (result.kind === "found") return result.url;
+    if (result.kind === "failed") return result.at === "caa" ? result.caaUrl : null;
+    return null;
   };
 }
 
