@@ -119,7 +119,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
                   </td>
                   <th scope="row">{album.title}</th>
                   <td>
-                    <Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>
+                    <Link prefetch={false} href={`/artists/${album.artistId}`}>{album.artistName}</Link>
                   </td>
                   <td data-numeric>{album.year}</td>
                   <td data-numeric>{round(album.rating)}</td>
@@ -145,7 +145,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
                 <tr key={row.artistId}>
                   <td data-numeric className={styles.rank}>{row.rank}</td>
                   <th scope="row">
-                    <Link href={`/artists/${row.artistId}`}>{row.artistName}</Link>
+                    <Link prefetch={false} href={`/artists/${row.artistId}`}>{row.artistName}</Link>
                   </th>
                   <td data-numeric>{round(row.score)}</td>
                   <td data-numeric>{row.albumCount}</td>
@@ -170,14 +170,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
               {data.rows.map((row) => (
                 <tr key={scopeValue(row.scope)}>
                   <th scope="row">
-                    <Link href={href("albums", row.scope)}>{row.label}</Link>
+                    <Link prefetch={false} href={href("albums", row.scope)}>{row.label}</Link>
                   </th>
                   <td data-numeric>{row.albumCount}</td>
                   <td data-numeric>{row.matchups}</td>
                   <td data-numeric>{round(row.averageRating)}</td>
                   <td>{row.topAlbum.title}</td>
                   <td>
-                    <Link href={`/artists/${row.topArtist.artistId}`}>{row.topArtist.name}</Link>
+                    <Link prefetch={false} href={`/artists/${row.topArtist.artistId}`}>{row.topArtist.name}</Link>
                   </td>
                 </tr>
               ))}

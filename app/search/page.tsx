@@ -52,8 +52,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           <Message tone="success" role="status">
             Added {added.title} to your library.
             <Cluster gap={3}>
-              <Link href="/library?sort=year">View library</Link>
-              <Link href="/matchups">Play matchups</Link>
+              <Link prefetch={false} href="/library?sort=year">View library</Link>
+              <Link prefetch={false} href="/matchups">Play matchups</Link>
             </Cluster>
           </Message>
         )}

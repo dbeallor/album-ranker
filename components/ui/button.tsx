@@ -23,12 +23,12 @@ export function Button({
   return <button className={lookClass({ variant, size }, className)} {...rest} />;
 }
 
-/** A `next/link` that looks like a `Button`. */
+/** A `next/link` that looks like a `Button`. Never prefetches, so a page load sends one request to the single server copy. */
 export function ButtonLink({
   variant,
   size,
   className,
   ...rest
 }: ComponentPropsWithoutRef<typeof Link> & Look) {
-  return <Link className={lookClass({ variant, size }, className)} {...rest} />;
+  return <Link className={lookClass({ variant, size }, className)} {...rest} prefetch={false} />;
 }

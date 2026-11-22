@@ -45,7 +45,7 @@ export default async function Home() {
 
       {openItems > 0 && (
         <Message tone="info">
-          <Link href="/import">Import review: {openItems} to check</Link>
+          <Link prefetch={false} href="/import">Import review: {openItems} to check</Link>
         </Message>
       )}
 
@@ -113,7 +113,7 @@ export default async function Home() {
                 <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
                 <div className={styles.topText}>
                   <strong>{album.title}</strong>
-                  <Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>
+                  <Link prefetch={false} href={`/artists/${album.artistId}`}>{album.artistName}</Link>
                 </div>
               </li>
             ))}

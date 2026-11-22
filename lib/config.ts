@@ -1,7 +1,18 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type Config = {
+export type DeployEnv = "staging" | "production";
+
+/** What the password gate reads. `deployEnv` is set only on a deployed environment; with it set, the gate is always on. */
+export type GateConfig = {
+  deployEnv: DeployEnv | null;
+  /** `APP_PASSWORD`; null when unset or empty. Not length-checked here: see `gatePasswordProblem`. */
+  appPassword: string | null;
+  /** `ORIGIN_SECRET`: the value CloudFront sends in `x-origin-secret`; null when unset or empty. */
+  originSecret: string | null;
+};
+
+export type Config = GateConfig & {
   databasePath: string;
   backupDir: string;
   musicbrainzUserAgent: string;
@@ -9,6 +20,8 @@ export type Config = {
   coverArtArchiveUrl: string;
   deezerUrl: string;
 };
+
+export const MIN_PASSWORD_LENGTH = 12;
 
 const DEFAULT_DATABASE_PATH = "./data/album-ranker.db";
 const DEFAULT_BACKUP_DIR = join("~", ".album-ranker", "backups");
@@ -34,8 +47,38 @@ function readSetting(name: string, fallback: string, hint: string): string {
   return raw;
 }
 
+function readOptional(name: string): string | null {
+  const raw = process.env[name];
+  return raw === undefined || raw.trim() === "" ? null : raw;
+}
+
+/** Reads the gate settings without judging the password, so the proxy can answer 503 instead of crashing. */
+export function readGateConfig(): GateConfig {
+  const raw = process.env.DEPLOY_ENV;
+  if (raw !== undefined && raw !== "staging" && raw !== "production") {
+    throw new Error(`DEPLOY_ENV is "${raw}". Set it to staging or production, or unset it for a local run.`);
+  }
+  return { deployEnv: raw ?? null, appPassword: readOptional("APP_PASSWORD"), originSecret: readOptional("ORIGIN_SECRET") };
+}
+
+/** Why a deployed environment can't run with this password, or null when it can (or no gate is expected). */
+export function gatePasswordProblem(gate: GateConfig): string | null {
+  if (gate.deployEnv === null) return null;
+  if (gate.appPassword === null) {
+    return `APP_PASSWORD is not set. A ${gate.deployEnv} environment needs a password of at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+  if (gate.appPassword.length < MIN_PASSWORD_LENGTH) {
+    return `APP_PASSWORD is shorter than ${MIN_PASSWORD_LENGTH} characters. A ${gate.deployEnv} environment needs a longer one.`;
+  }
+  return null;
+}
+
 export function getConfig(): Config {
+  const gate = readGateConfig();
+  const problem = gatePasswordProblem(gate);
+  if (problem) throw new Error(problem);
   return {
+    ...gate,
     databasePath: readSetting(
       "DATABASE_PATH",
       DEFAULT_DATABASE_PATH,
