@@ -15,10 +15,10 @@ export async function removeAlbumAction(formData: FormData): Promise<void> {
   const albumId = field(formData, "albumId");
   const result = removeFromLibrary(getDb(), albumId, field(formData, "matchups"));
   if (result.ok) {
-    redirect(`/library?${new URLSearchParams({ removed: result.title, matchups: String(result.matchups) })}`);
+    redirect(`/library?${new URLSearchParams({ removed: "1", matchups: String(result.matchups) })}`);
   }
   if (result.stale) {
-    redirect(`/library/remove/${encodeURIComponent(albumId)}?${new URLSearchParams({ error: result.message })}`);
+    redirect(`/library/remove/${encodeURIComponent(albumId)}?${new URLSearchParams({ error: "stale" })}`);
   }
   redirect("/library");
 }

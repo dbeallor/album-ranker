@@ -21,7 +21,20 @@ export type AddCatalogAlbumInput = {
   year: Raw;
 };
 
-export type AddCatalogAlbumResult = { ok: true; added: boolean } | { ok: false; message: string };
+/** Why adding a catalog album failed, one code per check. The pages show `ADD_ALBUM_ERRORS[code]`, never text from a URL. */
+export const ADD_ALBUM_ERRORS = {
+  year: "Enter a year from 1900 to 2100.",
+  catalog_id: "That album's catalog id isn't valid.",
+  artist_id: "That album's artist id isn't valid.",
+  title: "That album's title isn't valid.",
+  artist: "That album's artist isn't valid.",
+  cover: "That album's cover isn't valid.",
+  release_year: "That album's release year isn't valid.",
+} as const;
+
+export type AddAlbumErrorCode = keyof typeof ADD_ALBUM_ERRORS;
+
+export type AddCatalogAlbumResult = { ok: true; added: boolean } | { ok: false; code: AddAlbumErrorCode; message: string };
 
 export type RemoveFromLibraryResult =
   | { ok: true; title: string; matchups: number }
@@ -33,7 +46,10 @@ const ARTIST_ID = new RegExp(`^${UUID}(\\+${UUID})*$`, "i");
 const WHOLE_NUMBER = /^\d+$/;
 const MAX_TEXT = 300;
 const MAX_ARTIST_ID = 400;
-const YEAR_MESSAGE = "Enter a year from 1900 to 2100.";
+
+function failure(code: AddAlbumErrorCode): AddAlbumFailure {
+  return { ok: false, code, message: ADD_ALBUM_ERRORS[code] };
+}
 
 function wholeNumber(value: Raw): number | undefined {
   if (typeof value === "number") return Number.isSafeInteger(value) ? value : undefined;
@@ -52,35 +68,74 @@ function blank(value: Raw): boolean {
   return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 }
 
+export type CatalogAlbumFields = Pick<AddCatalogAlbumInput, "catalogId" | "title" | "artist" | "artistId" | "releaseYear">;
+
+/** A catalog album's fields after checking: ids lower-cased, text trimmed, empty artist id and release year as null. */
+export type CleanCatalogAlbum = {
+  catalogId: string;
+  title: string;
+  artist: string;
+  artistId: string | null;
+  releaseYear: number | null;
+};
+
+export type AddAlbumFailure = { ok: false; code: AddAlbumErrorCode; message: string };
+
+export type CatalogAlbumValidation = { ok: true; album: CleanCatalogAlbum } | AddAlbumFailure;
+
+/**
+ * Checks the fields of a catalog album as the browser sent them, in the order catalog id, artist id, title,
+ * artist, release year, and returns the cleaned album or the message for the first one that fails. Both ways
+ * of adding a catalog album (search and import) use it, before any cover lookup.
+ */
+export function validateCatalogAlbum(input: CatalogAlbumFields): CatalogAlbumValidation {
+  const catalogId = text(input.catalogId);
+  if (!CATALOG_ID.test(catalogId)) return failure("catalog_id");
+
+  const artistId = text(input.artistId);
+  if (artistId.length > MAX_ARTIST_ID || (artistId !== "" && !ARTIST_ID.test(artistId))) {
+    return failure("artist_id");
+  }
+
+  const title = text(input.title);
+  const artist = text(input.artist);
+  if (title === "" || title.length > MAX_TEXT) return failure("title");
+  if (artist === "" || artist.length > MAX_TEXT) return failure("artist");
+
+  const releaseYear = blank(input.releaseYear) ? null : wholeNumber(input.releaseYear);
+  if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) {
+    return failure("release_year");
+  }
+
+  return {
+    ok: true,
+    album: { catalogId: catalogId.toLowerCase(), title, artist, artistId: artistId === "" ? null : artistId.toLowerCase(), releaseYear },
+  };
+}
+
+/** The year to file an album under in the library: a whole number from 1900 to 2100, or the message to show. */
+export function validateLibraryYear(value: Raw): { ok: true; year: number } | AddAlbumFailure {
+  const year = wholeNumber(value);
+  if (year === undefined || year < 1900 || year > 2100) return failure("year");
+  return { ok: true, year };
+}
+
 /**
  * Adds a catalog album to the library under `year`, reusing the album row if one has this catalog id.
  * The browser can send anything, so every field is checked here. An album already in the library is left
  * as it is (its year included) and reported as `added: false`.
  */
 export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbumInput): AddCatalogAlbumResult {
-  const year = wholeNumber(input.year);
-  if (year === undefined || year < 1900 || year > 2100) return { ok: false, message: YEAR_MESSAGE };
+  const checkedYear = validateLibraryYear(input.year);
+  if (!checkedYear.ok) return checkedYear;
+  const { year } = checkedYear;
 
-  const rawCatalogId = text(input.catalogId);
-  if (!CATALOG_ID.test(rawCatalogId)) return { ok: false, message: "That album's catalog id isn't valid." };
-  const catalogId = rawCatalogId.toLowerCase();
-
-  const rawArtistId = text(input.artistId);
-  if (rawArtistId.length > MAX_ARTIST_ID || (rawArtistId !== "" && !ARTIST_ID.test(rawArtistId))) {
-    return { ok: false, message: "That album's artist id isn't valid." };
-  }
-  const artistId = rawArtistId.toLowerCase();
-
-  const title = text(input.title);
-  const artist = text(input.artist);
-  if (title === "" || title.length > MAX_TEXT) return { ok: false, message: "That album's title isn't valid." };
-  if (artist === "" || artist.length > MAX_TEXT) return { ok: false, message: "That album's artist isn't valid." };
+  const checked = validateCatalogAlbum(input);
+  if (!checked.ok) return checked;
+  const { catalogId, title, artist, artistId, releaseYear } = checked.album;
 
   const coverUrl = text(input.coverUrl);
-  if (coverUrl !== "" && !isAllowedCoverUrl(coverUrl)) return { ok: false, message: "That album's cover isn't valid." };
-
-  const releaseYear = blank(input.releaseYear) ? null : wholeNumber(input.releaseYear);
-  if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) return { ok: false, message: "That album's release year isn't valid." };
+  if (coverUrl !== "" && !isAllowedCoverUrl(coverUrl)) return failure("cover");
 
   return transaction(db, () => {
     const existing = findAlbumByCatalogId(db, catalogId);
@@ -90,7 +145,7 @@ export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbu
       existing ??
       createAlbum(db, {
         title,
-        artist: { name: artist, catalogId: artistId || null },
+        artist: { name: artist, catalogId: artistId },
         catalogId,
         releaseYear,
         coverUrl: coverUrl || null,

@@ -40,10 +40,10 @@ function first(value: Param): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-function removedMessage(title: string, matchupsParam: string): string {
+function removedMessage(matchupsParam: string): string {
   const matchups = /^\d+$/.test(matchupsParam) ? Number(matchupsParam) : 0;
-  if (matchups === 0) return `Removed ${title}.`;
-  return `Removed ${title} and its ${matchups} ${matchups === 1 ? "matchup" : "matchups"}.`;
+  if (matchups === 0) return "Removed the album.";
+  return `Removed the album and its ${matchups} ${matchups === 1 ? "matchup" : "matchups"}.`;
 }
 
 export default async function LibraryPage({ searchParams }: { searchParams: SearchParams }) {
@@ -85,9 +85,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
         }
       />
       <Stack gap={5}>
-        {removed !== "" && (
+        {removed === "1" && (
           <Message tone="success" role="status">
-            {removedMessage(removed, first(params.matchups))}
+            {removedMessage(first(params.matchups))}
           </Message>
         )}
         <form action="/library" method="get">

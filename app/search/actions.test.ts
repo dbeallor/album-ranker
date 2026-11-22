@@ -60,9 +60,9 @@ describe("addToLibraryAction", () => {
       stored: true,
     },
     {
-      name: "failure goes back to the search with the error and the album",
+      name: "failure goes back to the search with the error code and the album",
       overrides: { year: "1800" },
-      params: { q: "kind of blue", error: "Enter a year from 1900 to 2100.", item: CATALOG_ID },
+      params: { q: "kind of blue", error: "year", item: CATALOG_ID },
       stored: false,
     },
   ])("$name", async ({ overrides, params, stored }) => {
@@ -82,6 +82,27 @@ describe("addToLibraryAction", () => {
 
     expect(state.resolveCover).toHaveBeenCalledWith({ catalogId: CATALOG_ID, title: "Kind of Blue", artist: "Miles Davis" });
     expect(findAlbumByCatalogId(db(), CATALOG_ID)?.coverUrl).toBe(expected);
+  });
+
+  it.each<{ name: string; overrides: Record<string, string> }>([
+    { name: "a bad library year", overrides: { year: "1800" } },
+    { name: "a bad catalog id", overrides: { catalogId: "x" } },
+    { name: "a bad artist id", overrides: { artistId: "artist-1" } },
+    { name: "a long title", overrides: { title: "t".repeat(301) } },
+    { name: "a long artist", overrides: { artist: "a".repeat(301) } },
+    { name: "a bad release year", overrides: { releaseYear: "99999" } },
+  ])("does not look up a cover for $name", async ({ overrides }) => {
+    const url = await redirectOf(addToLibraryAction(form(overrides)));
+
+    expect(url.searchParams.has("error")).toBe(true);
+    expect(state.resolveCover).not.toHaveBeenCalled();
+  });
+
+  it("looks up the cover with the lower-cased catalog id and trimmed names", async () => {
+    const lower = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    await redirectOf(addToLibraryAction(form({ catalogId: lower.toUpperCase(), title: "Kind of Blue", artist: "Miles Davis" })));
+
+    expect(state.resolveCover).toHaveBeenCalledWith({ catalogId: lower, title: "Kind of Blue", artist: "Miles Davis" });
   });
 
   it("ignores the cover the browser sent", async () => {

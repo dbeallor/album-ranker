@@ -114,6 +114,24 @@ describe("resolving an item", () => {
   });
 });
 
+describe("the catalog id's case", () => {
+  it("finds the stored lower-case album for an upper-case id", () => {
+    const db = memoryDb();
+    const existing = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A", catalogId: "art-a" }, catalogId: "cat-one" });
+    const result = resolveReviewItem(db, item(db).id, { kind: "catalog", album: { ...CANDIDATE, catalogId: "CAT-ONE" } });
+    expect(result).toMatchObject({ ok: true, albumId: existing.id });
+    expect(listAlbums(db)).toHaveLength(1);
+  });
+
+  it("stores a new album under the lower-case id", () => {
+    const db = memoryDb();
+    const result = resolveReviewItem(db, item(db).id, { kind: "catalog", album: { ...CANDIDATE, catalogId: "CAT-ONE" } });
+    expect(result.ok).toBe(true);
+    expect(findAlbumByCatalogId(db, "cat-one")).toBeDefined();
+    expect(listAlbums(db).map((album) => album.catalogId)).toEqual(["cat-one"]);
+  });
+});
+
 describe("an album already in the library", () => {
   it("says which year it is in and does not move it by default", () => {
     const db = memoryDb();

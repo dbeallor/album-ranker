@@ -59,7 +59,9 @@ export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: Reso
   try {
     return transaction(db, (): ResolveSuccess => {
       const item = openItem(db, itemId);
-      const existing = choice.kind === "catalog" ? findAlbumByCatalogId(db, choice.album.catalogId) : undefined;
+      // Catalog ids are stored lower case; a caller may pass any case.
+      const catalogId = choice.kind === "catalog" ? choice.album.catalogId.toLowerCase() : undefined;
+      const existing = catalogId === undefined ? undefined : findAlbumByCatalogId(db, catalogId);
       const entry = existing ? getLibraryEntry(db, existing.id) : undefined;
       if (existing && entry && choice.kind === "catalog" && !choice.moveHere) {
         throw new Rollback({
@@ -84,7 +86,7 @@ export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: Reso
             ? createAlbum(db, {
                 title: choice.album.title,
                 artist: { name: choice.album.artist, catalogId: choice.album.artistId ?? null },
-                catalogId: choice.album.catalogId,
+                catalogId,
                 releaseYear: choice.album.releaseYear,
                 coverUrl: choice.album.coverUrl,
               })

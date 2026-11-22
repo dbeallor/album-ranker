@@ -8,6 +8,7 @@ import { getImportReviewItem, listImportReviewItems } from "@/lib/db/import-revi
 import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
+import { validateCatalogAlbum, type AddAlbumErrorCode } from "@/lib/library-service";
 import { nextOpenItemId } from "@/lib/import/review-order";
 import { resolveReviewItem, skipReviewItem, type ResolveChoice } from "@/lib/import/resolve";
 
@@ -44,29 +45,36 @@ function done(itemId: number, { already = false, moved = false }: Handled = {}):
   redirect(`/import?${params}${next === null ? "" : `#item-${next}`}`);
 }
 
-function fail(itemId: number | null, message: string): never {
-  return back(itemId === null ? { error: message } : { error: message, item: String(itemId) });
+/** Why an action failed. The page maps each code to a message it wrote (`app/import/page.tsx`); `albumId` goes with `in_library`; a field the add check refuses uses that check's code (`ADD_ALBUM_ERRORS`). */
+type FailCode = "not_found" | "missing_details" | "in_library" | "invalid" | AddAlbumErrorCode;
+
+function fail(itemId: number | null, code: FailCode, albumId?: number): never {
+  const params: Record<string, string> = { error: code };
+  if (itemId !== null) params.item = String(itemId);
+  if (albumId !== undefined) params.album = String(albumId);
+  return back(params);
 }
 
-function candidateFrom(formData: FormData): CatalogCandidate | null {
-  const catalogId = field(formData, "catalogId");
-  const title = field(formData, "title");
-  const artist = field(formData, "artist");
-  if (catalogId === "" || title === "" || artist === "") return null;
-  return {
-    catalogId,
-    title,
-    artist,
-    artistId: field(formData, "artistId") || null,
-    releaseYear: whole(field(formData, "releaseYear")),
-    // Not read from the form: the server picks the cover (see `withCover`).
-    coverUrl: null,
-  };
+/** The chosen album's fields, checked and cleaned by the same validator the search add uses; or the code to show. A form missing its catalog id, title or artist is `missing_details`. */
+function candidateFrom(formData: FormData): { ok: true; album: CatalogCandidate } | { ok: false; code: FailCode } {
+  if (field(formData, "catalogId") === "" || field(formData, "title") === "" || field(formData, "artist") === "") {
+    return { ok: false, code: "missing_details" };
+  }
+  const checked = validateCatalogAlbum({
+    catalogId: field(formData, "catalogId"),
+    title: field(formData, "title"),
+    artist: field(formData, "artist"),
+    artistId: field(formData, "artistId"),
+    releaseYear: field(formData, "releaseYear"),
+  });
+  if (!checked.ok) return { ok: false, code: checked.code };
+  // Not read from the form: the server picks the cover (see `withCover`).
+  return { ok: true, album: { ...checked.album, coverUrl: null } };
 }
 
 /** Fills in the album's cover, unless the album is stored already (it keeps its own). */
 async function withCover(album: CatalogCandidate): Promise<CatalogCandidate> {
-  if (findAlbumByCatalogId(getDb(), album.catalogId.toLowerCase())) return album;
+  if (findAlbumByCatalogId(getDb(), album.catalogId)) return album;
   return { ...album, coverUrl: await resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist }) };
 }
 
@@ -75,32 +83,33 @@ function resolve(itemId: number, choice: ResolveChoice): never {
   if (result.ok) return done(itemId, { moved: result.movedFromYear !== null });
   // A second click on an item the first click already handled is not an error.
   if (result.code === "not_open") return done(itemId, { already: true });
-  return fail(itemId, result.message);
+  if (result.code === "album_in_library") return fail(itemId, "in_library", result.albumId);
+  return fail(itemId, result.code === "invalid" ? "invalid" : "not_found");
 }
 
 /** Use this album (a candidate or a search result), or Move it here when `moveHere` is set. */
 export async function chooseAlbumAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
-  const album = candidateFrom(formData);
-  if (!album) return fail(itemId, "That album is missing its catalog details.");
-  return resolve(itemId, { kind: "catalog", album: await withCover(album), moveHere: field(formData, "moveHere") === "1" });
+  if (itemId === null) return fail(null, "not_found");
+  const candidate = candidateFrom(formData);
+  if (!candidate.ok) return fail(itemId, candidate.code);
+  return resolve(itemId, { kind: "catalog", album: await withCover(candidate.album), moveHere: field(formData, "moveHere") === "1" });
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
+  if (itemId === null) return fail(null, "not_found");
   return resolve(itemId, { kind: "manual" });
 }
 
 export async function skipAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
+  if (itemId === null) return fail(null, "not_found");
   const result = skipReviewItem(getDb(), itemId);
   if (result.ok) return done(itemId);
   if (result.code === "not_open") return done(itemId, { already: true });
-  return fail(itemId, result.message);
+  return fail(itemId, "not_found");
 }

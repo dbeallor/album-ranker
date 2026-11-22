@@ -11,6 +11,7 @@ import { searchAlbums } from "@/lib/catalog/search";
 import { createAlbum } from "@/lib/db/albums";
 import { addToLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
+import { ADD_ALBUM_ERRORS } from "@/lib/library-service";
 import SearchPage from "./page";
 
 const searchAlbumsMock = vi.mocked(searchAlbums);
@@ -107,14 +108,18 @@ describe("search page", () => {
     expect(screen.queryByRole("link", { name: "Play matchups" })?.getAttribute("href") ?? null).toBe(shown ? "/matchups" : null);
   });
 
-  it("shows an error under the result named by item only", async () => {
-    twoResults();
-    await renderPage("getz", { error: "Enter a year from 1900 to 2100.", item: UNDATED });
+  it.each([...Object.entries(ADD_ALBUM_ERRORS).map(([code, message]) => ({ code, message })), { code: "Your album is on fire.", message: null }, { code: "constructor", message: null }, { code: "", message: null }])(
+    "shows the app's message for the error code '$code' under the result named by item only",
+    async ({ code, message }) => {
+      twoResults();
+      await renderPage("getz", { error: code, item: UNDATED });
 
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe("Enter a year from 1900 to 2100.");
-    expect(alert.closest("li")!.textContent).toContain("Undated");
-  });
+      const alert = screen.queryByRole("alert");
+      expect(alert?.textContent ?? null).toBe(message);
+      if (alert) expect(alert.closest("li")!.textContent).toContain("Undated");
+      expect(document.body.textContent).not.toContain("on fire");
+    },
+  );
 
   it("says when nothing was found", async () => {
     searchAlbumsMock.mockResolvedValue({ ok: true, albums: [] });

@@ -50,15 +50,15 @@ describe("removeAlbumAction", () => {
       albumId: () => target,
       matchups: 1,
       path: "/library",
-      params: { removed: "Kind of Blue", matchups: "1" },
+      params: { removed: "1", matchups: "1" },
       removed: true,
     },
     {
-      name: "a stale count goes back to the confirmation page with the error",
+      name: "a stale count goes back to the confirmation page with the stale code",
       albumId: () => target,
       matchups: 5,
       path: () => `/library/remove/${target}`,
-      params: { error: "This album now has 1 matchup. Check and confirm again." },
+      params: { error: "stale" },
       removed: false,
     },
     {

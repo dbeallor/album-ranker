@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLookupCover, createResolveCover, isAllowedCoverUrl, normalizeForMatch } from "./cover-art";
 
 const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
@@ -270,6 +270,81 @@ describe("the Deezer fallback", () => {
 
     expect(await resolveCover({ ...ALBUM, title: "!!!" })).toBeNull();
     expect(deezerCalls()).toHaveLength(0);
+  });
+});
+
+describe("pacing lookups", () => {
+  /** Fake timers move the clock and the waits together, so the test does not wait. */
+  function paced() {
+    const starts: number[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      starts.push(Date.now() - T0);
+      return new Response(null, { status: 200 });
+    });
+    const sleep = vi.fn((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const resolveCover = createResolveCover({ fetch: fetchMock, log: vi.fn(), now: () => Date.now(), sleep });
+    return { resolveCover, fetchMock, sleep, starts };
+  }
+  const T0 = 1_000_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("starts lookups made together at least 1100 ms apart", async () => {
+    const { resolveCover, starts } = paced();
+
+    const all = Promise.all([resolveCover(ALBUM), resolveCover(ALBUM), resolveCover(ALBUM)]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await all;
+
+    expect(starts).toEqual([0, 1100, 2200]);
+  });
+
+  it("does not wait when the last lookup started long enough ago", async () => {
+    const { resolveCover, sleep } = paced();
+
+    await resolveCover(ALBUM);
+    await vi.advanceTimersByTimeAsync(1100);
+    await resolveCover(ALBUM);
+
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "4.4 s is waited out", lookups: 5, skipped: false },
+    { name: "5.5 s is skipped with no request", lookups: 6, skipped: true },
+  ])("a lookup that would wait $name", async ({ lookups, skipped }) => {
+    // Lookups made together reserve starts 0, 1.1, 2.2 ... s ahead.
+    const { resolveCover, fetchMock } = paced();
+    const all = Promise.all(Array.from({ length: lookups }, () => resolveCover(ALBUM)));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const results = await all;
+
+    expect(results[lookups - 1] === null).toBe(skipped);
+    expect(fetchMock).toHaveBeenCalledTimes(skipped ? lookups - 1 : lookups);
+  });
+
+  it("does not take a slot for a query that makes no request", async () => {
+    const { resolveCover, fetchMock, sleep } = paced();
+
+    const bad = await Promise.all([resolveCover({ ...ALBUM, catalogId: "x" }), resolveCover({ ...ALBUM, title: "a".repeat(301) })]);
+    await resolveCover(ALBUM);
+
+    expect(bad).toEqual([null, null]);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pace without a clock", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
+    const resolveCover = createResolveCover({ fetch: fetchMock, log: vi.fn() });
+
+    await Promise.all([resolveCover(ALBUM), resolveCover(ALBUM)]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

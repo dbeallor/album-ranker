@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAlbum, findAlbumByCatalogId } from "@/lib/db/albums";
-import { createImportReviewItem } from "@/lib/db/import-review";
+import { createAlbum, findAlbumByCatalogId, listAlbums } from "@/lib/db/albums";
+import { createImportReviewItem, getImportReviewItem } from "@/lib/db/import-review";
 import { addToLibrary, listLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
 
@@ -81,7 +81,7 @@ describe("import review actions", () => {
     const first = seed();
     const second = seedMore(2002, "Fake Album Two");
     const data = form(first.id);
-    data.set("catalogId", "c-1");
+    data.set("catalogId", "11111111-2222-3333-4444-555555555555");
     data.set("title", "Fake Album One");
     data.set("artist", "Fake Artist A");
     data.set("releaseYear", "2001");
@@ -115,7 +115,47 @@ describe("import review actions", () => {
 
   it("an item that does not exist is still an error", async () => {
     const url = await redirectOf(skipAction(form(999)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "Import review item 999 does not exist.", item: "999" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "not_found", item: "999" });
+  });
+
+  describe("failures redirect with a code, never message text", () => {
+    const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
+    const db = () => state.db as ReturnType<typeof memoryDb>;
+
+    function choice(itemId: number | string, over: Record<string, string> = {}): FormData {
+      const data = form(itemId);
+      const fields = { catalogId: CATALOG_ID, title: "Fake Album One", artist: "Fake Artist A", ...over };
+      for (const [name, value] of Object.entries(fields)) data.set(name, value);
+      return data;
+    }
+
+    it.each([
+      { name: "a bad item id", run: () => skipAction(form("abc")), params: () => ({ error: "not_found" }) },
+      { name: "an unknown item", run: () => keepManualAction(form(999)), params: () => ({ error: "not_found", item: "999" }) },
+      { name: "a form without the catalog details", run: () => chooseAlbumAction(choice(seed().id, { title: "" })), params: () => ({ error: "missing_details", item: "1" }) },
+      {
+        name: "an album already in the library",
+        run: () => {
+          const album = createAlbum(db(), { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: CATALOG_ID });
+          addToLibrary(db(), { albumId: album.id, year: 1999 });
+          return chooseAlbumAction(choice(seed().id));
+        },
+        params: () => ({ error: "in_library", item: "1", album: "1" }),
+      },
+      {
+        name: "an album the database refuses",
+        run: () => {
+          addToLibrary(db(), { albumId: createAlbum(db(), { title: "Held", artist: { name: "Other" } }).id, year: 2001, source: { title: "Fake Album <One>", artist: "Fake Artist A", year: 2001 } });
+          return chooseAlbumAction(choice(seed().id));
+        },
+        params: () => ({ error: "invalid", item: "1" }),
+      },
+    ])("$name", async ({ run, params }) => {
+      const url = await redirectOf(run());
+
+      expect(url.pathname).toBe("/import");
+      expect(Object.fromEntries(url.searchParams)).toEqual(params());
+    });
   });
 
   describe("choosing a catalog album", () => {
@@ -156,8 +196,41 @@ describe("import review actions", () => {
       expect(listLibrary(db).map((entry) => entry.year)).toEqual([2001]);
 
       const adding = seedMore(2002, "Fake Album Two");
-      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "another", title: "Fake Album Two" })));
+      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", title: "Fake Album Two" })));
       expect(Object.fromEntries(add.searchParams)).toEqual({ done: String(adding.id) });
+    });
+
+    it.each<{ name: string; over: Record<string, string>; code: string }>([
+      { name: "a catalog id that is not a UUID", over: { catalogId: "x" }, code: "catalog_id" },
+      { name: "an artist id that is not UUIDs", over: { artistId: "artist-1" }, code: "artist_id" },
+      { name: "a title of 301 characters", over: { title: "t".repeat(301) }, code: "title" },
+      { name: "an artist of 301 characters", over: { artist: "a".repeat(301) }, code: "artist" },
+      { name: "a release year of 99999", over: { releaseYear: "99999" }, code: "release_year" },
+      { name: "a release year of 0", over: { releaseYear: "0" }, code: "release_year" },
+      { name: "a release year of abc", over: { releaseYear: "abc" }, code: "release_year" },
+    ])("rejects $name before any lookup, stores nothing and keeps the item open", async ({ over, code }) => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const review = seed();
+      const url = await redirectOf(chooseAlbumAction(choice(review.id, over)));
+
+      expect(Object.fromEntries(url.searchParams)).toEqual({ error: code, item: String(review.id) });
+      expect(state.resolveCover).not.toHaveBeenCalled();
+      expect(listAlbums(db)).toEqual([]);
+      expect(listLibrary(db)).toEqual([]);
+      expect(getImportReviewItem(db, review.id)?.status).toBe("open");
+    });
+
+    it("reuses the album stored in lower case when the id comes in upper case", async () => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const lower = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const review = seed();
+      createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: lower, coverUrl: DEEZER_COVER });
+      const url = await redirectOf(chooseAlbumAction(choice(review.id, { catalogId: lower.toUpperCase() })));
+
+      expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
+      expect(state.resolveCover).not.toHaveBeenCalled();
+      expect(listAlbums(db)).toHaveLength(1);
+      expect(listLibrary(db)).toHaveLength(1);
     });
 
     it("skips the lookup and keeps the stored cover when the album already exists", async () => {

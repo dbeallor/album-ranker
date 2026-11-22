@@ -7,6 +7,10 @@ const DEEZER_RESULT_LIMIT = 10;
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_COVER_URL_LENGTH = 300;
 const MAX_NAME_LENGTH = 300;
+/** Least time between the starts of two paced lookups, the MusicBrainz client's gap. One lookup is at most two requests. */
+const LOOKUP_SPACING_MS = 1100;
+/** A paced lookup that would wait longer than this is skipped. */
+const MAX_QUEUE_WAIT_MS = 5000;
 export const CATALOG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Hosts a stored cover may come from: the Cover Art Archive and the two the Deezer CDN serves covers from. */
@@ -72,6 +76,11 @@ type FinderResult =
   | { kind: "failed"; at: "caa"; caaUrl: string }
   | { kind: "failed"; at: "deezer" };
 
+/** A query the lookup can ask about: a UUID catalog id and a title and artist of at most 300 characters. */
+function isLookupable({ catalogId, title, artist }: CoverQuery): boolean {
+  return CATALOG_ID.test(catalogId) && title.length <= MAX_NAME_LENGTH && artist.length <= MAX_NAME_LENGTH;
+}
+
 function createCoverFinder(deps: CoverArtDeps) {
   const log = deps.log ?? ((message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])));
 
@@ -119,7 +128,7 @@ function createCoverFinder(deps: CoverArtDeps) {
   }
 
   return async function find({ catalogId, title, artist }: CoverQuery): Promise<FinderResult> {
-    if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return { kind: "none" };
+    if (!isLookupable({ catalogId, title, artist })) return { kind: "none" };
     const id = catalogId.toLowerCase();
     // Only the HEAD check uses the configurable base; what gets stored is always the canonical URL.
     const checkUrl = `${deps.caaUrl?.() ?? DEFAULT_CAA_URL}/release-group/${id}/front-250`;
@@ -160,14 +169,44 @@ export function createLookupCover(deps: CoverArtDeps) {
 
 export type LookupCover = ReturnType<typeof createLookupCover>;
 
+export type ResolveCoverDeps = CoverArtDeps & {
+  /** The clock, in ms. Give `now` and `sleep` together to pace lookups; without them lookups are not paced. */
+  now?: () => number;
+  /** Waits for `ms`. */
+  sleep?: (ms: number) => Promise<void>;
+};
+
 /**
  * Builds `resolveCover`, which gives the cover to store for a catalog album when it is added: the lookup's
  * cover, or null when there is none. When the Cover Art Archive can't be reached it gives the CAA URL anyway,
  * and lets the browser's placeholder cover a broken link; a failed Deezer search gives null. Never throws.
+ *
+ * With `now` and `sleep`, lookups go through a queue: each reserves a start at least 1100 ms after the previous
+ * one's and waits for it. A lookup that would wait over 5 seconds is skipped (null, no request), so the album
+ * is added without a cover and the backfill fills it later.
  */
-export function createResolveCover(deps: CoverArtDeps) {
+export function createResolveCover(deps: ResolveCoverDeps) {
   const find = createCoverFinder(deps);
+  const { now, sleep } = deps;
+  // Earliest time the next lookup may start. Each lookup reserves the next slot.
+  let nextSlot = 0;
+
+  /** False when the wait is too long and the lookup should be skipped. */
+  async function waitForSlot(): Promise<boolean> {
+    if (!now || !sleep) return true;
+    const current = now();
+    const start = Math.max(current, nextSlot);
+    const wait = start - current;
+    if (wait > MAX_QUEUE_WAIT_MS) return false;
+    nextSlot = start + LOOKUP_SPACING_MS;
+    if (wait > 0) await sleep(wait);
+    return true;
+  }
+
   return async function resolveCover(query: CoverQuery): Promise<string | null> {
+    // A query that makes no request does not take a slot.
+    if (!isLookupable(query)) return null;
+    if (!(await waitForSlot())) return null;
     const result = await find(query);
     if (result.kind === "found") return result.url;
     if (result.kind === "failed") return result.at === "caa" ? result.caaUrl : null;
