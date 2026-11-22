@@ -1,0 +1,13 @@
+.percent {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.heading {
+  font-size: var(--text-lg);
+}
