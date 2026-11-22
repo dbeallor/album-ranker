@@ -33,7 +33,7 @@ describe.skipIf(!hasChromium)("runSession", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("logs the first page size as viewport and a later resize in resizes", async () => {
+  it("logs the first page size as viewport and a later resize in resizes, and still records events", async () => {
     const outFile = join(dir, "events.json");
     await runSession({
       browser: chromium,
@@ -46,6 +46,7 @@ describe.skipIf(!hasChromium)("runSession", () => {
         await page.setViewportSize({ width: 600, height: 800 });
         // Past the 250 ms debounce, so the report is sent before the session ends.
         await page.waitForTimeout(600);
+        await page.click("button");
       },
     });
 
@@ -53,5 +54,8 @@ describe.skipIf(!hasChromium)("runSession", () => {
     expect(log.viewport).toEqual({ width: 1000, height: 700 });
     expect(log.resizes).toEqual([{ t: expect.any(Number), width: 600, height: 800 }]);
     expect(log.resizes[0].t).toBeGreaterThanOrEqual(0);
+    // Events still flow through the session, and a click after the resize is logged at or after it.
+    expect(log.events.map((event: { type: string }) => event.type)).toEqual(["navigation", "click"]);
+    expect(log.events[1].t).toBeGreaterThanOrEqual(log.resizes[0].t);
   });
 });
