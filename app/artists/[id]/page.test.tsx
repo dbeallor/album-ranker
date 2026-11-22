@@ -43,7 +43,7 @@ describe("artist page", () => {
     await renderPage(artistId);
 
     expect(screen.getByRole("heading", { level: 1, name: "Aardvark" })).toBeDefined();
-    expect(screen.getByText("Score 1500 from 3 albums")).toBeDefined();
+    expect(screen.getByText("Score 1514 from 3 albums")).toBeDefined();
     expect(screen.queryAllByRole("listitem").map((item) => item.textContent)).toEqual([
       expect.stringContaining("First1971Rating 1515 · W-L-T 1-0-1"),
       expect.stringContaining("Second1972Rating 1485 · W-L-T 0-1-1"),

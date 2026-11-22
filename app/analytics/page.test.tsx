@@ -67,10 +67,10 @@ describe("analytics page", () => {
     { name: "an era", params: { view: "albums", scope: "era-60s-70s" }, expected: ["1|♪|Alpha|Aardvark|1975|1516|1|1-0-0", "2|♪|Beta|Bear|1975|1485|2|0-1-1"] },
     { name: "a decade", params: { scope: "decade-1980" }, expected: ["1|♪|Gamma|Aardvark|1984|1499|1|0-0-1"] },
     { name: "a year", params: { scope: "year-1975" }, expected: ["1|♪|Alpha|Aardvark|1975|1516|1|1-0-0", "2|♪|Beta|Bear|1975|1485|2|0-1-1"] },
-    { name: "the old link's stray decade param is ignored", params: { decade: "1970", view: "artists", scope: "decade-1970" }, expected: ["1|Aardvark|1508|1|Alpha", "2|Bear|1492|1|Beta"] },
+    { name: "the old link's stray decade param is ignored", params: { decade: "1970", view: "artists", scope: "decade-1970" }, expected: ["1|Aardvark|1515|1|Alpha", "2|Bear|1500|1|Beta"] },
     { name: "an unknown view falls back to albums", params: { view: "nope" }, expected: ["1|♪|Alpha|Aardvark|1975|1516|1|1-0-0", "2|♪|Gamma|Aardvark|1984|1499|1|0-0-1", "3|♪|Beta|Bear|1975|1485|2|0-1-1"] },
     { name: "a repeated view falls back to albums", params: { view: ["years", "eras"] }, expected: ["1|♪|Alpha|Aardvark|1975|1516|1|1-0-0", "2|♪|Gamma|Aardvark|1984|1499|1|0-0-1", "3|♪|Beta|Bear|1975|1485|2|0-1-1"] },
-    { name: "artists, lifetime", params: { view: "artists" }, expected: ["1|Aardvark|1505|2|Alpha", "2|Bear|1492|1|Beta"] },
+    { name: "artists, lifetime", params: { view: "artists" }, expected: ["1|Aardvark|1515|2|Alpha", "2|Bear|1500|1|Beta"] },
     { name: "artists in a year", params: { view: "artists", scope: "year-1984" }, expected: ["1|Aardvark|1500|1|Gamma"] },
     {
       name: "years",

@@ -26,6 +26,8 @@ function album(artistId: number, artistName: string, year: number, rating: numbe
   };
 }
 
+const scoreFor = (excess: number) => 1500 + 100 * Math.log(1 + excess / 100);
+
 const era = (key: "pre-60s" | "60s-70s" | "80s-90s" | "00s-on"): Scope => ({ kind: "era", era: key });
 
 describe("analytics rankings and summaries", () => {
@@ -61,10 +63,10 @@ describe("analytics rankings and summaries", () => {
     {
       name: "lifetime",
       scope: LIFETIME,
-      // Miles (1600 + 1700 + 1500) / 3 = 1600; Joni (1550 + 1500 + 1500) / 3 = 1516.67; Beck and alpha 1500 tie, so name order.
+      // Miles has 300 points above 1500 and Joni 50; Beck and alpha have none and tie, so name order.
       rows: [
-        ["Miles", 1600, 2, "Jack Johnson"],
-        ["Joni", 4550 / 3, 2, "Blue"],
+        ["Miles", scoreFor(300), 2, "Jack Johnson"],
+        ["Joni", scoreFor(50), 2, "Blue"],
         ["alpha", 1500, 1, "Tie"],
         ["Beck", 1500, 1, "Midnite Vultures"],
       ],
@@ -73,17 +75,39 @@ describe("analytics rankings and summaries", () => {
       name: "an era counts only the albums in it",
       scope: era("60s-70s"),
       rows: [
-        ["Miles", 1600, 1, "Jack Johnson"],
-        ["Joni", 1525, 1, "Blue"],
+        ["Miles", scoreFor(200), 1, "Jack Johnson"],
+        ["Joni", scoreFor(50), 1, "Blue"],
       ],
     },
     { name: "a decade", scope: { kind: "decade", decade: 1990 }, rows: [["Beck", 1500, 1, "Midnite Vultures"]] },
-    { name: "a year", scope: { kind: "year", year: 1959 }, rows: [["Miles", 1550, 1, "Kind of Blue"]] },
+    { name: "a year", scope: { kind: "year", year: 1959 }, rows: [["Miles", scoreFor(100), 1, "Kind of Blue"]] },
     { name: "a scope with no albums", scope: { kind: "year", year: 1990 }, rows: [] },
   ])("ranks artists in $name by artistScore, ties by name then id", ({ scope, rows }) => {
     const ranking = buildArtistRanking(albums, scope);
     expect(ranking.map((row) => [row.artistName, row.score, row.albumCount, row.bestAlbum.title])).toEqual(rows);
     expect(ranking.map((row) => row.rank)).toEqual(rows.map((_, index) => index + 1));
+  });
+
+  it.each<{ name: string; artists: [string, number[]][]; order: string[] }>([
+    {
+      name: "six albums at 1700 above three",
+      artists: [
+        ["Three", [1700, 1700, 1700]],
+        ["Six", Array(6).fill(1700)],
+      ],
+      order: ["Six", "Three"],
+    },
+    {
+      name: "an all-unplayed artist below one with an album above 1500",
+      artists: [
+        ["Aardvark", [1500, 1500, 1500, 1500]],
+        ["Zebra", [1510]],
+      ],
+      order: ["Zebra", "Aardvark"],
+    },
+  ])("ranks $name", ({ artists, order }) => {
+    const built = artists.flatMap(([name, ratings], index) => ratings.map((rating, n) => album(100 + index, name, 2000 + n, rating)));
+    expect(buildArtistRanking(built, LIFETIME).map((row) => row.artistName)).toEqual(order);
   });
 
   it("breaks an artist tie on the same name by artist id", () => {
