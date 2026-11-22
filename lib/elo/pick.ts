@@ -1,4 +1,4 @@
-export type PickAlbum = { id: number; year: number; rating: number };
+export type PickAlbum = { id: number; rating: number };
 export type PickMatchup = { albumAId: number; albumBId: number };
 
 /** An unordered pair as a string, the same for (a, b) and (b, a). */
@@ -7,10 +7,10 @@ export function pairKey(idA: number, idB: number): string {
 }
 
 /**
- * Picks two albums from different years. The first album has the fewest matchups (random among ties,
+ * Picks two different albums. The first album has the fewest matchups (random among ties,
  * skipping albums with no unplayed opponent); its opponent is the closest-rated unplayed, unavoided one
  * (lower id on a tie). When no unplayed pair exists, falls back to the closest-rated opponent, played or not.
- * `matchups` are the ones the replay used. Returns undefined when no two albums are from different years.
+ * `matchups` are the ones the replay used. Returns undefined when there are fewer than two albums.
  */
 export function pickMatchup(input: {
   albums: PickAlbum[];
@@ -26,7 +26,7 @@ export function pickMatchup(input: {
     counts.set(albumBId, (counts.get(albumBId) ?? 0) + 1);
   }
 
-  const opponentsOf = (album: PickAlbum) => albums.filter((other) => other.year !== album.year);
+  const opponentsOf = (album: PickAlbum) => albums.filter((other) => other.id !== album.id);
   const closest = (album: PickAlbum, candidates: PickAlbum[]) =>
     candidates.reduce((best, other) => {
       const gap = Math.abs(other.rating - album.rating);

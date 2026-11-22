@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CardGrid } from "@/components/ui/card-grid";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
+import { Message } from "@/components/ui/message";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { Stack } from "@/components/ui/stack";
@@ -30,11 +31,21 @@ import { LIFETIME, parseScope, scopeValue } from "@/lib/scopes";
 import styles from "./page.module.css";
 
 type Param = string | string[] | undefined;
-type SearchParams = Promise<{ sort?: Param; dir?: Param; q?: Param; scope?: Param; played?: Param }>;
+type SearchParams = Promise<{ sort?: Param; dir?: Param; q?: Param; scope?: Param; played?: Param; removed?: Param; matchups?: Param }>;
 
 /** A search param that is one of `allowed`, else undefined (a repeated param counts as bad). */
 function oneOf<T extends string>(value: Param, allowed: readonly T[]): T | undefined {
   return typeof value === "string" ? allowed.find((option) => option === value) : undefined;
+}
+
+function first(value: Param): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
+function removedMessage(title: string, matchupsParam: string): string {
+  const matchups = /^\d+$/.test(matchupsParam) ? Number(matchupsParam) : 0;
+  if (matchups === 0) return `Removed ${title}.`;
+  return `Removed ${title} and its ${matchups} ${matchups === 1 ? "matchup" : "matchups"}.`;
 }
 
 export default async function LibraryPage({ searchParams }: { searchParams: SearchParams }) {
@@ -56,11 +67,17 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
   const groups = buildLibraryView(albums, { sort, dir, q, scope, played });
   const shown = groups.reduce((total, group) => total + group.albums.length, 0);
   const choices = scopeChoices(albums, scope);
+  const removed = first(params.removed);
 
   return (
     <>
       <PageHeader title="Library" description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`} />
       <Stack gap={5}>
+        {removed !== "" && (
+          <Message tone="success" role="status">
+            {removedMessage(removed, first(params.matchups))}
+          </Message>
+        )}
         <form action="/library" method="get">
           <Cluster align="end" gap={3}>
             <Select label="Sort by" name="sort" fieldClassName={styles.field} defaultValue={sort}>
@@ -127,6 +144,11 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
                       title={album.title}
                       subtitle={<Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>}
                       meta={`${album.year} · Rating ${Math.round(album.rating)} · Rank ${album.rank} · W-L-T ${formatRecord(album)}`}
+                      actions={
+                        <ButtonLink href={`/library/remove/${album.albumId}`} variant="ghost">
+                          Remove
+                        </ButtonLink>
+                      }
                     />
                   </Card>
                 ))}

@@ -54,6 +54,19 @@ describe("matchup actions", () => {
     expect(loadRatings(db).ratings).toEqual(before);
   });
 
+  it("answers a pair from the same year", () => {
+    const next = asView(answerMatchup(db, ids[0], ids[1], "a", [], random));
+    expect(next.count).toBe(1);
+    expect(listMatchups(db)).toMatchObject([{ albumAId: ids[0], albumBId: ids[1], result: "a" }]);
+  });
+
+  it("undo serves a same-year pair again", () => {
+    answerMatchup(db, ids[0], ids[1], "tie", [], random);
+    const undone = asView(undoMatchup(db, [], random));
+    expect([undone.pair!.a.id, undone.pair!.b.id]).toEqual([ids[0], ids[1]]);
+    expect(undone.count).toBe(0);
+  });
+
   it("undo with nothing stored is an error", () => {
     expect(undoMatchup(db, [], random)).toEqual({ error: "There is nothing to undo." });
   });
@@ -68,7 +81,6 @@ describe("matchup actions", () => {
   });
 
   it.each([
-    { name: "same year", a: 0, b: 1 },
     { name: "an album not in the library", a: 0, b: 5 },
     { name: "an unknown album", a: 0, b: -1 },
     { name: "the same album twice", a: 0, b: 0 },

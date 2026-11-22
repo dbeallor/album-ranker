@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DataError, type MatchupResult } from "./db/types";
-import { getLibraryEntry } from "./db/library";
 import { countMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
 import { pairKey } from "./elo/pick";
 import { loadAlbumCard, loadMatchupState, loadRatings, type AlbumCard } from "./ratings";
@@ -67,8 +66,7 @@ export function answerMatchup(
     return { error: "That answer wasn't valid. Try again." };
   }
   const before = loadRatings(db).ratings;
-  const yearOf = (id: number) => getLibraryEntry(db, id)?.year;
-  if (!before.has(albumAId) || !before.has(albumBId) || yearOf(albumAId) === yearOf(albumBId)) {
+  if (!before.has(albumAId) || !before.has(albumBId)) {
     return { error: "Those two albums can't be compared. Skip them or reload the page." };
   }
 
@@ -112,7 +110,7 @@ export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => numb
   const text = a && b ? changeText(before, after, [a, b], "Undone: ") : null;
   const lastAnswer = { text: text ?? "Undone." };
 
-  if (a && b && after.has(a.id) && after.has(b.id) && a.year !== b.year) {
+  if (a && b && after.has(a.id) && after.has(b.id)) {
     const count = countMatchups(db);
     return { pair: { a, b }, count, lastAnswer, canUndo: count > 0 };
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countMatchups, listMatchups, recordMatchup, undoLastMatchup } from "./matchups";
+import { countMatchups, countMatchupsForAlbum, listMatchups, recordMatchup, undoLastMatchup } from "./matchups";
 import { memoryDb, seedAlbums } from "./test-db";
 
 describe("matchups", () => {
@@ -32,5 +32,18 @@ describe("matchups", () => {
 
   it("undo on an empty table returns nothing", () => {
     expect(undoLastMatchup(memoryDb())).toBeUndefined();
+  });
+
+  it("counts the matchups an album is in, on either side", () => {
+    const db = memoryDb();
+    const [a, b, c, d] = seedAlbums(db, 4);
+    recordMatchup(db, { albumAId: a, albumBId: b, result: "a" });
+    recordMatchup(db, { albumAId: c, albumBId: a, result: "tie" });
+    recordMatchup(db, { albumAId: b, albumBId: c, result: "b" });
+
+    expect(countMatchupsForAlbum(db, a)).toBe(2);
+    expect(countMatchupsForAlbum(db, c)).toBe(2);
+    expect(countMatchupsForAlbum(db, d)).toBe(0);
+    expect(countMatchupsForAlbum(db, 999)).toBe(0);
   });
 });

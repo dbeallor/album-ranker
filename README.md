@@ -67,17 +67,17 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 
 ## Search albums
 
-Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive.
+Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead.
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
 ## Library
 
-Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, win rate or date added, in either direction. Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md).
+Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, win rate or date added, in either direction. Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Each card has a Remove link that opens a confirmation page; removing deletes the album and all of its matchups, and can't be undone. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md) and [the ALBUM-35 spec](docs/superpowers/specs/2026-11-21-album-35-add-albums-library.md).
 
 ## Matchups
 
-Open <http://localhost:3000/matchups> to answer "which of these two do you like more?" for two albums from different years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
+Open <http://localhost:3000/matchups> to answer "which of these two do you like more?" for any two albums in your library, whatever their years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
 
 Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 

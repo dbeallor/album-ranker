@@ -111,8 +111,8 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
           </Cluster>
         </Stack>
       ) : (
-        <EmptyState action={<ButtonLink href="/">Back to home</ButtonLink>}>
-          There are no two albums from different years to compare yet.
+        <EmptyState action={<ButtonLink href="/search">Search albums</ButtonLink>}>
+          Add at least two albums to your library to start matchups.
         </EmptyState>
       )}
 
