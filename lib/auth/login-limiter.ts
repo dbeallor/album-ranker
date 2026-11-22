@@ -6,7 +6,8 @@ type Entry = { failures: number[]; lockedUntil: number };
 
 export type LoginLimiter = {
   isLocked(ip: string, now?: number): boolean;
-  recordFailure(ip: string, now?: number): void;
+  /** True only when this failure starts a lock. */
+  recordFailure(ip: string, now?: number): boolean;
   recordSuccess(ip: string): void;
 };
 
@@ -30,11 +31,13 @@ export function createLoginLimiter(): LoginLimiter {
       const entry = entries.get(ip) ?? { failures: [], lockedUntil: 0 };
       entry.failures = entry.failures.filter((at) => at > now - WINDOW_MS);
       entry.failures.push(now);
-      if (entry.failures.length >= MAX_FAILURES) {
+      const startsLock = entry.failures.length >= MAX_FAILURES;
+      if (startsLock) {
         entry.lockedUntil = now + LOCK_MS;
         entry.failures = [];
       }
       entries.set(ip, entry);
+      return startsLock;
     },
     recordSuccess(ip) {
       entries.delete(ip);
