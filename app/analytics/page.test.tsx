@@ -93,6 +93,38 @@ describe("analytics page", () => {
     expect(rowTexts()).toEqual(expected);
   });
 
+  it.each(["albums", "artists", "years", "decades", "eras"])("shows the ranking progress panel on the %s view", async (view) => {
+    await renderPage({ view });
+
+    const panel = screen.getByRole("region", { name: "Ranking progress" });
+    expect(within(panel).getByText("4%")).toBeDefined();
+    expect(within(panel).getByRole("progressbar", { name: "Ranking progress" })).toBeDefined();
+    expect(within(panel).getByText("2 of about 43 matchups")).toBeDefined();
+    expect(within(panel).getByText("About 41 more to go")).toBeDefined();
+    expect(within(panel).getByText("Order confidence 68% · target 90%")).toBeDefined();
+    expect(within(panel).getByRole("link", { name: "Play matchups" }).getAttribute("href")).toBe("/matchups");
+  });
+
+  it("shows the same panel under a scope", async () => {
+    await renderPage();
+    const lifetime = screen.getByRole("region", { name: "Ranking progress" }).textContent;
+    cleanup();
+
+    await renderPage({ scope: "year-1975" });
+
+    expect(screen.getByRole("region", { name: "Ranking progress" }).textContent).toBe(lifetime);
+  });
+
+  it("shows an empty state instead of the panel with fewer than two library albums", async () => {
+    const db = (state.db = memoryDb());
+    addToLibrary(db, { albumId: createAlbum(db, { title: "Only", artist: { name: "One" } }).id, year: 1975 });
+    await renderPage();
+
+    expect(screen.getByText("Add at least two albums to your library to track ranking progress.")).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Ranking progress" })).toBeNull();
+    expect(document.body.textContent).not.toContain("NaN");
+  });
+
   it("links each summary period to that scope's album ranking", async () => {
     await renderPage({ view: "decades" });
 

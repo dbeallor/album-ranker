@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pairKey } from "@/lib/elo/pick";
+import type { RankingProgress } from "@/lib/elo/progress";
 import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
 import type { AlbumCard } from "@/lib/ratings";
 import { MatchupScreen } from "./matchup-screen";
@@ -19,7 +20,17 @@ const two = card(2, "Album Two", 1959);
 const three = card(3, "Album Three", 1971);
 const four = card(4, "Album Four", 1985);
 
-const initial: MatchupView = { pair: pairOf(one, two), count: 0, lastAnswer: null, canUndo: false };
+const progressAt = (percent: number, remaining: number): RankingProgress => ({
+  albumCount: 4,
+  played: 3,
+  confidence: 0.7,
+  target: 0.9,
+  remaining,
+  goal: 3 + remaining,
+  percent,
+});
+
+const initial: MatchupView = { pair: pairOf(one, two), count: 0, lastAnswer: null, canUndo: false, progress: null };
 
 function setup(actions: {
   answer?: MatchupActionResult;
@@ -58,7 +69,7 @@ describe("matchup screen", () => {
     { name: "a tie", button: () => screen.getByRole("button", { name: "Tie" }), result: "tie" },
   ])("$name sends the answer and shows the next pair, the counter and the line", async ({ button, result }) => {
     const { answerAction } = setup({
-      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "Album One 1500 → 1516" }, canUndo: true },
+      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "Album One 1500 → 1516" }, canUndo: true, progress: null },
     });
     fireEvent.click(button());
 
@@ -71,8 +82,8 @@ describe("matchup screen", () => {
 
   it("skip shows the next pair, and sends the skipped pair as avoided on the next call", async () => {
     const { skipAction, answerAction } = setup({
-      skip: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: false },
-      answer: { pair: pairOf(one, two), count: 1, lastAnswer: { text: "line" }, canUndo: true },
+      skip: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: false, progress: null },
+      answer: { pair: pairOf(one, two), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: null },
     });
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -86,8 +97,8 @@ describe("matchup screen", () => {
 
   it("undo serves the undone pair again and shows the line", async () => {
     const { undoAction } = setup({
-      start: { pair: pairOf(three, four), count: 1, lastAnswer: null, canUndo: true },
-      undo: { pair: pairOf(one, two), count: 0, lastAnswer: { text: "Undone: Album One 1516 → 1500" }, canUndo: false },
+      start: { pair: pairOf(three, four), count: 1, lastAnswer: null, canUndo: true, progress: null },
+      undo: { pair: pairOf(one, two), count: 0, lastAnswer: { text: "Undone: Album One 1516 → 1500" }, canUndo: false, progress: null },
     });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
@@ -107,8 +118,31 @@ describe("matchup screen", () => {
   });
 
   it("asks for two library albums, with a link to search, when no pair is possible", () => {
-    setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false } });
+    setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false, progress: null } });
     expect(screen.getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
     expect(screen.getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
+  });
+
+  it.each([
+    { name: "shows the percent and what is left", start: progressAt(49.9, 1234), line: "49% there · about 1,234 more to go" },
+    { name: "says the target is reached with nothing left", start: progressAt(100, 0), line: "100% there · Target reached" },
+  ])("$name beside the counter, which keeps its own text", ({ start, line }) => {
+    setup({ start: { ...initial, count: 7, progress: start } });
+    expect(screen.getByText(line)).toBeDefined();
+    expect(screen.getByText("7 matchups played")).toBeDefined();
+  });
+
+  it("hides the progress line when there is no progress, and updates it from each answer", async () => {
+    setup({
+      start: { ...initial, progress: progressAt(40, 60) },
+      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: progressAt(55, 40) },
+    });
+    expect(screen.getByText("40% there · about 60 more to go")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Tie" }));
+    expect(await screen.findByText("55% there · about 40 more to go")).toBeDefined();
+    cleanup();
+
+    setup({});
+    expect(screen.queryByText(/% there/)).toBeNull();
   });
 });

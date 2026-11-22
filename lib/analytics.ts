@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { artistScore } from "./elo/artist-score";
+import { computeProgress, type RankingProgress } from "./elo/progress";
 import type { ReplayMatchup } from "./elo/replay";
 import { bestFirst, type LibraryAlbum } from "./library-view";
 import { loadLibrary } from "./library-albums";
@@ -132,7 +133,11 @@ export type AnalyticsData =
   | { view: PeriodKind; rows: PeriodRow[] };
 
 /** The rows for one view, replayed from the stored data on every call. The scope matters only to albums and artists. */
-export function loadAnalytics(db: DatabaseSync, view: AnalyticsView, scope: Scope): { data: AnalyticsData; libraryAlbums: LibraryAlbum[] } {
+export function loadAnalytics(
+  db: DatabaseSync,
+  view: AnalyticsView,
+  scope: Scope,
+): { data: AnalyticsData; libraryAlbums: LibraryAlbum[]; progress: RankingProgress | null } {
   const { albums, used } = loadLibrary(db);
   const data: AnalyticsData =
     view === "albums"
@@ -140,5 +145,6 @@ export function loadAnalytics(db: DatabaseSync, view: AnalyticsView, scope: Scop
       : view === "artists"
         ? { view, rows: buildArtistRanking(albums, scope) }
         : { view, rows: buildPeriodSummary(albums, used, view) };
-  return { data, libraryAlbums: albums };
+  const progress = computeProgress(new Map(albums.map((album) => [album.albumId, album.rating])), used);
+  return { data, libraryAlbums: albums, progress };
 }
