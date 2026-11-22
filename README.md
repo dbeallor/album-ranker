@@ -81,6 +81,8 @@ Open <http://localhost:3000/matchups> to answer "which of these two do you like 
 
 Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 
+A new album (fewer than 8 matchups) is first matched against established albums, halving the rating order from the middle, before ordinary closest-rating pairing takes over; see [the ALBUM-43 spec](docs/superpowers/specs/2026-11-22-album-43-favour-new-albums.md).
+
 ## Analytics
 
 Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library.
