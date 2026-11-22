@@ -1,6 +1,6 @@
 # Stack
 
-One web app with a small server, one SQLite file, run on localhost, config from environment variables. Chosen in [the stack and scaffold spec](superpowers/specs/2026-11-20-album-3-stack-scaffold.md). Exact versions are in `package-lock.json`.
+One web app with a small server, one SQLite file, run on localhost or on AWS in staging and production (see Hosting), config from environment variables. Chosen in [the stack and scaffold spec](superpowers/specs/2026-11-20-album-3-stack-scaffold.md). Exact versions are in `package-lock.json`.
 
 | Layer | Choice |
 |---|---|
