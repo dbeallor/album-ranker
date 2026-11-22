@@ -1,6 +1,7 @@
 # Show progress toward a settled overall ranking
 
-**Status:** Draft (revised after the user's change request)
+**Status:** Shipped
+**Shipped:** in PR #46, with differences: [as-built](../as-built/2026-11-22-album-42-ranking-progress.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-42](https://github.com/dbeallor/album-ranker/issues/42)
 
