@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAlbum, findAlbumByCatalogId } from "@/lib/db/albums";
 import { createImportReviewItem } from "@/lib/db/import-review";
-import { listLibrary } from "@/lib/db/library";
+import { addToLibrary, listLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown, resolveCover: vi.fn() }));
@@ -13,6 +13,9 @@ vi.mock("next/navigation", () => ({
     throw new Error(`redirect:${url}`);
   },
 }));
+
+const refresh = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ refresh }));
 
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
@@ -48,26 +51,71 @@ describe("import review actions", () => {
     });
   }
 
-  it("keeping a manual album adds it to the library and goes back to /import with nothing in the query", async () => {
+  function seedMore(year: number, title: string) {
+    return createImportReviewItem(state.db as ReturnType<typeof memoryDb>, {
+      source: { title, artist: "Fake Artist A", year },
+      sourcePlacement: "listed",
+      candidates: [],
+    });
+  }
+
+  it("keeping a manual album adds it to the library, refreshes and redirects to ?done=<id> with no fragment when none are left", async () => {
     const review = seed();
     const url = await redirectOf(keepManualAction(form(review.id)));
     expect(url.pathname).toBe("/import");
-    expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
+    expect(url.hash).toBe("");
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toHaveLength(1);
   });
 
-  it("skipping goes back to /import with nothing in the query and adds nothing", async () => {
+  it("scrolls to the open item that takes the handled item's place", async () => {
+    const first = seed();
+    const second = seedMore(2002, "Fake Album Two");
+    const url = await redirectOf(skipAction(form(first.id)));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(first.id) });
+    expect(url.hash).toBe(`#item-${second.id}`);
+  });
+
+  it("choosing a catalog album redirects with done and the next item", async () => {
+    const first = seed();
+    const second = seedMore(2002, "Fake Album Two");
+    const data = form(first.id);
+    data.set("catalogId", "c-1");
+    data.set("title", "Fake Album One");
+    data.set("artist", "Fake Artist A");
+    data.set("releaseYear", "2001");
+    const url = await redirectOf(chooseAlbumAction(data));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(first.id) });
+    expect(url.hash).toBe(`#item-${second.id}`);
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toHaveLength(1);
+  });
+
+  it("skipping redirects to ?done=<id> and adds nothing", async () => {
     const review = seed();
     const url = await redirectOf(skipAction(form(review.id)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
     expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toEqual([]);
   });
 
-  it("an item that is already resolved comes back with its message", async () => {
+  it("a second submit on the same item redirects to ?done=<id> without an error and changes nothing", async () => {
     const review = seed();
     await redirectOf(keepManualAction(form(review.id)));
+    const libraryAfterFirst = listLibrary(state.db as ReturnType<typeof memoryDb>);
     const url = await redirectOf(keepManualAction(form(review.id)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "This item is already resolved.", item: String(review.id) });
+    expect(url.searchParams.get("done")).toBe(String(review.id));
+    expect(url.searchParams.get("already")).toBe("1");
+    expect(url.searchParams.has("error")).toBe(false);
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toEqual(libraryAfterFirst);
+
+    const skipUrl = await redirectOf(skipAction(form(review.id)));
+    expect(skipUrl.searchParams.has("error")).toBe(false);
+    expect(skipUrl.searchParams.get("done")).toBe(String(review.id));
+  });
+
+  it("an item that does not exist is still an error", async () => {
+    const url = await redirectOf(skipAction(form(999)));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "Import review item 999 does not exist.", item: "999" });
   });
 
   describe("choosing a catalog album", () => {
@@ -96,6 +144,20 @@ describe("import review actions", () => {
       await redirectOf(chooseAlbumAction(choice(review.id)));
 
       expect(stored()?.coverUrl).toBeNull();
+    });
+
+    it("marks the redirect moved=1 only when the album was already in the library", async () => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: CATALOG_ID });
+      addToLibrary(db, { albumId: album.id, year: 1999 });
+      const moving = seed();
+      const move = await redirectOf(chooseAlbumAction(choice(moving.id, { moveHere: "1" })));
+      expect(Object.fromEntries(move.searchParams)).toEqual({ done: String(moving.id), moved: "1" });
+      expect(listLibrary(db).map((entry) => entry.year)).toEqual([2001]);
+
+      const adding = seedMore(2002, "Fake Album Two");
+      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "another", title: "Fake Album Two" })));
+      expect(Object.fromEntries(add.searchParams)).toEqual({ done: String(adding.id) });
     });
 
     it("skips the lookup and keeps the stored cover when the album already exists", async () => {

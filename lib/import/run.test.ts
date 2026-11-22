@@ -2,7 +2,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { CatalogError } from "../catalog/musicbrainz.ts";
-import type { CatalogAlbum } from "../catalog/types.ts";
+import type { CatalogAlbum, CatalogQuery } from "../catalog/types.ts";
 import { createAlbum, listAlbums } from "../db/albums.ts";
 import { listImportReviewItems, skipImportReviewItem } from "../db/import-review.ts";
 import { listLibrary } from "../db/library.ts";
@@ -11,8 +11,11 @@ import { readAlbumsSheet } from "./read-sheet.ts";
 import { prepareRows } from "./rows.ts";
 import { MAX_CONSECUTIVE_FAILURES, PROGRESS_EVERY, RETRY_DELAYS_MS, runImport, type RunDeps } from "./run.ts";
 import { formatSummary } from "./summary.ts";
-import { FIXTURE, FIXTURE_CATALOG, catalogAlbum, rawRow } from "./test-support.ts";
+import { FIXTURE, FIXTURE_CATALOG, RECORDING_CATALOG, catalogAlbum, fakeCatalogSearch, rawRow } from "./test-support.ts";
 import type { CatalogSearch, RawRow } from "./types.ts";
+
+/** The text of a text query; the fallback steps of the ladder are fields queries and give "". */
+const textOf = (query: CatalogQuery) => (query.kind === "text" ? query.text : "");
 
 function fakeDeps(catalog: CatalogAlbum[], over: Partial<RunDeps> = {}) {
   const search = vi.fn<CatalogSearch>(async () => catalog);
@@ -70,7 +73,8 @@ describe("importing the fixture spreadsheet", () => {
       [10, 9, "rows differ, kept the first (listed), ignored (honorable mention)"],
     ]);
     expect(summary.conflictingPlacement.map((row) => row.key.title)).toEqual(["Fake Album Five"]);
-    expect(search).toHaveBeenCalledTimes(14);
+    // 14 rows reach the catalog. The one with no match tries all 4 steps of the ladder, so 3 more searches.
+    expect(search).toHaveBeenCalledTimes(17);
   });
 
   it("adds every matched row to the library under the sheet's year, whatever its rank, and shares artists", async () => {
@@ -103,7 +107,7 @@ describe("importing the fixture spreadsheet", () => {
     const db = memoryDb();
     await importFixture(db);
     expect(listImportReviewItems(db).map((item) => [item.source.title, item.source.year, item.reason, item.reasonDetail])).toEqual([
-      ["Fake Albm Seven", 2002, "no_match", null],
+      ["Fake Alb Seven", 2002, "no_match", null],
       ["Fake Album Thirteen", 2003, "ambiguous", null],
       ["Fake Album Fourteen", 2005, "duplicate_album", "2004"],
     ]);
@@ -166,6 +170,47 @@ describe("importing the fixture spreadsheet", () => {
   });
 });
 
+describe("rows that need the fallback searches", () => {
+  const rows = [
+    rawRow({ rowNumber: 2, album: "Portraits in Jazz", artist: "Bill Evans Trio", year: 1960 }),
+    rawRow({ rowNumber: 3, album: "Meet the Tempations", artist: "The Temptations", year: 1964 }),
+    rawRow({ rowNumber: 4, album: "Getz/Gilberto", artist: "Stan Getz & Joao Gilberto", year: 1964 }),
+    // Right artist and title, but 15 years off: a close match with the wrong year is not safe to accept.
+    rawRow({ rowNumber: 5, album: "Meet the Tempations", artist: "The Temptations", year: 1979 }),
+    // Shares only one artist word with the catalog's Bill Evans.
+    rawRow({ rowNumber: 6, album: "Explorations", artist: "Bill Frisell", year: 1961 }),
+  ];
+
+  it("imports the rows the fallbacks find and sends the doubtful ones to review", async () => {
+    const db = memoryDb();
+    const search = vi.fn(fakeCatalogSearch(RECORDING_CATALOG));
+    const summary = await runImport(db, prepareRows(rows.slice(0, 3)), { search, sleep: async () => {} });
+
+    expect(summary).toMatchObject({ rowsRead: 3, imported: 3, openReviewItems: 0, notReached: 0 });
+    const albums = new Map(listAlbums(db).map((album) => [album.id, album.title]));
+    expect(listLibrary(db).map((entry) => [entry.year, albums.get(entry.albumId)])).toEqual([
+      [1960, "Portraits in Jazz"],
+      [1964, "Meet the Temptations"],
+      [1964, "Getz / Gilberto"],
+    ]);
+    // Each row finds only a close album, so each runs all 4 steps.
+    expect(search).toHaveBeenCalledTimes(3 * 4);
+  });
+
+  it("still sends a doubtful row to review, with the closest candidates first", async () => {
+    const db = memoryDb();
+    const summary = await runImport(db, prepareRows(rows.slice(3)), {
+      search: fakeCatalogSearch(RECORDING_CATALOG),
+      sleep: async () => {},
+    });
+
+    expect(summary).toMatchObject({ imported: 0, review: { no_match: 2, ambiguous: 0, duplicate_album: 0, rank_taken: 0 } });
+    const [wrongYear, wrongArtist] = listImportReviewItems(db);
+    expect(wrongYear.candidates.map((candidate) => candidate.catalogId)[0]).toBe("temps-meet");
+    expect(wrongArtist.candidates.map((candidate) => candidate.catalogId)[0]).toBe("evans-explorations");
+  });
+});
+
 describe("album covers", () => {
   const rows = simpleRows(2);
   const catalog = catalogFor(rows);
@@ -222,7 +267,7 @@ describe("catalog errors", () => {
     const db = memoryDb();
     const { search, sleep, deps } = fakeDeps(catalog);
     search.mockImplementation(async (query) => {
-      if (query.startsWith("Fake Album 1 ")) throw new CatalogError("busy", "busy");
+      if (textOf(query).startsWith("Fake Album 1 ")) throw new CatalogError("busy", "busy");
       return catalog;
     });
 
@@ -230,7 +275,7 @@ describe("catalog errors", () => {
 
     expect(RETRY_DELAYS_MS).toEqual([5000, 15000]);
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([5000, 15000]);
-    expect(search.mock.calls.filter(([q]) => q.startsWith("Fake Album 1 "))).toHaveLength(3);
+    expect(search.mock.calls.filter(([q]) => textOf(q).startsWith("Fake Album 1 "))).toHaveLength(3);
     expect(summary).toMatchObject({ imported: 1, notReached: 1, aborted: false });
     expect(listLibrary(db).map((entry) => entry.source?.title)).toEqual(["Fake Album 2"]);
     expect(listImportReviewItems(db)).toEqual([]);
@@ -252,6 +297,34 @@ describe("catalog errors", () => {
 
     expect(sleep.mock.calls).toEqual([[5000]]);
     expect(summary).toMatchObject({ imported: 1, notReached: 0 });
+  });
+
+  it("retries only the step that failed, not the steps before it", async () => {
+    const rows = [rawRow({ album: "Fake Album One", artist: "Fake Artist A", year: 2001 })];
+    const titleOnly: CatalogQuery = { kind: "fields", title: "Fake Album One" };
+    let failed = false;
+    const search = vi.fn<CatalogSearch>(async (query) => {
+      // Step 3 fails once; nothing is ever found, so all four steps run.
+      if (JSON.stringify(query) === JSON.stringify(titleOnly) && !failed) {
+        failed = true;
+        throw new CatalogError("busy", "busy");
+      }
+      return [];
+    });
+    const sleep = vi.fn<RunDeps["sleep"]>(async () => {});
+
+    const summary = await runImport(memoryDb(), prepareRows(rows), { search, sleep });
+
+    expect(sleep.mock.calls).toEqual([[5000]]);
+    expect(summary).toMatchObject({ notReached: 0, review: { no_match: 1 } });
+    // Steps 1 and 2 once each, step 3 twice (it failed, then succeeded), then step 4.
+    expect(search.mock.calls.map(([query]) => query)).toEqual([
+      { kind: "text", text: "Fake Album One Fake Artist A" },
+      { kind: "fields", title: "Fake Album One", artist: "Fake Artist A" },
+      titleOnly,
+      titleOnly,
+      { kind: "fields", artist: "Fake Artist A" },
+    ]);
   });
 
   it("reports each failed attempt", async () => {
@@ -301,7 +374,7 @@ describe("catalog errors", () => {
     const catalog = catalogFor(rows);
     const { search, deps } = fakeDeps(catalog);
     search.mockImplementation(async (query) => {
-      const n = Number(/^Fake Album (\d+) /.exec(query)![1]);
+      const n = Number(/^Fake Album (\d+) /.exec(textOf(query))![1]);
       if (n !== 10 && n !== 11 && n !== 21) throw new CatalogError("unreachable", "down");
       return catalog;
     });

@@ -96,7 +96,7 @@ describe("writeRow review items", () => {
 
   it("sends no match and ambiguous rows to review with their candidates", () => {
     const db = memoryDb();
-    const typo = importRow({ key: key("Fake Albm One"), placement: "ranked", rank: 1 });
+    const typo = importRow({ key: key("Fake Alb One"), placement: "ranked", rank: 1 });
     const cases = [
       { row: typo, outcome: chooseMatch(typo, [ONE, TWO]), reason: "no_match", candidates: ["cat-one", "cat-two"] },
       {
@@ -106,7 +106,7 @@ describe("writeRow review items", () => {
           catalogAlbum("y", "Fake Album Two", "Fake Artist A", 2010),
         ]),
         reason: "ambiguous",
-        candidates: ["x", "y"],
+        candidates: ["y", "x"], // nearer the sheet's year first
       },
     ];
     for (const { row, outcome, reason, candidates } of cases) {

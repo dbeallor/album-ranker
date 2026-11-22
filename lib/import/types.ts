@@ -1,4 +1,4 @@
-import type { CatalogAlbum } from "../catalog/types.ts";
+import type { CatalogAlbum, CatalogQuery } from "../catalog/types.ts";
 import type { Placement, SourceRowKey } from "../db/types.ts";
 
 /** One data row of the Albums sheet, cell values as read (nothing validated yet). */
@@ -27,7 +27,7 @@ export type ImportRow = {
 };
 
 /** Searches the catalog; rejects when the catalog can't answer. Tests pass a fake. */
-export type CatalogSearch = (query: string) => Promise<CatalogAlbum[]>;
+export type CatalogSearch = (query: CatalogQuery) => Promise<CatalogAlbum[]>;
 
 /** "Album - Artist (year)", how the summary names a row. */
 export function describeKey(key: SourceRowKey): string {

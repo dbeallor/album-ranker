@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAlbum } from "@/lib/db/albums";
 import { createImportReviewItem, skipImportReviewItem } from "@/lib/db/import-review";
+import { resolveReviewItem, skipReviewItem } from "@/lib/import/resolve";
 import { memoryDb } from "@/lib/db/test-db";
 import { addToLibrary } from "@/lib/db/library";
 
@@ -160,10 +161,131 @@ describe("import review page", () => {
     });
     await renderPage({ search: "2", q: "fake found" });
 
-    expect(searchAlbumsMock).toHaveBeenCalledWith("fake found");
+    expect(searchAlbumsMock).toHaveBeenCalledWith({ kind: "text", text: "fake found" });
     expect(screen.getByText("Fake Album Found")).toBeDefined();
     const box = screen.getAllByRole("searchbox")[0] as HTMLInputElement;
     expect(box.value).toBe("fake found");
+  });
+
+  it("shows a failed catalog search's message under the searched item", async () => {
+    seed(state.db as DatabaseSync);
+    searchAlbumsMock.mockResolvedValue({ ok: false, message: "The album catalog is busy. Try again in a moment." });
+    await renderPage({ search: "2", q: "fake found" });
+
+    expect(screen.getByRole("alert").textContent).toBe("The album catalog is busy. Try again in a moment.");
+  });
+
+  it("runs the default search from the search box, and gives each item an anchor", async () => {
+    seed(state.db as DatabaseSync);
+    searchAlbumsMock.mockResolvedValue({
+      ok: true,
+      albums: [{ catalogId: "s-1", title: "Fake Album Early", artist: "Fake Artist A", artistId: "a", year: 1990, coverUrl: "https://covers.test/s-1" }],
+    });
+    await renderPage({ search: "2", q: "Fake Album Early Fake Artist A" });
+
+    expect(searchAlbumsMock).toHaveBeenCalledWith({ kind: "text", text: "Fake Album Early Fake Artist A" });
+    expect(screen.getAllByRole("heading", { level: 3 })[0].closest("li")?.id).toBe("item-2");
+    const form = screen.getAllByRole("searchbox")[0].closest("form") as HTMLFormElement;
+    expect(form.getAttribute("action")).toBe("/import#item-2");
+  });
+
+  describe("after an action", () => {
+    function resolved(db: DatabaseSync, id: number) {
+      expect(resolveReviewItem(db, id, { kind: "manual" }).ok).toBe(true);
+    }
+
+    it("says what was added and how many are left", async () => {
+      const db = state.db as DatabaseSync;
+      seed(db);
+      resolved(db, 2);
+      await renderPage({ done: "2" });
+
+      const status = screen.getByRole("status");
+      expect(status.textContent).toBe("Added Fake Album Early (1990) to your library. 1 left.");
+      expect(screen.getByText("1 left", { selector: "p" })).toBeDefined();
+    });
+
+    it("says what was moved", async () => {
+      const db = state.db as DatabaseSync;
+      const album = createAlbum(db, { title: "Fake Album Dup", artist: { name: "Fake Artist C" }, catalogId: "c-dup" });
+      addToLibrary(db, { albumId: album.id, year: 1999 });
+      const item = createImportReviewItem(db, {
+        source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
+        sourcePlacement: "listed",
+        reason: "duplicate_album",
+        reasonDetail: "1999",
+        candidates: [candidate("c-dup", "Fake Album Dup", "Fake Artist C", 1999)],
+      });
+      expect(resolveReviewItem(db, item.id, { kind: "catalog", album: item.candidates[0], moveHere: true }).ok).toBe(true);
+      await renderPage({ done: String(item.id), moved: "1" });
+
+      expect(screen.getByRole("status").textContent).toBe("Moved Fake Album Dup to 2001. 0 left.");
+    });
+
+    it("says what was skipped", async () => {
+      const db = state.db as DatabaseSync;
+      seed(db);
+      expect(skipReviewItem(db, 1).ok).toBe(true);
+      await renderPage({ done: "1" });
+
+      expect(screen.getByRole("status").textContent).toBe("Skipped Fake Album Later. 1 left.");
+    });
+
+    it("says an item was already handled, without an error", async () => {
+      const db = state.db as DatabaseSync;
+      seed(db);
+      resolved(db, 2);
+      await renderPage({ done: "2", already: "1" });
+
+      expect(screen.getByRole("status").textContent).toBe("Fake Album Early was already handled. 1 left.");
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("shows no message for an item that is still open or unknown", async () => {
+      seed(state.db as DatabaseSync);
+      await renderPage({ done: "2" });
+      expect(screen.queryByRole("status")).toBeNull();
+      cleanup();
+      await renderPage({ done: "99" });
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+  });
+
+  it("lists stored candidates in ranking order, closest year first", async () => {
+    createImportReviewItem(state.db as DatabaseSync, {
+      source: { title: "Fake Album Rank", artist: "Fake Artist G", year: 1967 },
+      sourcePlacement: "listed",
+      reason: "ambiguous",
+      candidates: [
+        candidate("c-late", "Fake Album Rank", "Fake Artist G", 1975),
+        candidate("c-none", "Something Else", "Fake Artist G", 1967),
+        candidate("c-near", "Fake Album Rank", "Fake Artist G", 1967),
+      ],
+    });
+    await renderPage();
+
+    const titles = screen.getAllByText(/^(Fake Album Rank|Something Else)$/, { selector: "strong" });
+    const years = screen.getAllByText(/^\d{4}$/, { selector: "span" });
+    expect(titles.map((t) => t.textContent)).toEqual(["Fake Album Rank", "Fake Album Rank", "Something Else"]);
+    expect(years.map((y) => y.textContent)).toEqual(["1967", "1975", "1967"]);
+  });
+
+  it("names the gap when a candidate's year is more than a year off, and an unknown year", async () => {
+    createImportReviewItem(state.db as DatabaseSync, {
+      source: { title: "Fake Album Year", artist: "Fake Artist H", year: 1967 },
+      sourcePlacement: "listed",
+      reason: "ambiguous",
+      candidates: [
+        candidate("c-1", "Fake Album Year", "Fake Artist H", 1964),
+        candidate("c-2", "Fake Album Year", "Fake Artist H", 1968),
+        candidate("c-3", "Fake Album Year", "Fake Artist H", null),
+      ],
+    });
+    await renderPage();
+
+    expect(screen.getByText("Sheet says 1967, 3 years off")).toBeDefined();
+    expect(screen.getAllByText(/years? off/)).toHaveLength(1);
+    expect(screen.getByText("Unknown year")).toBeDefined();
   });
 
   it("shows a failed action's message with the item still listed", async () => {

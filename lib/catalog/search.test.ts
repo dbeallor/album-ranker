@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import fixture from "./fixtures/getz-gilberto.json";
-import { buildQuery } from "./musicbrainz";
+import { buildFieldsQuery, buildQuery } from "./musicbrainz";
 import { createSearchAlbums } from "./search";
+import type { CatalogQuery } from "./types";
 
 const BUSY = "The album catalog is busy. Try again in a moment.";
 const UNREACHABLE = "The album catalog couldn't be reached. Try again later.";
+
+const text = (value: string): CatalogQuery => ({ kind: "text", text: value });
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -39,7 +42,7 @@ function setup(respond: () => Response | Promise<Response> = () => jsonResponse(
 describe("searchAlbums results", () => {
   it("maps the getz gilberto fixture", async () => {
     const { search } = setup();
-    const result = await search("getz gilberto");
+    const result = await search(text("getz gilberto"));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -57,7 +60,7 @@ describe("searchAlbums results", () => {
 
   it("sends the user agent, JSON format and limit", async () => {
     const { search, fetchMock } = setup();
-    await search("getz gilberto");
+    await search(text("getz gilberto"));
 
     const [url, init] = fetchMock.mock.calls[0];
     const parsed = new URL(String(url));
@@ -71,14 +74,14 @@ describe("searchAlbums results", () => {
   it("keeps a release group listed twice once", async () => {
     const groups = fixture["release-groups"];
     const { search } = setup(() => jsonResponse({ "release-groups": [groups[0], groups[1], groups[0]] }));
-    const result = await search("getz");
+    const result = await search(text("getz"));
 
     expect(result.ok && result.albums.map((a) => a.catalogId)).toEqual([groups[0].id, groups[1].id]);
   });
 
   it("drops singles", async () => {
     const { search } = setup();
-    const result = await search("getz gilberto");
+    const result = await search(text("getz gilberto"));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -88,7 +91,7 @@ describe("searchAlbums results", () => {
 
   it("gives no year when the date is missing", async () => {
     const { search } = setup();
-    const result = await search("getz gilberto");
+    const result = await search(text("getz gilberto"));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -112,7 +115,7 @@ describe("searchAlbums results", () => {
   it.each(credits)("gives the artist id for $name", async ({ credit, artistId }) => {
     const group = { id: "g1", title: "T", "primary-type": "Album", "artist-credit": credit };
     const { search } = setup(() => jsonResponse({ "release-groups": [group] }));
-    const result = await search("album");
+    const result = await search(text("album"));
     expect(result.ok && result.albums[0].artistId).toBe(artistId);
   });
 
@@ -131,7 +134,7 @@ describe("searchAlbums results", () => {
       "artist-credit": [{ name: "Someone" }],
     }));
     const { search } = setup(() => jsonResponse({ "release-groups": groups }));
-    const result = await search("album");
+    const result = await search(text("album"));
 
     expect(result.ok && result.albums.map((a) => a.year)).toEqual(dates.map((d) => d.year));
   });
@@ -143,7 +146,7 @@ describe("searchAlbums short queries", () => {
   it.each(cases)("makes no request for %j", async (query) => {
     const { search, fetchMock } = setup();
 
-    expect(await search(query)).toEqual({ ok: true, albums: [] });
+    expect(await search(text(query))).toEqual({ ok: true, albums: [] });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -170,7 +173,7 @@ describe("searchAlbums errors", () => {
   it.each(cases)("$name returns a message and logs it", async ({ respond, message }) => {
     const { search, log } = setup(respond);
 
-    expect(await search("getz gilberto")).toEqual({ ok: false, message });
+    expect(await search(text("getz gilberto"))).toEqual({ ok: false, message });
     expect(log).toHaveBeenCalledTimes(1);
   });
 });
@@ -178,8 +181,8 @@ describe("searchAlbums errors", () => {
 describe("searchAlbums cache", () => {
   it("serves the same query in another case and spacing from the cache", async () => {
     const { search, fetchMock } = setup();
-    const first = await search("Getz Gilberto");
-    const second = await search("  getz   GILBERTO ");
+    const first = await search(text("Getz Gilberto"));
+    const second = await search(text("  getz   GILBERTO "));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
@@ -189,17 +192,17 @@ describe("searchAlbums cache", () => {
     let fail = true;
     const { search, fetchMock } = setup(() => (fail ? new Response("busy", { status: 503 }) : jsonResponse(fixture)));
 
-    expect((await search("getz gilberto")).ok).toBe(false);
+    expect((await search(text("getz gilberto"))).ok).toBe(false);
     fail = false;
-    expect((await search("getz gilberto")).ok).toBe(true);
+    expect((await search(text("getz gilberto"))).ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("asks again after 24 hours", async () => {
     const { search, fetchMock, advance } = setup();
-    await search("getz gilberto");
+    await search(text("getz gilberto"));
     advance(24 * 60 * 60 * 1000 + 1);
-    await search("getz gilberto");
+    await search(text("getz gilberto"));
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -208,13 +211,13 @@ describe("searchAlbums cache", () => {
     const { search, fetchMock, advance } = setup();
     for (let i = 0; i < 501; i++) {
       advance(2000);
-      await search(`query ${i}`);
+      await search(text(`query ${i}`));
     }
     expect(fetchMock).toHaveBeenCalledTimes(501);
 
-    await search("query 500");
+    await search(text("query 500"));
     expect(fetchMock).toHaveBeenCalledTimes(501);
-    await search("query 0");
+    await search(text("query 0"));
     expect(fetchMock).toHaveBeenCalledTimes(502);
   });
 });
@@ -222,8 +225,8 @@ describe("searchAlbums cache", () => {
 describe("searchAlbums rate limit", () => {
   it("spaces requests at least 1.1 seconds apart", async () => {
     const { search, sleep } = setup();
-    await search("first query");
-    await search("second query");
+    await search(text("first query"));
+    await search(text("second query"));
 
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenCalledWith(1100);
@@ -231,7 +234,7 @@ describe("searchAlbums rate limit", () => {
 
   it("returns the busy message when the wait would pass 5 seconds", async () => {
     const { search, fetchMock } = setup();
-    const results = await Promise.all(["one", "two", "three", "four", "five", "six"].map((q) => search(q)));
+    const results = await Promise.all(["one", "two", "three", "four", "five", "six"].map((q) => search(text(q))));
 
     // Waits of 0, 1.1, 2.2, 3.3, 4.4 and 5.5 seconds: the sixth is turned away.
     expect(results.slice(0, 5).every((r) => r.ok)).toBe(true);
@@ -255,9 +258,23 @@ describe("buildQuery", () => {
     },
     {
       name: "escapes Lucene special characters",
-      text: "ac/dc (live)",
-      expected: "(releasegroup:ac\\/dc OR artist:ac\\/dc) AND (releasegroup:\\(live\\) OR artist:\\(live\\))",
+      text: "(live) what's^",
+      expected:
+        "(releasegroup:\\(live\\) OR artist:\\(live\\)) AND (releasegroup:what's\\^ OR artist:what's\\^)",
     },
+    {
+      name: "splits a word at a slash",
+      text: "Getz/Gilberto ac/dc",
+      expected:
+        "(releasegroup:Getz OR artist:Getz) AND (releasegroup:Gilberto OR artist:Gilberto) AND (releasegroup:ac OR artist:ac) AND (releasegroup:dc OR artist:dc)",
+    },
+    {
+      name: "drops words that are only punctuation",
+      text: "Stan Getz & Joao - Gilberto + / x",
+      expected:
+        "(releasegroup:Stan OR artist:Stan) AND (releasegroup:Getz OR artist:Getz) AND (releasegroup:Joao OR artist:Joao) AND (releasegroup:Gilberto OR artist:Gilberto) AND (releasegroup:x OR artist:x)",
+    },
+    { name: "is empty for punctuation alone", text: "& - /", expected: "" },
     {
       name: "escapes quotes, colons and wildcards",
       text: 'what"s: up*',
@@ -278,5 +295,92 @@ describe("buildQuery", () => {
 
   it.each(cases)("$name", ({ text, expected }) => {
     expect(buildQuery(text)).toBe(expected);
+  });
+});
+
+describe("buildFieldsQuery", () => {
+  const cases: { name: string; query: { title?: string; artist?: string }; expected: string }[] = [
+    {
+      name: "needs every title word and some artist word",
+      query: { title: "Kind of Blue", artist: "Miles Davis" },
+      expected: "(releasegroup:kind AND releasegroup:of AND releasegroup:blue) AND (artist:miles~1 OR artist:davis~1)",
+    },
+    {
+      name: "allows a typo only in words of 5 or more letters",
+      query: { title: "Meet the Tempations", artist: "The Temptations" },
+      expected:
+        "(releasegroup:meet AND releasegroup:the AND releasegroup:tempations~1) AND (artist:temptations~1)",
+    },
+    {
+      name: "leaves the and the out of the artist words, but not out of the title",
+      query: { title: "The Band", artist: "The Band and The Horses" },
+      expected: "(releasegroup:the AND releasegroup:band) AND (artist:band OR artist:horses~1)",
+    },
+    {
+      name: "keeps the and the when the artist has no other word",
+      query: { artist: "The And" },
+      expected: "(artist:the OR artist:and)",
+    },
+    {
+      name: "can ask for the title alone",
+      query: { title: "Portraits in Jazz" },
+      expected: "(releasegroup:portraits~1 AND releasegroup:in AND releasegroup:jazz)",
+    },
+    { name: "can ask for the artist alone", query: { artist: "Bill Evans" }, expected: "(artist:bill OR artist:evans~1)" },
+    {
+      name: "splits at a slash, drops lone punctuation and escapes the rest",
+      query: { title: "Getz/Gilberto", artist: "Stan & (Joao)" },
+      expected: "(releasegroup:getz AND releasegroup:gilberto~1) AND (artist:stan OR artist:\\(joao\\))",
+    },
+    {
+      name: "keeps the word AND from acting as an operator",
+      query: { title: "This AND That" },
+      expected: "(releasegroup:this AND releasegroup:and AND releasegroup:that)",
+    },
+    { name: "is empty with no words", query: { title: " & ", artist: "" }, expected: "" },
+  ];
+
+  it.each(cases)("$name", ({ query, expected }) => {
+    expect(buildFieldsQuery(query)).toBe(expected);
+  });
+});
+
+describe("searchAlbums fields queries", () => {
+  it("sends the fields query to the catalog", async () => {
+    const { search, fetchMock } = setup();
+    await search({ kind: "fields", title: "Getz Gilberto", artist: "Stan Getz" });
+
+    const parsed = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(parsed.searchParams.get("query")).toBe(
+      buildFieldsQuery({ title: "Getz Gilberto", artist: "Stan Getz" }),
+    );
+  });
+
+  it("keys the cache on the query kind, so text and fields queries do not share an answer", async () => {
+    const { search, fetchMock } = setup();
+    await search(text("getz gilberto"));
+    await search({ kind: "fields", title: "getz gilberto" });
+    await search({ kind: "fields", artist: "getz gilberto" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // The same queries again, in another case and spacing, come from the cache.
+    await search(text(" Getz  Gilberto "));
+    await search({ kind: "fields", title: "GETZ gilberto" });
+    await search({ kind: "fields", artist: "getz   gilberto" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a title and an artist apart in the cache key", async () => {
+    const { search, fetchMock } = setup();
+    await search({ kind: "fields", title: "getz", artist: "gilberto" });
+    await search({ kind: "fields", title: "gilberto", artist: "getz" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("makes no request for a query with no usable words", async () => {
+    const { search, fetchMock } = setup();
+    expect(await search({ kind: "fields", title: "", artist: "a" })).toEqual({ ok: true, albums: [] });
+    expect(await search(text("& - /"))).toEqual({ ok: true, albums: [] });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
