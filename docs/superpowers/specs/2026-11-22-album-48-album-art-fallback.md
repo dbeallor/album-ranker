@@ -1,6 +1,7 @@
 # Fall back to another source for album art
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #50, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-48](https://github.com/dbeallor/album-ranker/issues/48)
 **Follows:** [ALBUM-35 add albums to the library](2026-11-21-album-35-add-albums-library.md)
