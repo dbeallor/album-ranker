@@ -1,7 +1,7 @@
 # Add albums to the library and run matchups over all of it
 
 **Status:** Shipped
-**Shipped:** in PR #PR, with differences: [as-built](../as-built/2026-11-21-album-35-add-albums-library.md)
+**Shipped:** in PR #41, with differences: [as-built](../as-built/2026-11-21-album-35-add-albums-library.md)
 **Date:** 2026-11-21
 **Ticket:** [ALBUM-35](https://github.com/dbeallor/album-ranker/issues/35)
 **Follows:** [ALBUM-34 library table](2026-11-21-album-34-elo-library-table.md), [catalog search](2026-11-21-album-5-catalog-search.md), [Elo matchups](2026-11-21-album-7-elo-matchup.md)

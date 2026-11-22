@@ -1,6 +1,6 @@
 # As-built: add albums to the library and run matchups over all of it
 
-**Shipped:** in PR #PR
+**Shipped:** in PR #41
 **Ticket:** ALBUM-35
 **Spec:** [2026-11-21-album-35-add-albums-library.md](../specs/2026-11-21-album-35-add-albums-library.md)
 
