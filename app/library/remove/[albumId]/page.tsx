@@ -19,6 +19,10 @@ function consequence(matchups: number): string {
   return `This deletes the album and ${count}. The ratings of the albums it played will change. This can't be undone.`;
 }
 
+function staleMessage(matchups: number): string {
+  return `This album now has ${matchups} ${matchups === 1 ? "matchup" : "matchups"}. Check and confirm again.`;
+}
+
 export default async function RemoveAlbumPage({
   params,
   searchParams,
@@ -38,7 +42,7 @@ export default async function RemoveAlbumPage({
 
   const matchups = countMatchupsForAlbum(db, id);
   const { error } = await searchParams;
-  const errorMessage = (Array.isArray(error) ? error[0] : error) ?? "";
+  const errorMessage = (Array.isArray(error) ? error[0] : error) === "stale" ? staleMessage(matchups) : "";
 
   return (
     <>

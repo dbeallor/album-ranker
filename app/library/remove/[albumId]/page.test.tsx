@@ -74,10 +74,16 @@ describe("remove album page", () => {
     expect(screen.getByRole("link", { name: "Keep it" }).getAttribute("href")).toBe("/library");
   });
 
-  it("shows an error from the action", async () => {
-    await renderPage(String(target), "This album now has 4 matchups. Check and confirm again.");
+  it.each([
+    { name: "the stale code shows the matchup message from the current count", error: "stale", matchups: 2, text: "This album now has 2 matchups. Check and confirm again." },
+    { name: "the stale code with one matchup", error: "stale", matchups: 1, text: "This album now has 1 matchup. Check and confirm again." },
+    { name: "made-up text shows nothing", error: "Your album is on fire.", matchups: 2, text: null },
+  ])("error param: $name", async ({ error, matchups, text }) => {
+    play(matchups);
+    await renderPage(String(target), error);
 
-    expect(screen.getByRole("alert").textContent).toBe("This album now has 4 matchups. Check and confirm again.");
+    expect(screen.queryByRole("alert")?.textContent ?? null).toBe(text);
+    expect(document.body.textContent).not.toContain("on fire");
   });
 
   it.each([
