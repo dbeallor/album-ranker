@@ -10,6 +10,8 @@ Personal Favorite Album Ranker
 5. `npm run dev`
 6. Open <http://localhost:3000>.
 
+The app listens on this machine only (127.0.0.1), so other devices on your network can't reach it. If you want to open it from another device on purpose, run the production server directly with a different host: `npm run build && npx next start --hostname 0.0.0.0`. Set a long `APP_PASSWORD` first, because anyone on your network can then reach the app, and the password travels over plain HTTP.
+
 ## Deploy to AWS
 
 Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
