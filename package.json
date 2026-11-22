@@ -17,6 +17,7 @@
     "db:backup": "node scripts/backup.ts",
     "db:restore": "node scripts/restore.ts",
     "import": "node --conditions=react-server scripts/import.ts",
+    "backfill-covers": "node --conditions=react-server scripts/backfill-covers.ts",
     "import:fixture": "node lib/import/fixtures/make-fixture.ts",
     "preview": "node scripts/preview.ts",
     "record": "node scripts/record.ts"

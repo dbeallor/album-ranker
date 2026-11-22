@@ -109,6 +109,13 @@ Reading the summary the script prints at the end:
 - `Invalid, skipped` rows are left out, each with its reason; fix the sheet and run again.
 - `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
 
+## Backfill covers
+
+`npm run backfill-covers` fills the cover of library albums saved without one (added before Deezer was a fallback, or while the Cover Art Archive had none). It uses the same lookup as adding an album: the Cover Art Archive first, then a Deezer album with the same title and artist. It looks at one album at a time, never touches an album that already has a cover, and skips albums with no catalog id (manual albums).
+
+- The summary counts `Filled`, `Still none` (no cover on either service), `Failed` (a lookup failed, so the album is left alone: run it again to retry) and `Skipped`. It exits 0 even with failed albums.
+- Running it again only looks at albums still without a cover. Set `MUSICBRAINZ_USER_AGENT` in `.env` first; it is sent to the Cover Art Archive.
+
 ## Browser tests
 
 Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz, the Cover Art Archive and Deezer (`MUSICBRAINZ_URL`, `COVER_ART_ARCHIVE_URL`, `DEEZER_URL`), so no test calls a live service.

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { createResolveCover, isAllowedCoverUrl, normalizeForMatch } from "./cover-art";
+import { createLookupCover, createResolveCover, isAllowedCoverUrl, normalizeForMatch } from "./cover-art";
 
 const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
 const CAA = `https://coverartarchive.org/release-group/${CATALOG_ID}/front-250`;
@@ -33,9 +33,11 @@ function setup(
     return result;
   });
   const log = vi.fn();
-  const resolveCover = createResolveCover({ fetch: fetchMock, userAgent: () => "album-ranker-test/1", log, ...bases });
+  const deps = { fetch: fetchMock, userAgent: () => "album-ranker-test/1", log, ...bases };
+  const resolveCover = createResolveCover(deps);
+  const lookupCover = createLookupCover(deps);
   const calls = (host: string) => fetchMock.mock.calls.filter(([input]) => String(input).startsWith(host));
-  return { resolveCover, fetchMock, log, caaCalls: () => calls(`${caaBase}/`), deezerCalls: () => calls(`${deezerBase}/`) };
+  return { resolveCover, lookupCover, fetchMock, log, caaCalls: () => calls(`${caaBase}/`), deezerCalls: () => calls(`${deezerBase}/`) };
 }
 
 const noCover = () => new Response(null, { status: 404 });
@@ -73,6 +75,42 @@ describe("the Cover Art Archive check", () => {
     expect(await resolveCover(ALBUM)).toBe(CAA);
     expect(deezerCalls()).toHaveLength(0);
     expect(log).toHaveBeenCalled();
+  });
+});
+
+describe("lookupCover", () => {
+  const deezerMatch = json({ data: [deezerAlbum("Kind of Blue", "Miles Davis")] });
+
+  it.each([
+    { name: "a CAA 200", caa: new Response(null, { status: 200 }), deezer: undefined, expected: { kind: "found", url: CAA } },
+    { name: "a CAA 307", caa: new Response(null, { status: 307 }), deezer: undefined, expected: { kind: "found", url: CAA } },
+    { name: "a CAA 404 and a Deezer match", caa: noCover(), deezer: deezerMatch, expected: { kind: "found", url: DEEZER_COVER } },
+    { name: "a CAA 404 and no Deezer match", caa: noCover(), deezer: json({ data: [] }), expected: { kind: "none" } },
+    { name: "a CAA 404 and Deezer's stock no-artwork cover", caa: noCover(), deezer: json({ data: [deezerAlbum("Kind of Blue", "Miles Davis", DEEZER_COVER, "")] }), expected: { kind: "none" } },
+    { name: "a CAA 500", caa: new Response(null, { status: 500 }), deezer: undefined, expected: { kind: "failed" } },
+    { name: "a CAA network error", caa: new TypeError("fetch failed"), deezer: undefined, expected: { kind: "failed" } },
+    { name: "a CAA timeout", caa: new DOMException("timed out", "TimeoutError"), deezer: undefined, expected: { kind: "failed" } },
+    { name: "a CAA 404 and a Deezer 500", caa: noCover(), deezer: new Response("oops", { status: 500 }), expected: { kind: "failed" } },
+    { name: "a CAA 404 and a Deezer network error", caa: noCover(), deezer: new TypeError("fetch failed"), expected: { kind: "failed" } },
+    { name: "a CAA 404 and a Deezer body that is not JSON", caa: noCover(), deezer: new Response("<html>", { status: 200 }), expected: { kind: "failed" } },
+  ])("gives $expected.kind for $name", async ({ caa, deezer, expected }) => {
+    const { lookupCover } = setup(caa, deezer);
+
+    expect(await lookupCover(ALBUM)).toEqual(expected);
+  });
+
+  it("does not ask Deezer after a CAA failure", async () => {
+    const { lookupCover, deezerCalls } = setup(new Response(null, { status: 500 }));
+    await lookupCover(ALBUM);
+
+    expect(deezerCalls()).toHaveLength(0);
+  });
+
+  it("gives none without a request for a catalog id that is not a UUID", async () => {
+    const { lookupCover, fetchMock } = setup(noCover);
+
+    expect(await lookupCover({ ...ALBUM, catalogId: "../../etc/passwd" })).toEqual({ kind: "none" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
