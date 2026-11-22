@@ -67,7 +67,7 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 
 ## Add albums
 
-The header has a Menu button that opens a full-screen menu with four pages: Add albums, Library, Play and Rankings. The home page is the start of the same flow, with a search box, the library count, your ranking progress and the top five albums; it links to Import review only while spreadsheet rows wait for review.
+The header has a link to each of the four pages: Add albums, Library, Play and Rankings. The home page is the start of the same flow, with a search box, the library count, your ranking progress and the top five albums; it links to Import review only while spreadsheet rows wait for review.
 
 Open <http://localhost:3000/search> (Add albums) and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups. When an album is added (from search, import review or the import script) and the Cover Art Archive has no front cover for it, the server looks for a cover on Deezer, accepting only an album with the same title and artist, and stores it; with no match the grey placeholder stays. Results on the search page still show only Cover Art Archive covers, and albums already in your library are not changed.
 

@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { goViaMenu } from "./menu";
+import { goViaNav } from "./nav";
 
 const QUERY = "getz gilberto";
 const ANALYTICS_VIEWS = ["Artists", "Years", "Decades", "Eras", "Albums"];
@@ -9,7 +9,7 @@ const ANALYTICS_VIEWS = ["Artists", "Years", "Decades", "Eras", "Albums"];
 test("home to add albums, library, play and every rankings view", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Rank the albums you love." })).toBeVisible();
-  await goViaMenu(page, "Add albums");
+  await goViaNav(page, "Add albums");
   await expect(page).toHaveURL(/\/search$/);
   await expect(page.getByRole("heading", { level: 1, name: "Add albums" })).toBeVisible();
 
@@ -36,7 +36,7 @@ test("home to add albums, library, play and every rankings view", async ({ page 
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
   }
 
-  await goViaMenu(page, "Play");
+  await goViaNav(page, "Play");
   await expect(page).toHaveURL(/\/matchups$/);
   await expect(page.getByRole("heading", { level: 1, name: "Play" })).toBeVisible();
   const played = page.getByText(/^\d+ matchups played$/);
@@ -44,7 +44,7 @@ test("home to add albums, library, play and every rankings view", async ({ page 
   await page.getByRole("button", { name: "I like this more" }).first().click();
   await expect.poll(async () => Number((await played.textContent())!.split(" ")[0])).toBe(countBefore + 1);
 
-  await goViaMenu(page, "Rankings");
+  await goViaNav(page, "Rankings");
   await expect(page.getByRole("heading", { level: 1, name: "Rankings" })).toBeVisible();
   for (const view of ANALYTICS_VIEWS) {
     await page.getByRole("navigation", { name: "Analytics view" }).getByRole("link", { name: view }).click();

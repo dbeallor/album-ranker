@@ -11,16 +11,10 @@
   scroll-padding-top: calc(var(--header-height) + var(--space-4));
 }
 
-/* The page behind the open menu does not scroll. */
-:global(html:has(dialog[open])) {
-  overflow: hidden;
-}
-
+/* Phones: the brand on one row, the links on a second row. */
 .inner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  flex-direction: column;
   max-width: var(--content-width);
   min-height: var(--header-height);
   margin: 0 auto;
@@ -30,7 +24,8 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  min-height: var(--control-height);
+  align-self: flex-start;
+  min-height: calc(var(--header-height) - var(--control-height));
   color: var(--color-text);
   font-family: var(--font-display);
   font-size: var(--text-lg);
@@ -40,125 +35,72 @@
   text-decoration: none;
 }
 
-.toggle {
-  min-width: var(--control-height);
-  min-height: var(--control-height);
-  padding: 0 var(--space-4);
-  border: 2px solid var(--color-text);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text);
-  font-size: var(--text-label);
-  font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    background-color var(--duration) ease,
-    color var(--duration) ease;
-}
-
-@media (hover: hover) {
-  .toggle:hover {
-    background: var(--color-text);
-    color: var(--color-bg);
-  }
-}
-
-/* The overlay menu: fills the screen, fades in and slides up a little. */
-.dialog {
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  overflow-y: auto;
-}
-
-.dialog::backdrop {
-  background: var(--color-backdrop);
-}
-
-.dialog[open] {
-  display: flex;
-  flex-direction: column;
-  animation: menu-in var(--duration-slow) ease;
-}
-
-@keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--space-4));
-  }
-}
-
-.dialogBar {
-  flex: none;
-  width: 100%;
-  border-bottom: var(--rule);
-}
-
+/* If the links don't fit a very narrow screen, the row scrolls sideways instead of wrapping. */
 .nav {
-  flex: 1;
-  width: 100%;
-  max-width: var(--content-width);
-  margin: 0 auto;
-  padding: var(--space-6) var(--gutter) var(--space-7);
+  overflow-x: auto;
 }
 
 .list {
   display: flex;
-  flex-direction: column;
-}
-
-.list li + li {
-  border-top: var(--rule);
+  justify-content: space-between;
+  width: 100%;
+  min-width: max-content;
 }
 
 .link {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding: var(--space-3) 0;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
   color: var(--color-text);
-  font-family: var(--font-display);
-  font-size: var(--text-display);
-  font-stretch: var(--stretch-display);
-  font-weight: var(--weight-display);
-  letter-spacing: var(--tracking-display);
-  line-height: var(--leading-display);
-  text-decoration: none;
-  transition:
-    color var(--duration) ease,
-    transform var(--duration-slow) ease;
-}
-
-.number {
-  flex: none;
-  min-width: 2.2ch;
-  color: var(--color-text-muted);
-  font-family: var(--font-sans);
   font-size: var(--text-label);
-  font-stretch: 100%;
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-label);
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color var(--duration) ease;
+}
+
+/* The scrolling row would clip a ring drawn outside the link, so draw it inside. */
+.link:focus-visible {
+  outline-offset: calc(var(--focus-offset) * -1);
 }
 
 .link[aria-current="page"] {
   color: var(--color-accent);
-}
-
-.link[aria-current="page"] .number {
-  color: var(--color-accent);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 @media (hover: hover) {
   .link:hover {
     color: var(--color-accent);
-    transform: translateX(var(--space-2));
+  }
+}
+
+/* Tablets and up: one row, brand on the left and the links on the right. */
+@media (min-width: 640px) {
+  .inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .brand {
+    min-height: var(--control-height);
+  }
+
+  .nav {
+    overflow-x: visible;
+  }
+
+  .list {
+    width: auto;
+    min-width: 0;
+  }
+
+  .link:focus-visible {
+    outline-offset: var(--focus-offset);
   }
 }

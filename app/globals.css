@@ -75,6 +75,13 @@
   --duration-slow: 240ms;
 }
 
+@media (max-width: 639px) {
+  :root {
+    /* Two rows on phones: the brand, then the page links. */
+    --header-height: calc(3.5rem + var(--control-height));
+  }
+}
+
 @media (min-width: 640px) {
   :root {
     --gutter: var(--space-5);
