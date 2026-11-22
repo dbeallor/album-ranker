@@ -94,6 +94,31 @@ describe("library page", () => {
     expect(titles()).toEqual(order);
   });
 
+  it("links each card to its remove page", async () => {
+    await renderPage();
+
+    const card = screen.getByText("Gamma").closest("li")!;
+    expect(within(card).getByRole("link", { name: "Remove" }).getAttribute("href")).toMatch(/^\/library\/remove\/\d+$/);
+    expect(screen.getAllByRole("link", { name: "Remove" })).toHaveLength(3);
+  });
+
+  it.each([
+    { name: "many matchups", params: { removed: "Kind of Blue", matchups: "7" }, text: "Removed Kind of Blue and its 7 matchups." },
+    { name: "one matchup", params: { removed: "Kind of Blue", matchups: "1" }, text: "Removed Kind of Blue and its 1 matchup." },
+    { name: "no matchups", params: { removed: "Kind of Blue", matchups: "0" }, text: "Removed Kind of Blue." },
+    { name: "a bad count", params: { removed: "Kind of Blue", matchups: "lots" }, text: "Removed Kind of Blue." },
+  ])("says what was removed: $name", async ({ params, text }) => {
+    await renderPage(params);
+
+    expect(screen.getByText(text)).toBeDefined();
+  });
+
+  it("shows no removed message without the param", async () => {
+    await renderPage();
+
+    expect(screen.queryByText(/^Removed /)).toBeNull();
+  });
+
   it("shows the filtered count against the whole library", async () => {
     await renderPage({ q: "aardvark" });
 

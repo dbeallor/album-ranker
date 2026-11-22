@@ -106,9 +106,9 @@ describe("matchup screen", () => {
     expect(screen.getByText("Album One")).toBeDefined();
   });
 
-  it("says so, with a link home, when no pair is possible", () => {
+  it("asks for two library albums, with a link to search, when no pair is possible", () => {
     setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false } });
-    expect(screen.getByText(/no two albums from different years/)).toBeDefined();
-    expect(screen.getByRole("link", { name: "Back to home" }).getAttribute("href")).toBe("/");
+    expect(screen.getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
   });
 });
