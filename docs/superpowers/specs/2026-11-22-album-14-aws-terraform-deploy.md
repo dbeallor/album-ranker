@@ -85,7 +85,7 @@ Shared, created once by the bootstrap step:
 |---|---|---|
 | S3 state bucket (versioned, encrypted, holds both environments' Terraform state) | Storage and requests | under $0.01 |
 
-**Always-on, idle-billed components: one, the Route 53 hosted zone ($0.50 a month, justified under Domain below).** Every other component bills by request or by storage used. Light use (a few hundred page loads and matchups a month) stays inside the free allowances. New accounts on AWS's credit-based free plan get the same always-free allowances for Lambda and CloudFront; the build rechecks this.
+**Always-on, idle-billed components: one, the Route 53 hosted zone ($0.50 a month, justified under The domain).** Every other component bills by request or by storage used. Light use (a few hundred page loads and matchups a month) stays inside the free allowances. New accounts on AWS's credit-based free plan get the same always-free allowances for Lambda and CloudFront; the build rechecks this.
 
 ## Terraform
 
