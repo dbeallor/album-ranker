@@ -133,6 +133,35 @@ describe("library page", () => {
     expect((screen.getByLabelText("Matchups") as HTMLSelectElement).value).toBe("played");
   });
 
+  it.each<{ name: string; params: Params; open: boolean }>([
+    { name: "no filters", params: {}, open: false },
+    { name: "only sort and direction", params: { sort: "year", dir: "asc" }, open: false },
+    { name: "a search", params: { q: "bear" }, open: true },
+    { name: "a scope", params: { scope: "decade-1970" }, open: true },
+    { name: "a played filter", params: { played: "unplayed" }, open: true },
+  ])("opens Filters only when one is set: $name", async ({ params, open }) => {
+    await renderPage(params);
+
+    const details = screen.getByText("Filters").closest("details")!;
+    expect(details.open).toBe(open);
+    expect(within(details).getByLabelText("Title or artist")).toBeDefined();
+    expect(within(details).queryByLabelText("Sort by")).toBeNull();
+    expect(screen.getByRole("button", { name: "Apply" }).closest("details")).toBeNull();
+  });
+
+  it("submits all five fields in one GET form", async () => {
+    await renderPage();
+
+    const form = screen.getByRole("button", { name: "Apply" }).closest("form")!;
+    expect([...form.elements].map((el) => (el as HTMLInputElement).name).filter(Boolean)).toEqual([
+      "sort",
+      "dir",
+      "q",
+      "scope",
+      "played",
+    ]);
+  });
+
   it.each<{ name: string; empty: boolean; params: Params; message: string; action: string; href: string }>([
     { name: "no match", empty: false, params: { q: "zzz" }, message: "No albums match these filters.", action: "Clear filters", href: "/library" },
     { name: "empty library", empty: true, params: {}, message: "No albums in the library yet.", action: "Search albums", href: "/search" },

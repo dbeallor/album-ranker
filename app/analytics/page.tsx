@@ -60,17 +60,21 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         description={ranked ? `${view === "albums" ? "Album" : "Artist"} ranking · ${scopeLabel(scope)}` : undefined}
       />
       <Stack gap={5}>
-        <Tabs
-          aria-label="Analytics view"
-          items={ANALYTICS_VIEWS.map((option) => ({
-            href: option.value === "albums" || option.value === "artists" ? href(option.value, ranked ? scope : LIFETIME) : href(option.value),
-            label: option.label,
-            current: option.value === view,
-          }))}
-        />
+        <Stack gap={2}>
+          <p className={styles.label}>Show</p>
+          <Tabs
+            aria-label="Analytics view"
+            items={ANALYTICS_VIEWS.map((option) => ({
+              href: option.value === "albums" || option.value === "artists" ? href(option.value, ranked ? scope : LIFETIME) : href(option.value),
+              label: option.label,
+              current: option.value === view,
+            }))}
+          />
+        </Stack>
 
         {ranked ? (
           <Stack gap={3}>
+            <p className={styles.label}>Period</p>
             <Tabs
               aria-label="Scope"
               items={[LIFETIME, ...ERAS.map((era): Scope => ({ kind: "era", era: era.key }))].map((choice) => ({

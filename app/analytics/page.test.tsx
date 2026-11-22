@@ -137,6 +137,17 @@ describe("analytics page", () => {
     }
   });
 
+  it.each<{ view: string; labels: string[] }>([
+    { view: "albums", labels: ["Show", "Period"] },
+    { view: "artists", labels: ["Show", "Period"] },
+    { view: "years", labels: ["Show"] },
+    { view: "eras", labels: ["Show"] },
+  ])("labels each row of tabs: $view view shows $labels", async ({ view, labels }) => {
+    await renderPage({ view });
+
+    expect(screen.getAllByText(/^(Show|Period)$/, { selector: "p" }).map((label) => label.textContent)).toEqual(labels);
+  });
+
   it("has no scope tabs or pickers on a summary view", async () => {
     await renderPage({ view: "years" });
 
