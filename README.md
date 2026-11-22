@@ -111,10 +111,10 @@ Reading the summary the script prints at the end:
 
 ## Backfill covers
 
-`npm run backfill-covers` fills the cover of library albums saved without one (added before Deezer was a fallback, or while the Cover Art Archive had none). It uses the same lookup as adding an album: the Cover Art Archive first, then a Deezer album with the same title and artist. It looks at one album at a time, never touches an album that already has a cover, and skips albums with no catalog id (manual albums).
+`npm run backfill-covers` does two jobs in one run. It fills the cover of library albums saved without one (added before Deezer was a fallback, or while the Cover Art Archive had none), and it checks each album's stored Cover Art Archive link and replaces a dead one (the archive answers 404) with the Deezer cover for an album with the same title and artist, when Deezer has one. Both use the same lookup as adding an album: the Cover Art Archive first, then Deezer. It looks at one album at a time, about one a second (a library of 678 albums takes about 12 minutes; the script says so before it starts), never changes a link that works, and skips albums with no catalog id (manual albums).
 
-- The summary counts `Filled`, `Still none` (no cover on either service), `Failed` (a lookup failed, so the album is left alone: run it again to retry) and `Skipped`. It exits 0 even with failed albums.
-- Running it again only looks at albums still without a cover. Set `MUSICBRAINZ_USER_AGENT` in `.env` first; it is sent to the Cover Art Archive.
+- The first summary, `Missing covers`, counts `Filled`, `Still none` (no cover on either service), `Failed` (a lookup failed, so the album is left alone) and `Skipped`. The second, `Cover Art Archive links`, counts `Checked`, `Kept` (the link works), `Replaced`, `Still dead` (dead link and no Deezer match; the link stays), `Failed` and `Skipped` (no catalog id, or a link that is not the album's own). Run it again to retry failed albums. It exits 0 even with failed albums.
+- Running it again checks every Cover Art Archive link again, but albums already replaced have a Deezer cover and are not looked at. Set `MUSICBRAINZ_USER_AGENT` in `.env` first; it is sent to the Cover Art Archive. Details are in [the ALBUM-59 spec](docs/superpowers/specs/2026-11-22-album-59-dead-cover-links.md).
 
 ## Browser tests
 
