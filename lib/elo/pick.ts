@@ -6,6 +6,12 @@ export type PickMatchup = { albumAId: number; albumBId: number; result: EloResul
 /** An album with fewer counted matchups than this is new (being placed); with this many or more it is established. */
 export const PLACEMENT_MATCHUPS = 8;
 
+/** Placement by binary search needs at least this many established albums (the first album not counted). */
+export const MIN_ESTABLISHED_FOR_PLACEMENT = 8;
+
+/** An established album in any of this many latest placement matchups is passed over while another fits as well. */
+export const RECENT_MATCHUPS = 3;
+
 /** An unordered pair as a string, the same for (a, b) and (b, a). */
 export function pairKey(idA: number, idB: number): string {
   return idA < idB ? `${idA}-${idB}` : `${idB}-${idA}`;
@@ -68,7 +74,9 @@ export function placementSlot(input: {
 /**
  * Picks two different albums. The first album has the fewest matchups (random among ties,
  * skipping albums with no unplayed opponent). A new first album (fewer than `PLACEMENT_MATCHUPS` matchups) is
- * matched against established albums by binary search over their rating order (see `placementSlot`);
+ * matched against established albums by binary search over their rating order (see `placementSlot`), once there are
+ * `MIN_ESTABLISHED_FOR_PLACEMENT` of them, preferring ones not in the last `RECENT_MATCHUPS` placement matchups
+ * (a recent one inside the window still beats any outside it);
  * otherwise, or when no established album is left to try, its opponent is the closest-rated unplayed, unavoided one
  * (lower id on a tie). When no unplayed pair exists, falls back to the closest-rated opponent, played or not.
  * `matchups` are the ones the replay used. Returns undefined when there are fewer than two albums.
@@ -102,9 +110,24 @@ export function pickMatchup(input: {
     return ties[Math.min(Math.floor(input.random() * ties.length), ties.length - 1)];
   };
 
+  /** Established albums in the latest `RECENT_MATCHUPS` matchups that involve a new album. */
+  const recentEstablished = (): Set<number> => {
+    const isNewAlbum = (id: number) => (counts.get(id) ?? 0) < PLACEMENT_MATCHUPS;
+    const recent = new Set<number>();
+    let seen = 0;
+    for (let i = input.matchups.length - 1; i >= 0 && seen < RECENT_MATCHUPS; i--) {
+      const { albumAId, albumBId } = input.matchups[i];
+      if (!isNewAlbum(albumAId) && !isNewAlbum(albumBId)) continue;
+      seen++;
+      for (const id of [albumAId, albumBId]) if (!isNewAlbum(id)) recent.add(id);
+    }
+    return recent;
+  };
+
   /** The established opponent to try next: the middle of the slots still possible, else the nearest valid one. */
   const placementOpponent = (first: PickAlbum): PickAlbum | undefined => {
     const established = establishedByRating(albums, counts, first.id);
+    if (established.length < MIN_ESTABLISHED_FOR_PLACEMENT) return undefined;
     if (!established.some((other) => isUnplayed(first, other))) return undefined;
     const { lo, hi } = placementSlot({ albumId: first.id, albums, matchups: input.matchups });
     const mid = Math.floor((lo + hi - 1) / 2);
@@ -112,7 +135,12 @@ export function pickMatchup(input: {
     const inside = lo < hi ? range(lo, hi - 1) : [lo - 1, lo].filter((i) => i >= 0 && i < established.length);
     const byDistance = (indexes: number[]) => indexes.sort((x, y) => Math.abs(x - mid) - Math.abs(y - mid) || x - y);
     const outside = established.map((_, i) => i).filter((i) => !inside.includes(i));
-    const candidates = [...byDistance(inside), ...byDistance(outside)];
+    const recent = recentEstablished();
+    const split = (indexes: number[]) => {
+      const sorted = byDistance(indexes);
+      return [...sorted.filter((i) => !recent.has(established[i].id)), ...sorted.filter((i) => recent.has(established[i].id))];
+    };
+    const candidates = [...split(inside), ...split(outside)];
     const index = candidates.find((i) => isUnplayed(first, established[i]));
     return index === undefined ? undefined : established[index];
   };
