@@ -108,7 +108,12 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
 
 ## Environments and deploy
 
-- Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)). Deploy: none yet (#14).
+- Deploy ([ALBUM-14](https://github.com/dbeallor/album-ranker/issues/14)): two AWS environments, staging and production, each its own Terraform root (`infra/envs/staging`, `infra/envs/production`) with its own password and S3 database. Nothing deploys on merge; a human runs it. Full steps are in the README (Deploy to AWS).
+  - Build once: `npm ci && npm run build:lambda` (writes `dist/`).
+  - Staging: `terraform -chdir=infra/envs/staging init -backend-config=backend.hcl`, then `terraform -chdir=infra/envs/staging apply`. Outputs: `url`, `password` (`output -raw password`), `data_bucket`.
+  - Production: the same two commands in `infra/envs/production`, with the same `dist/`.
+  - Agents don't run `terraform apply` or `destroy` without the user's say-so (billable, and it touches their AWS account). `terraform fmt -check` and `terraform validate` are fine.
+- Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)).
   - Main preview: `npm run preview -- main` builds the root checkout and serves it on <http://localhost:4000>, using the root's `data/album-ranker.db`.
   - Ticket preview: `npm run preview -- <N>` serves that ticket's worktree on port `4000 + N` (ticket 20 is <http://localhost:4020>), using `data/preview.db` in the worktree. A branch with no ticket number needs `--port <p>`.
   - Previews bind to 127.0.0.1 only. A ticket preview needs a worktree, e.g. `git worktree add ../album-ranker-20 -b feat/album-20-short-title origin/main`.

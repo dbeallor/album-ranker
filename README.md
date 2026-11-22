@@ -5,10 +5,99 @@ Personal Favorite Album Ranker
 
 1. Install Node 24 or newer (`nvm use` reads `.nvmrc`).
 2. `npm install`
-3. Optional: `cp .env.example .env` to change `DATABASE_PATH` or `MUSICBRAINZ_USER_AGENT`.
+3. Optional: `cp .env.example .env` to change `DATABASE_PATH` or `MUSICBRAINZ_USER_AGENT`, or to set `APP_PASSWORD` (any text) so the local app asks for a password too. Leave it unset and nothing asks.
 4. `npm run db:migrate` creates the SQLite file and applies migrations. Optional: the app also migrates on first use.
 5. `npm run dev`
 6. Open <http://localhost:3000>.
+
+## Deploy to AWS
+
+Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront (HTTPS on a `*.cloudfront.net` address), with the database as one file in a versioned S3 bucket. Idle, both together cost about $0.10 a month.
+
+Two trade-offs of that choice. After a quiet spell the first request takes 1 to 3 seconds (a cold start). Only one request runs at a time, so a second one that lands mid-request gets a 429 and works on a reload.
+
+### What you need first
+
+- An AWS account, and the AWS CLI with a profile that can create these resources (`aws configure sso` or an access key). The credentials stay on your machine; nothing here stores them.
+- Terraform 1.10 or newer.
+- Node 24 and `npm ci`, as for the local app.
+
+Use the profile for every command below (`export AWS_PROFILE=<name>`, and `aws sso login` first if you use SSO).
+
+### Set up once
+
+1. Create the bucket that holds Terraform's state:
+   `terraform -chdir=infra/bootstrap init && terraform -chdir=infra/bootstrap apply`
+2. `terraform -chdir=infra/bootstrap output` prints `state_bucket` and `region`. In `infra/envs/staging` and `infra/envs/production`, copy `backend.hcl.example` to `backend.hcl` and put those two values in it. Then copy `terraform.tfvars.example` to `terraform.tfvars` and edit it: your MusicBrainz User-Agent, and optionally `budget_email` for an alert when the monthly bill passes $5. Keep `region` in `terraform.tfvars` equal to `region` in `backend.hcl`. Both files are gitignored, as is Terraform's state.
+
+The state holds the generated passwords, so keep the state bucket private (the bootstrap makes it so).
+
+### Deploy staging
+
+```
+npm ci && npm run build:lambda
+terraform -chdir=infra/envs/staging init -backend-config=backend.hcl
+terraform -chdir=infra/envs/staging apply
+```
+
+`build:lambda` writes `dist/` (the function and the build files). The first apply takes a few minutes while CloudFront comes up. Then:
+
+```
+terraform -chdir=infra/envs/staging output url
+terraform -chdir=infra/envs/staging output -raw password
+terraform -chdir=infra/envs/staging output data_bucket
+```
+
+Open the `url` and log in with the `password` (24 random characters). The cookie lasts 90 days. Ten wrong tries from one address lock it out for 15 minutes.
+
+- **If the first apply fails on concurrency:** a new AWS account can have a Lambda quota too low to reserve any. Set `reserved_concurrency = -1` in `terraform.tfvars` and apply again. The function can then run more than one copy, and the conditional write (`If-Match`) on the database file is the only thing that stops two copies saving over each other: the loser's request fails and nothing is overwritten.
+- **Each apply replaces the build files** in the assets bucket and removes the old ones. A page left open across a deploy may need a reload.
+
+### Promote to production
+
+Use the same `dist/`, so production gets exactly what you tried in staging:
+
+```
+terraform -chdir=infra/envs/production init -backend-config=backend.hcl
+terraform -chdir=infra/envs/production apply
+```
+
+Production has its own `url`, `password` and `data_bucket`. Staging data never reaches it.
+
+### New password
+
+`terraform -chdir=infra/envs/staging apply -replace=module.app.random_password.app` makes a new one (read it with `output -raw password`). Everyone is signed out, and the old password stops working. Do the same in `infra/envs/production` for production.
+
+### Back up, restore, undo a restore
+
+Set `BUCKET` to the environment's `data_bucket` (`BUCKET=$(terraform -chdir=infra/envs/production output -raw data_bucket)`). The database is the object `album-ranker.db`. S3 keeps every replaced version for 30 days, so there is always a recent copy.
+
+| What | Command |
+|---|---|
+| Back up | `aws s3 cp s3://$BUCKET/album-ranker.db ./production-backup.db` |
+| Restore | `aws s3 cp ./production-backup.db s3://$BUCKET/album-ranker.db` |
+| List versions | `aws s3api list-object-versions --bucket $BUCKET --prefix album-ranker.db --query 'Versions[].[VersionId,LastModified,Size,IsLatest]' --output table` |
+| Go back to a version | `aws s3api get-object --bucket $BUCKET --key album-ranker.db --version-id <id> ./old.db`, then restore `./old.db` as above |
+
+- **Restore takes effect on the next page load.** The app checks the object on every request, so there is nothing to restart. A file that isn't an album-ranker database gives an error page, and the stored object is left as it was.
+- **Undo a restore:** list the versions, pick the one from just before your restore, download it with `get-object` and copy it back.
+- **Move your local data up:** run `npm run db:backup` first (the live `data/album-ranker.db` can have recent answers in its `-wal` file), then upload the backup file with the restore command. Do the same after `npm run import` or `npm run backfill-covers`, which run on your machine only.
+- Backups are your personal data. Keep them out of git.
+
+### Tear down
+
+The data bucket refuses to be destroyed, so a stray `terraform destroy` can't delete your rankings. It fails at plan time. To tear an environment down on purpose:
+
+1. Back up the database (above).
+2. In `infra/modules/app/main.tf`, delete the `lifecycle { prevent_destroy = true }` block in `resource "aws_s3_bucket" "data"`.
+3. Empty the bucket, every version included:
+   ```
+   aws s3api delete-objects --bucket $BUCKET --delete "$(aws s3api list-object-versions --bucket $BUCKET --output json --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"
+   ```
+   (If it reports delete markers too, run it again with `DeleteMarkers` in place of `Versions`.)
+4. `terraform -chdir=infra/envs/<env> destroy`
+
+Put the lifecycle block back afterwards (`git checkout infra/modules/app/main.tf`). The state bucket from the bootstrap has the same protection; remove it the same way, after both environments are gone.
 
 ## Back up and restore your data
 
