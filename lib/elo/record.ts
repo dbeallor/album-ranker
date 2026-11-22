@@ -22,3 +22,8 @@ export function computeRecords(
   }
   return records;
 }
+
+/** "3-1-0": wins, losses, ties. */
+export function formatRecord({ wins, losses, ties }: Pick<AlbumRecord, "wins" | "losses" | "ties">): string {
+  return `${wins}-${losses}-${ties}`;
+}

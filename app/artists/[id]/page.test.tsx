@@ -43,7 +43,7 @@ describe("artist page", () => {
     expect(screen.getByText("Score 1500 from 3 albums")).toBeDefined();
     expect(screen.getAllByText("Rating 1500")).toHaveLength(3);
     expect(screen.queryByText("Not in library")).toBeNull();
-    expect(screen.getByRole("link", { name: "All artists" }).getAttribute("href")).toBe("/artists");
+    expect(screen.getByRole("link", { name: "All artists" }).getAttribute("href")).toBe("/analytics?view=artists");
   });
 
   it("an artist with no albums in the library shows the empty state", async () => {

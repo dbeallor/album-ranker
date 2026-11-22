@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // Routes that render with the empty e2e database. /artists/[id] needs data, so the screenshot review covers it.
-const ROUTES = ["/", "/search", "/artists", "/matchups", "/import"];
+const ROUTES = ["/", "/search", "/library", "/matchups", "/import"];
 const WIDTHS = [
   { name: "phone", width: 375, height: 800 },
   { name: "desktop", width: 1280, height: 800 },
@@ -16,7 +16,7 @@ test.describe("layout", () => {
 
         const nav = page.getByRole("navigation", { name: "Main" });
         await expect(nav).toBeVisible();
-        for (const link of ["Search", "Years", "Decades", "Artists", "Matchups", "Import"]) {
+        for (const link of ["Search", "Library", "Matchups", "Analytics", "Import"]) {
           await expect(nav.getByRole("link", { name: link })).toBeVisible();
         }
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

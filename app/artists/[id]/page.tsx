@@ -27,7 +27,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
             ? "No albums in the library"
             : `Score ${Math.round(artist.score)} from ${artist.ratedAlbumCount} ${artist.ratedAlbumCount === 1 ? "album" : "albums"}`
         }
-        actions={<ButtonLink href="/artists">All artists</ButtonLink>}
+        actions={<ButtonLink href="/analytics?view=artists">All artists</ButtonLink>}
       />
 
       {artist.albums.length === 0 ? (
