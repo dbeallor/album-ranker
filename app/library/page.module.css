@@ -4,7 +4,43 @@
   gap: var(--space-3);
 }
 
-/* Fields in the filter row: grow to share the row, wrap on a phone. */
+/* Sort by and Direction share a row, even at 375px. */
+.sortField {
+  flex: 1 1 8rem;
+}
+
+/* Fields inside Filters: grow to share the row, wrap on a phone. */
 .field {
   flex: 1 1 11rem;
+}
+
+.filters {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.filters summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.filterFields {
+  padding: var(--space-1) var(--space-3) var(--space-3);
+}
+
+.apply {
+  width: 100%;
+}
+
+@media (min-width: 40rem) {
+  .apply {
+    width: auto;
+    align-self: flex-start;
+  }
 }

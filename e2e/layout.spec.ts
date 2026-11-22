@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-// Routes that render with the empty e2e database. /artists/[id] needs data, so the screenshot review covers it.
-const ROUTES = ["/", "/search", "/library", "/matchups", "/import"];
+// Routes without an id in the path. /artists/[id] needs one, so the screenshot review covers it. The flow spec runs first, so the database may hold albums.
+const ROUTES = ["/", "/search", "/library", "/matchups", "/analytics", "/import"];
 const WIDTHS = [
   { name: "phone", width: 375, height: 800 },
   { name: "desktop", width: 1280, height: 800 },

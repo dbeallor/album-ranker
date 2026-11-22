@@ -22,8 +22,8 @@ export default defineConfig({
     },
     {
       // A production build, so the run is stable and checks what ships. Its own port and
-      // its own SQLite file under test-results/, never data/.
-      command: `npm run build && npx next start --hostname 127.0.0.1 --port ${APP_PORT}`,
+      // its own SQLite file under test-results/, never data/. The file is deleted first so every run starts empty.
+      command: `rm -rf test-results/db && npm run build && npx next start --hostname 127.0.0.1 --port ${APP_PORT}`,
       url: `http://127.0.0.1:${APP_PORT}`,
       reuseExistingServer: false,
       timeout: 180_000,

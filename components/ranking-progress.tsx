@@ -13,9 +13,7 @@ const count = (value: number) => value.toLocaleString("en-US");
 export function RankingProgress({ progress }: { progress: Measure | null }) {
   if (!progress) {
     return (
-      <EmptyState action={<ButtonLink href="/search">Search albums</ButtonLink>}>
-        Add at least two albums to your library to track ranking progress.
-      </EmptyState>
+      <EmptyState>Add at least two albums to your library to track ranking progress.</EmptyState>
     );
   }
 
