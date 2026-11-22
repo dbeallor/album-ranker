@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/db/test-db";
 import { createImportReviewItem } from "@/lib/db/import-review";
@@ -13,9 +13,27 @@ vi.mock("next/server", () => ({ connection: async () => {} }));
 
 import Home from "./page";
 
+type Db = ReturnType<typeof memoryDb>;
+
 async function renderHome() {
   render(await Home());
 }
+
+/** Adds `count` library albums, with a matchup for each pair of neighbours until `matchups` are recorded. */
+function seed(count: number, matchups = 0): number[] {
+  const db = state.db as Db;
+  const ids = Array.from({ length: count }, (_, i) => {
+    const album = createAlbum(db, { title: `Fake Album ${i}`, artist: { name: `Fake Artist ${i}` } });
+    addToLibrary(db, { albumId: album.id, year: 2000 + i });
+    return album.id;
+  });
+  for (let i = 0; i < matchups; i++) {
+    recordMatchup(db, { albumAId: ids[0], albumBId: ids[1], result: "a" });
+  }
+  return ids;
+}
+
+const section = (label: string) => screen.getByRole("region", { name: label });
 
 describe("home page", () => {
   afterEach(cleanup);
@@ -24,82 +42,125 @@ describe("home page", () => {
     state.db = memoryDb();
   });
 
-  it("shows the Album ranker heading and the search link", async () => {
+  it("opens with the headline and the four numbered steps", async () => {
+    seed(3);
     await renderHome();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Album ranker" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Search albums" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "Library" }).getAttribute("href")).toBe("/library");
-    expect(screen.getByRole("link", { name: "Analytics" }).getAttribute("href")).toBe("/analytics");
+    expect(screen.getByRole("heading", { level: 1, name: "Rank the albums you love." })).toBeDefined();
+    const steps = screen.getAllByRole("heading", { level: 2 }).filter((h) => /^\d\d \//.test(h.textContent ?? ""));
+    expect(steps.map((h) => h.textContent)).toEqual(["01 / Add albums", "02 / Library", "03 / Play", "04 / Rankings"]);
   });
 
-  it("describes each card with the same words as the nav", async () => {
+  it("searches the catalog with a GET form to /search", async () => {
     await renderHome();
 
-    const cards = [
-      ["Search albums", "Find an album in the catalog and add it to your library."],
-      ["Library", "Browse, sort and filter every album you have added."],
-      ["Matchups", "Pick the better of two albums to refine your ratings."],
-      ["Analytics", "See album and artist rankings by lifetime, era, decade and year."],
-    ];
-    for (const [name, description] of cards) {
-      expect(screen.getByRole("link", { name }).closest("li")!.textContent).toContain(description);
-    }
+    const box = within(section("Add albums")).getByRole("searchbox", { name: "Album or artist" });
+    expect(box.getAttribute("name")).toBe("q");
+    expect(box.closest("form")!.getAttribute("action")).toBe("/search");
+    expect(box.closest("form")!.getAttribute("method")).toBe("get");
   });
 
-  it.each<{ name: string; albums: number; matchups: number; text: string }>([
-    { name: "an empty library", albums: 0, matchups: 0, text: "Your library is empty. Search for an album to start." },
-    {
-      name: "one album, no matchups",
-      albums: 1,
-      matchups: 0,
-      text: "Build a library, play matchups, read the rankings. 1 album in your library · 0 matchups played",
-    },
-    {
-      name: "two albums, one matchup",
-      albums: 2,
-      matchups: 1,
-      text: "Build a library, play matchups, read the rankings. 2 albums in your library · 1 matchup played",
-    },
-    {
-      name: "many albums and matchups",
-      albums: 4,
-      matchups: 3,
-      text: "Build a library, play matchups, read the rankings. 4 albums in your library · 3 matchups played",
-    },
-  ])("shows the library facts for $name", async ({ albums, matchups, text }) => {
-    const db = state.db as ReturnType<typeof memoryDb>;
-    const ids = Array.from({ length: albums }, (_, i) => {
-      const album = createAlbum(db, { title: `Fake Album ${i}`, artist: { name: `Fake Artist ${i}` } });
-      addToLibrary(db, { albumId: album.id, year: 2000 + i });
-      return album.id;
+  it("links to the library from its own section, with the album count", async () => {
+    seed(3);
+    await renderHome();
+
+    const library = section("Library");
+    expect(within(library).getByText("3 albums")).toBeDefined();
+    expect(within(library).getByRole("link", { name: "View library" }).getAttribute("href")).toBe("/library");
+  });
+
+  describe("with an empty library", () => {
+    it("says so, sends the user to add albums, and leaves out the cover strip and the rankings", async () => {
+      await renderHome();
+
+      expect(screen.getByText("Your library is empty. Search for an album to start.")).toBeDefined();
+      expect(document.querySelector("ul[aria-hidden]")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Rankings" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "See the rankings" })).toBeNull();
+      const play = section("Play");
+      expect(within(play).getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
+      expect(within(play).getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
+      expect(within(play).queryByRole("link", { name: "Play matchups" })).toBeNull();
     });
-    for (let i = 0; i < matchups; i++) {
-      recordMatchup(db, { albumAId: ids[0], albumBId: ids[1], result: "a" });
-    }
-    await renderHome();
-
-    expect(screen.getByText(text)).toBeDefined();
   });
 
-  it("has no import review link while nothing is open", async () => {
-    await renderHome();
+  describe("with one album", () => {
+    it("shows the album, still asks for a second one before matchups, and ranks it first", async () => {
+      seed(1);
+      await renderHome();
 
-    expect(screen.queryByRole("link", { name: /Import review/ })).toBeNull();
+      expect(screen.getByText("1 album in your library · 0 matchups played")).toBeDefined();
+      expect(screen.getAllByRole("img", { name: /Fake Album 0/, hidden: true })).toHaveLength(2);
+      expect(within(section("Play")).getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Play matchups" })).toBeNull();
+      const top = within(section("Rankings")).getAllByRole("listitem");
+      expect(top).toHaveLength(1);
+      expect(top[0].textContent).toContain("Fake Album 0");
+    });
   });
 
-  it("links to the import review with the number of open items", async () => {
-    const db = state.db as ReturnType<typeof memoryDb>;
-    for (const title of ["Fake Album One", "Fake Album Two"]) {
-      createImportReviewItem(db, {
-        source: { title, artist: "Fake Artist A", year: 2001 },
-        sourcePlacement: "listed",
-        candidates: [],
-      });
-    }
-    await renderHome();
+  describe("with many albums", () => {
+    it.each<{ name: string; albums: number; matchups: number; text: string }>([
+      { name: "two albums, one matchup", albums: 2, matchups: 1, text: "2 albums in your library · 1 matchup played" },
+      { name: "four albums, three matchups", albums: 4, matchups: 3, text: "4 albums in your library · 3 matchups played" },
+    ])("shows the library facts for $name", async ({ albums, matchups, text }) => {
+      seed(albums, matchups);
+      await renderHome();
 
-    const link = screen.getByRole("link", { name: "Import review: 2 to check" });
-    expect(link.getAttribute("href")).toBe("/import");
+      expect(screen.getByText(text)).toBeDefined();
+    });
+
+    it("shows the progress with one play link, the cover strip, and the top five", async () => {
+      seed(12, 2);
+      await renderHome();
+
+      const play = section("Play");
+      expect(within(play).getByRole("heading", { name: "Ranking progress" })).toBeDefined();
+      expect(within(play).getAllByRole("link", { name: "Play matchups" })).toHaveLength(1);
+      expect(within(play).getByRole("link", { name: "Play matchups" }).getAttribute("href")).toBe("/matchups");
+
+      expect(document.querySelectorAll("ul[aria-hidden] > li")).toHaveLength(8);
+      const top = within(section("Rankings")).getAllByRole("listitem");
+      expect(top).toHaveLength(5);
+      expect(within(section("Rankings")).getByRole("link", { name: "See the rankings" }).getAttribute("href")).toBe("/analytics");
+    });
+
+    it("lists the top five in rating order, linking each artist", async () => {
+      const [first, second] = seed(3);
+      const db = state.db as Db;
+      recordMatchup(db, { albumAId: first, albumBId: second, result: "b" });
+      await renderHome();
+
+      const top = within(section("Rankings")).getAllByRole("listitem");
+      expect(top.map((row) => within(row).getByRole("strong", { hidden: true }).textContent)).toEqual([
+        "Fake Album 1",
+        "Fake Album 2",
+        "Fake Album 0",
+      ]);
+      expect(within(top[0]).getByRole("link", { name: "Fake Artist 1" }).getAttribute("href")).toMatch(/^\/artists\/\d+$/);
+    });
+  });
+
+  describe("import review", () => {
+    it("has no import review link while nothing is open", async () => {
+      await renderHome();
+
+      expect(screen.queryByRole("link", { name: /Import review/ })).toBeNull();
+    });
+
+    it("links to the import review with the number of open items", async () => {
+      const db = state.db as Db;
+      for (const title of ["Fake Album One", "Fake Album Two"]) {
+        createImportReviewItem(db, {
+          source: { title, artist: "Fake Artist A", year: 2001 },
+          sourcePlacement: "listed",
+          candidates: [],
+        });
+      }
+      await renderHome();
+
+      const link = screen.getByRole("link", { name: "Import review: 2 to check" });
+      expect(link.getAttribute("href")).toBe("/import");
+    });
   });
 });

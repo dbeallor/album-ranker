@@ -174,11 +174,11 @@ describe("library page", () => {
     expect(within(text.closest("div")!).getByRole("link", { name: action }).getAttribute("href")).toBe(href);
   });
 
-  it("links the header to adding albums and to matchups", async () => {
+  it("links the header to adding albums and to playing matchups", async () => {
     await renderPage();
 
     expect(screen.getByRole("link", { name: "Add albums" }).getAttribute("href")).toBe("/search");
-    expect(screen.getByRole("link", { name: "Matchups" }).getAttribute("href")).toBe("/matchups");
+    expect(screen.getByRole("link", { name: "Play" }).getAttribute("href")).toBe("/matchups");
   });
 
   it.each(["nope", "decade-1975", "year-1800", "era-90s", ["lifetime", "lifetime"], ""])("calls notFound for scope %j", async (scope) => {

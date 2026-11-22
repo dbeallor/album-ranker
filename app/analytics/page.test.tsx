@@ -52,7 +52,7 @@ describe("analytics page", () => {
   it("defaults to the lifetime album ranking with rank, cover, title, artist link, year, rating, played and record", async () => {
     await renderPage();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "Rankings" })).toBeDefined();
     expect(screen.getByText("Album ranking · Lifetime")).toBeDefined();
     expect(rowTexts()).toEqual([
       "1|♪|Alpha|Aardvark|1975|1516|1|1-0-0",

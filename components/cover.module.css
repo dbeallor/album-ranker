@@ -20,3 +20,8 @@
   font-size: calc(var(--cover-size) * 0.38);
   line-height: 1;
 }
+
+/* Fills the container's width instead of the --cover-size set from the `size` prop. */
+.fill {
+  width: 100%;
+}

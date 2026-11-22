@@ -22,6 +22,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
   return (
     <>
       <PageHeader
+        label="Artist"
         title={artist.name}
         description={
           artist.score === null

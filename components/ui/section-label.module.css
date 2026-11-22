@@ -1,0 +1,14 @@
+.label {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-stretch: 100%;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-label);
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.number {
+  color: var(--color-accent);
+}

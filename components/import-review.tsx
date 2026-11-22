@@ -179,7 +179,7 @@ export function ImportReview({
 }) {
   return (
     <>
-      <PageHeader title="Import review" />
+      <PageHeader label="Import" title="Import review" />
       <Stack gap={4}>
         <Message tone="info">
           {counts.open} open, {counts.resolved} resolved, {counts.skipped} skipped

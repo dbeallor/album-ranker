@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 export default function NotFound() {
   return (
     <>
-      <PageHeader title="Page not found" />
+      <PageHeader label="404 / Not found" title="Page not found" />
       <EmptyState
         action={
           <ButtonLink href="/" variant="primary">

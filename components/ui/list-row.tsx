@@ -18,14 +18,16 @@ type ListRowProps = Omit<ComponentPropsWithoutRef<"div">, "title"> & {
   children?: ReactNode;
   /** Buttons or links. They sit beside the text, or under it on narrow screens. */
   actions?: ReactNode;
+  /** Extra class for the cover's wrapper, for example to set its width. */
+  coverClassName?: string;
 };
 
 /** The album row: cover, then title, artist and meta, then an actions area. */
-export function ListRow({ as = "div", cover, title, subtitle, meta, children, actions, className, ...rest }: ListRowProps) {
+export function ListRow({ as = "div", cover, title, subtitle, meta, children, actions, coverClassName, className, ...rest }: ListRowProps) {
   return createElement(
     as,
     { className: cx(styles.row, className), ...rest },
-    cover ? <div className={styles.cover}>{cover}</div> : null,
+    cover ? <div className={cx(styles.cover, coverClassName)}>{cover}</div> : null,
     <div className={styles.body}>
       <strong className={styles.title}>{title}</strong>
       {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
