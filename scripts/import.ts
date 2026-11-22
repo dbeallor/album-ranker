@@ -16,7 +16,7 @@ if (!path || process.argv.length > 3) {
   process.exit(1);
 }
 
-const { databasePath, musicbrainzUserAgent, musicbrainzUrl } = getConfig();
+const { databasePath, musicbrainzUserAgent, musicbrainzUrl, coverArtArchiveUrl, deezerUrl } = getConfig();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const client = createMusicBrainzClient({
   fetch: (input, init) => fetch(input, init),
@@ -29,6 +29,8 @@ const client = createMusicBrainzClient({
 const resolveCover = createResolveCover({
   fetch: (input, init) => fetch(input, init),
   userAgent: () => musicbrainzUserAgent,
+  caaUrl: () => coverArtArchiveUrl,
+  deezerUrl: () => deezerUrl,
   log: (message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])),
 });
 

@@ -51,7 +51,7 @@ export type CoverArtDeps = {
   fetch: typeof fetch;
   /** Sent to the Cover Art Archive, as MusicBrainz asks. */
   userAgent?: () => string;
-  /** Base URL of the Cover Art Archive. Defaults to the real one; browser tests point it at a stub. */
+  /** Base URL for the Cover Art Archive existence check only (tests and stand-ins). The stored URL is always the real one. */
   caaUrl?: () => string;
   /** Base URL of the Deezer API. Defaults to the real one; browser tests point it at a stub. */
   deezerUrl?: () => string;
@@ -79,7 +79,7 @@ export function createResolveCover(deps: CoverArtDeps) {
 
     const params = new URLSearchParams({ q: deezerQuery(title, artist), limit: String(DEEZER_RESULT_LIMIT) });
     try {
-      const response = await deps.fetch(`${(deps.deezerUrl ?? (() => DEFAULT_DEEZER_URL))()}/search/album?${params}`, {
+      const response = await deps.fetch(`${deps.deezerUrl?.() ?? DEFAULT_DEEZER_URL}/search/album?${params}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -112,9 +112,12 @@ export function createResolveCover(deps: CoverArtDeps) {
 
   return async function resolveCover({ catalogId, title, artist }: CoverQuery): Promise<string | null> {
     if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return null;
-    const caaUrl = `${(deps.caaUrl ?? (() => DEFAULT_CAA_URL))()}/release-group/${catalogId.toLowerCase()}/front-250`;
+    const id = catalogId.toLowerCase();
+    // Only the HEAD check uses the configurable base; what gets stored is always the canonical URL.
+    const checkUrl = `${deps.caaUrl?.() ?? DEFAULT_CAA_URL}/release-group/${id}/front-250`;
+    const caaUrl = `${DEFAULT_CAA_URL}/release-group/${id}/front-250`;
     try {
-      const response = await deps.fetch(caaUrl, {
+      const response = await deps.fetch(checkUrl, {
         method: "HEAD",
         redirect: "manual",
         headers: deps.userAgent ? { "User-Agent": deps.userAgent() } : undefined,

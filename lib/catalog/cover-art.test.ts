@@ -18,18 +18,24 @@ function deezerAlbum(title: string, artist: string, cover: unknown = DEEZER_COVE
 }
 
 /** A fake fetch: `caa` answers the Cover Art Archive HEAD, `deezer` answers the Deezer search. */
-function setup(caa: Reply | (() => Reply), deezer: Reply | (() => Reply) = () => json({ data: [] })) {
+function setup(
+  caa: Reply | (() => Reply),
+  deezer: Reply | (() => Reply) = () => json({ data: [] }),
+  bases: { caaUrl?: () => string; deezerUrl?: () => string } = {},
+) {
+  const caaBase = bases.caaUrl?.() ?? "https://coverartarchive.org";
+  const deezerBase = bases.deezerUrl?.() ?? "https://api.deezer.com";
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input);
-    const reply = url.startsWith("https://coverartarchive.org/") ? caa : deezer;
+    const reply = url.startsWith(`${caaBase}/`) ? caa : deezer;
     const result = typeof reply === "function" ? reply() : reply;
     if (result instanceof Error) throw result;
     return result;
   });
   const log = vi.fn();
-  const resolveCover = createResolveCover({ fetch: fetchMock, userAgent: () => "album-ranker-test/1", log });
+  const resolveCover = createResolveCover({ fetch: fetchMock, userAgent: () => "album-ranker-test/1", log, ...bases });
   const calls = (host: string) => fetchMock.mock.calls.filter(([input]) => String(input).startsWith(host));
-  return { resolveCover, fetchMock, log, caaCalls: () => calls("https://coverartarchive.org/"), deezerCalls: () => calls("https://api.deezer.com/") };
+  return { resolveCover, fetchMock, log, caaCalls: () => calls(`${caaBase}/`), deezerCalls: () => calls(`${deezerBase}/`) };
 }
 
 const noCover = () => new Response(null, { status: 404 });
@@ -67,6 +73,29 @@ describe("the Cover Art Archive check", () => {
     expect(await resolveCover(ALBUM)).toBe(CAA);
     expect(deezerCalls()).toHaveLength(0);
     expect(log).toHaveBeenCalled();
+  });
+});
+
+describe("a configured lookup base", () => {
+  const STUB = "http://127.0.0.1:1";
+
+  it.each([
+    { name: "a 200", reply: new Response(null, { status: 200 }) },
+    { name: "a network error", reply: new TypeError("fetch failed") },
+  ])("checks the base but returns the canonical CAA URL on $name", async ({ reply }) => {
+    const { resolveCover, caaCalls } = setup(reply, undefined, { caaUrl: () => STUB });
+
+    expect(await resolveCover(ALBUM)).toBe(CAA);
+    expect(caaCalls().map(([input]) => String(input))).toEqual([`${STUB}/release-group/${CATALOG_ID}/front-250`]);
+  });
+
+  it("sends the Deezer search to the configured base", async () => {
+    const { resolveCover, deezerCalls } = setup(noCover, json({ data: [deezerAlbum("Kind of Blue", "Miles Davis")] }), {
+      deezerUrl: () => STUB,
+    });
+
+    expect(await resolveCover(ALBUM)).toBe(DEEZER_COVER);
+    expect(String(deezerCalls()[0][0]).startsWith(`${STUB}/search/album?`)).toBe(true);
   });
 });
 
