@@ -1,6 +1,7 @@
 # Validate add and import form fields the same way, before any lookup
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #74, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-67](https://github.com/dbeallor/album-ranker/issues/67)
 **Follows:** [ALBUM-64 security sweep report](2026-11-22-album-64-security-sweep-report.md), findings S3 and S9
