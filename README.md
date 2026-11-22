@@ -19,7 +19,7 @@ Backups go to `~/.album-ranker/backups/`, outside every checkout, so they surviv
 | Command | What it does |
 |---|---|
 | `npm run db:backup` | Backs up the database now. Safe while the app runs |
-| `npm run db:backup -- list` | Lists the backups, newest first, with size and album, year entry and matchup counts |
+| `npm run db:backup -- list` | Lists the backups, newest first, with size and album, library album and matchup counts |
 | `npm run db:restore -- latest` | Restores the newest backup |
 | `npm run db:restore -- <file>` | Restores a backup, given as a path or as a file name in this database's backup folder |
 
@@ -71,29 +71,23 @@ Open <http://localhost:3000/search> and type an album or artist. Results come fr
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
-## Year pages
+## Library
 
-Open <http://localhost:3000/years> for the years that have albums, or type any year (1900 to 2100) into "Go to year". Each year page (`/years/1987`) has a top 10 with ten numbered slots, honorable mentions, and a list of albums heard that year but not placed. Drag a cover to reorder or move it between areas (mouse, touch with a press and hold, or keyboard: Space to pick up, arrow keys, Space to drop), or use the buttons on each card: Move up, Move down, Move to, Remove. Every change saves at once. Ranked albums and honorable mentions show their current Elo rating.
-
-Add albums from catalog search or by hand ("Can't find it? Add it by hand"). An album that is already on another year asks before moving. Remove only takes the album off the year; the album and its matchups stay. Details are in [the ALBUM-6 spec](docs/superpowers/specs/2026-11-21-album-6-year-ranking-screen.md).
+Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, win rate or date added, in either direction. Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md).
 
 ## Matchups
 
 Open <http://localhost:3000/matchups> to answer "which of these two do you like more?" for two albums from different years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
 
-Ratings are never stored. Every request replays the year placements (ranked over lower ranked and over honorable mentions, year by year) and then your matchup answers, oldest first, as Elo with K = 32 from 1500. Only ranked and honorable mention albums are rated and served. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md).
+Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 
-## Artists
+## Analytics
 
-Open <http://localhost:3000/artists> to see artists ranked by score, overall or one decade at a time (1950s to 2020s). Open an artist to see their placed albums with year, placement and rating. Scores come from the replayed ratings on every request. Details are in [the ALBUM-8 spec](docs/superpowers/specs/2026-11-21-album-8-artist-views.md).
-
-## Decade lists
-
-Open <http://localhost:3000/decades> to pick a decade, then <http://localhost:3000/decades/1990> (for example) for its top 25. A decade with no list shows a suggestion built from your ratings; press Accept suggestion to save it, then reorder by drag and drop (or Move up and Move down), remove albums, or add ranked and honorable mention albums from the panel under the list. Every change saves at once, and the server refuses a 26th album. Details are in [the ALBUM-9 spec](docs/superpowers/specs/2026-11-21-album-9-decade-top-25.md).
+Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library.
 
 ## Import the spreadsheet
 
-`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then writes year entries and the decade lists. Rows it can't match with confidence go to the review page.
+`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then adds the albums to the library with the year from the sheet. Rows it can't match with confidence go to the review page.
 
 - It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
 - It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
@@ -102,11 +96,10 @@ Open <http://localhost:3000/decades> to pick a decade, then <http://localhost:30
 
 Reading the summary the script prints at the end:
 
-- `Imported` rows were matched automatically. `Sent to review` splits into no match, ambiguous, duplicate album match and rank taken; the rows themselves are on `/import`.
-- `Merged duplicates`, `Conflicting placement` (a rank and an honorable mention on one row; imported as an honorable mention), `Decade rank dropped` (a decade rank on a listed album, or one that is not a whole number from 1 to 25; the row is still imported) and `Decade list full` name the rows that need a look.
+- `Imported` rows were matched automatically. `Sent to review` splits into no match, ambiguous and duplicate album match; the rows themselves are on `/import`.
+- `Merged duplicates` and `Conflicting placement` (a rank and an honorable mention on one row) name the rows that need a look. Ranks, honorable mentions and decade ranks are read from the sheet but no longer used.
 - `Invalid, skipped` rows are left out, each with its reason; fix the sheet and run again.
 - `Not reached` rows hit a MusicBrainz error; run the command again to retry them. Ten failures in a row stop the run.
-- `Decade lists` shows how many entries each decade list now has. The summary describes this run only.
 
 ## Browser tests
 
