@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -45,7 +45,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
   const { data, libraryAlbums } = loadAnalytics(getDb(), view, scope);
   const ranked = view === "albums" || view === "artists";
   const choices = scopeChoices(libraryAlbums, scope);
-  const emptyMessage = ranked && scope.kind !== "lifetime" ? `No albums in ${scopeLabel(scope)} yet.` : "No albums in the library yet.";
+  const scopeEmpty = ranked && scope.kind !== "lifetime";
+  const emptyMessage = scopeEmpty ? `No albums in ${scopeLabel(scope)} yet.` : "No albums in the library yet.";
+  const emptyAction = scopeEmpty ? (
+    <ButtonLink href={href(view)}>Show lifetime</ButtonLink>
+  ) : (
+    <ButtonLink href="/search">Search albums</ButtonLink>
+  );
 
   return (
     <>
@@ -54,17 +60,21 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         description={ranked ? `${view === "albums" ? "Album" : "Artist"} ranking · ${scopeLabel(scope)}` : undefined}
       />
       <Stack gap={5}>
-        <Tabs
-          aria-label="Analytics view"
-          items={ANALYTICS_VIEWS.map((option) => ({
-            href: option.value === "albums" || option.value === "artists" ? href(option.value, ranked ? scope : LIFETIME) : href(option.value),
-            label: option.label,
-            current: option.value === view,
-          }))}
-        />
+        <Stack gap={2}>
+          <p className={styles.label}>Show</p>
+          <Tabs
+            aria-label="Analytics view"
+            items={ANALYTICS_VIEWS.map((option) => ({
+              href: option.value === "albums" || option.value === "artists" ? href(option.value, ranked ? scope : LIFETIME) : href(option.value),
+              label: option.label,
+              current: option.value === view,
+            }))}
+          />
+        </Stack>
 
         {ranked ? (
           <Stack gap={3}>
+            <p className={styles.label}>Period</p>
             <Tabs
               aria-label="Scope"
               items={[LIFETIME, ...ERAS.map((era): Scope => ({ kind: "era", era: era.key }))].map((choice) => ({
@@ -81,7 +91,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         ) : null}
 
         {data.rows.length === 0 ? (
-          <EmptyState>{emptyMessage}</EmptyState>
+          <EmptyState action={emptyAction}>{emptyMessage}</EmptyState>
         ) : data.view === "albums" ? (
           <Table label={`Album ranking, ${scopeLabel(scope)}`}>
             <thead>

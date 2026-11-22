@@ -67,13 +67,13 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 
 ## Search albums
 
-Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead.
+Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups.
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
 ## Library
 
-Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title (within one artist, by year, then title). Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Each card has a Remove link that opens a confirmation page; removing deletes the album and all of its matchups, and can't be undone. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md) and [the ALBUM-35 spec](docs/superpowers/specs/2026-11-21-album-35-add-albums-library.md).
+Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title (within one artist, by year, then title). Sorting by year, decade, era or artist puts a heading above each group. Sort by and Direction are always shown. A Filters section holds the search text, the scope (lifetime, an era, a decade or a year) and played or unplayed; it opens by itself when one of them is set. The header links to Add albums and Matchups, and an empty library or a filter with no match offers Search albums or Clear filters. The sort and filters are in the URL, so a view can be bookmarked. Each card has a Remove link that opens a confirmation page; removing deletes the album and all of its matchups, and can't be undone. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md) and [the ALBUM-35 spec](docs/superpowers/specs/2026-11-21-album-35-add-albums-library.md).
 
 ## Matchups
 
@@ -85,7 +85,7 @@ A new album (fewer than 8 matchups) is first matched against established albums,
 
 ## Analytics
 
-Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library.
+Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library. The view tabs are labeled "Show" (Albums, Artists, Years, Decades, Eras) and the scope tabs and pickers "Period"; a period with no albums offers Show lifetime. The home page shows how many albums and matchups you have and links here.
 
 ## Import the spreadsheet
 
