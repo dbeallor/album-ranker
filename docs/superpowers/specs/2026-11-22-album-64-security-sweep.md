@@ -1,7 +1,7 @@
 # Security sweep of the whole app, with follow-up tickets
 
 **Status:** Shipped
-**Shipped:** in PR #71, as specified
+**Shipped:** in PR #71, with differences: [as-built](../as-built/2026-11-22-album-64-security-sweep.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-64](https://github.com/dbeallor/album-ranker/issues/64)
 **Related:** [ALBUM-14 deploy behind a password gate](https://github.com/dbeallor/album-ranker/issues/14), epic [#11](https://github.com/dbeallor/album-ranker/issues/11)
