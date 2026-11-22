@@ -1,6 +1,7 @@
 # Backfill covers for library albums saved without one
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #57, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-55](https://github.com/dbeallor/album-ranker/issues/55)
 **Follows:** [ALBUM-48 album art fallback](2026-11-22-album-48-album-art-fallback.md)
