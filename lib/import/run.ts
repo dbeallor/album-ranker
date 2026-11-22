@@ -1,9 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { CoverQuery } from "../catalog/cover-art.ts";
 import { CatalogError } from "../catalog/musicbrainz.ts";
+import { findAlbumByCatalogId } from "../db/albums.ts";
 import { findImportReviewItem, listImportReviewItems } from "../db/import-review.ts";
 import { findLibraryEntryBySource } from "../db/library.ts";
 import type { ReviewReason } from "../db/types.ts";
-import { matchRow } from "./match.ts";
+import { matchRow, type MatchOutcome } from "./match.ts";
 import type { InvalidRow, MergedRow, PreparedRows } from "./rows.ts";
 import type { CatalogSearch, ImportRow } from "./types.ts";
 import { writeRow, type RowResult } from "./write-row.ts";
@@ -16,6 +18,11 @@ export const PROGRESS_EVERY = 25;
 export type RunDeps = {
   search: CatalogSearch;
   sleep: (ms: number) => Promise<void>;
+  /**
+   * Looks up the cover to store for an accepted row whose album isn't stored yet (null: store none). When
+   * omitted, the catalog's own cover URL is kept.
+   */
+  resolveCover?: (query: CoverQuery) => Promise<string | null>;
   /** Called after every `PROGRESS_EVERY` rows. */
   onProgress?: (done: number, total: number) => void;
   /** Called for each catalog failure that is retried or given up on. */
@@ -51,6 +58,15 @@ async function searchWithRetries(row: ImportRow, deps: RunDeps) {
   }
 }
 
+/** Swaps an accepted album's catalog cover for the resolved one, unless there is no resolver or the album is stored (it keeps its cover). */
+async function withCover(db: DatabaseSync, outcome: MatchOutcome, deps: RunDeps): Promise<MatchOutcome> {
+  if (outcome.kind !== "accepted" || !deps.resolveCover) return outcome;
+  const { album } = outcome;
+  if (findAlbumByCatalogId(db, album.catalogId)) return outcome;
+  const coverUrl = await deps.resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist });
+  return { kind: "accepted", album: { ...album, coverUrl } };
+}
+
 /** Imports the prepared rows one at a time, each in its own transaction, and returns what happened. */
 export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: RunDeps): Promise<ImportSummary> {
   const summary: ImportSummary = {
@@ -84,7 +100,7 @@ export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: 
         summary.notReached++;
       } else {
         failuresInARow = 0;
-        record(summary, row, writeRow(db, row, searched.outcome));
+        record(summary, row, writeRow(db, row, await withCover(db, searched.outcome, deps)));
       }
     }
 

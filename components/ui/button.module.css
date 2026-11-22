@@ -6,10 +6,10 @@
   min-width: var(--control-height);
   min-height: var(--control-height);
   padding: 0 var(--space-4);
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius-md);
   font-size: var(--text-base);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   line-height: 1.2;
   text-align: center;
   text-decoration: none;
@@ -17,7 +17,7 @@
   transition:
     background-color var(--duration) ease,
     border-color var(--duration) ease,
-    box-shadow var(--duration) ease;
+    color var(--duration) ease;
 }
 
 .primary {
@@ -26,8 +26,8 @@
 }
 
 .secondary {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface);
+  border-color: var(--color-text);
+  background: transparent;
   color: var(--color-text);
 }
 
@@ -52,19 +52,20 @@
     color: var(--color-accent-text);
   }
 
-  .secondary:hover:not(:disabled, [aria-disabled="true"]),
+  .secondary:hover:not(:disabled, [aria-disabled="true"]) {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
   .ghost:hover:not(:disabled, [aria-disabled="true"]) {
     background: var(--color-surface-sunken);
     color: var(--color-text);
   }
 
-  .secondary:hover:not(:disabled, [aria-disabled="true"]) {
-    box-shadow: var(--shadow-sm);
-  }
-
   .danger:hover:not(:disabled, [aria-disabled="true"]) {
-    box-shadow: var(--shadow-md);
-    color: var(--color-danger-text);
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 }
 

@@ -29,6 +29,8 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         MUSICBRAINZ_URL: `http://127.0.0.1:${STUB_PORT}`,
+        COVER_ART_ARCHIVE_URL: `http://127.0.0.1:${STUB_PORT}`,
+        DEEZER_URL: `http://127.0.0.1:${STUB_PORT}`,
         DATABASE_PATH: "test-results/db/e2e.db",
         BACKUP_DIR: "test-results/db/backups",
       },

@@ -109,7 +109,6 @@ function HiddenFields({ item, candidate }: { item: ImportReviewItem; candidate: 
       <input type="hidden" name="artist" value={candidate.artist} />
       <input type="hidden" name="artistId" value={candidate.artistId ?? ""} />
       <input type="hidden" name="releaseYear" value={candidate.releaseYear ?? ""} />
-      <input type="hidden" name="coverUrl" value={candidate.coverUrl ?? ""} />
     </>
   );
 }

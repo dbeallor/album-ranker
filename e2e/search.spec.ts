@@ -1,11 +1,12 @@
 import { expect, test } from "./fixtures";
+import { goViaMenu } from "./menu";
 
 const QUERY = "getz gilberto";
 
 test.describe("search page", () => {
 test("search for an album", async ({ page, recorded }) => {
   await page.goto("/");
-  await page.getByRole("link", { name: "Search albums" }).click();
+  await goViaMenu(page, "Add albums");
   await expect(page).toHaveURL(/\/search$/);
 
   await page.getByRole("searchbox", { name: "Album or artist" }).click();

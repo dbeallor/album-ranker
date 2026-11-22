@@ -1,90 +1,164 @@
 .header {
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg);
+  border-bottom: var(--rule);
 }
 
-/* Sticky only where the header is one row; on phones the wrapped nav would eat the screen. */
-@media (min-width: 640px) {
-  .header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
+/* Keep a focused control from ending up under the sticky header. */
+:global(html) {
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
 
-  /* Keep a focused control from ending up under the sticky header. */
-  :global(html) {
-    scroll-padding-top: calc(var(--header-height) + var(--space-4));
-  }
+/* The page behind the open menu does not scroll. */
+:global(html:has(dialog[open])) {
+  overflow: hidden;
 }
 
 .inner {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
   max-width: var(--content-width);
   min-height: var(--header-height);
   margin: 0 auto;
-  padding: var(--space-1) var(--gutter);
-}
-
-@media (min-width: 640px) {
-  .inner {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-5);
-  }
+  padding: 0 var(--gutter);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
   min-height: var(--control-height);
   color: var(--color-text);
+  font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
+  font-stretch: var(--stretch-display);
+  font-weight: var(--weight-display);
+  letter-spacing: -0.02em;
   text-decoration: none;
+}
+
+.toggle {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color var(--duration) ease,
+    color var(--duration) ease;
+}
+
+@media (hover: hover) {
+  .toggle:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+}
+
+/* The overlay menu: fills the screen, fades in and slides up a little. */
+.dialog {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  overflow-y: auto;
+}
+
+.dialog::backdrop {
+  background: var(--color-backdrop);
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: menu-in var(--duration-slow) ease;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-4));
+  }
+}
+
+.dialogBar {
+  flex: none;
+  width: 100%;
+  border-bottom: var(--rule);
+}
+
+.nav {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--space-6) var(--gutter) var(--space-7);
 }
 
 .list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-1);
-  margin-inline: calc(var(--space-2) * -1);
+  flex-direction: column;
+}
+
+.list li + li {
+  border-top: var(--rule);
 }
 
 .link {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--control-height);
-  min-height: var(--control-height);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  font-weight: var(--weight-medium);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-stretch: var(--stretch-display);
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
   text-decoration: none;
-  transition: color var(--duration) ease;
+  transition:
+    color var(--duration) ease,
+    transform var(--duration-slow) ease;
+}
+
+.number {
+  flex: none;
+  min-width: 2.2ch;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-stretch: 100%;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-label);
 }
 
 .link[aria-current="page"] {
-  color: var(--color-text);
+  color: var(--color-accent);
 }
 
-.link[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  right: var(--space-3);
-  bottom: var(--space-1);
-  left: var(--space-3);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--color-accent);
+.link[aria-current="page"] .number {
+  color: var(--color-accent);
 }
 
 @media (hover: hover) {
   .link:hover {
-    color: var(--color-text);
+    color: var(--color-accent);
+    transform: translateX(var(--space-2));
   }
 }

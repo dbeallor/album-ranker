@@ -19,7 +19,7 @@
 }
 
 .title {
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   overflow-wrap: anywhere;
 }
 

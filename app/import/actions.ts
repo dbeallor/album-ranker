@@ -2,6 +2,8 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { resolveCover } from "@/lib/catalog/server-cover";
+import { findAlbumByCatalogId } from "@/lib/db/albums";
 import { getImportReviewItem, listImportReviewItems } from "@/lib/db/import-review";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
@@ -52,8 +54,15 @@ function candidateFrom(formData: FormData): CatalogCandidate | null {
     artist,
     artistId: field(formData, "artistId") || null,
     releaseYear: whole(field(formData, "releaseYear")),
-    coverUrl: field(formData, "coverUrl") || null,
+    // Not read from the form: the server picks the cover (see `withCover`).
+    coverUrl: null,
   };
+}
+
+/** Fills in the album's cover, unless the album is stored already (it keeps its own). */
+async function withCover(album: CatalogCandidate): Promise<CatalogCandidate> {
+  if (findAlbumByCatalogId(getDb(), album.catalogId.toLowerCase())) return album;
+  return { ...album, coverUrl: await resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist }) };
 }
 
 function resolve(itemId: number, choice: ResolveChoice): never {
@@ -70,7 +79,7 @@ export async function chooseAlbumAction(formData: FormData): Promise<void> {
   if (itemId === null) return fail(null, "That review item could not be found.");
   const album = candidateFrom(formData);
   if (!album) return fail(itemId, "That album is missing its catalog details.");
-  return resolve(itemId, { kind: "catalog", album, moveHere: field(formData, "moveHere") === "1" });
+  return resolve(itemId, { kind: "catalog", album: await withCover(album), moveHere: field(formData, "moveHere") === "1" });
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {

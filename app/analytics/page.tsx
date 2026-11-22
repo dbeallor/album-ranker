@@ -7,6 +7,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionLabel } from "@/components/ui/section-label";
 import { Select } from "@/components/ui/select";
 import { Stack } from "@/components/ui/stack";
 import { Table } from "@/components/ui/table";
@@ -57,13 +58,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
   return (
     <>
       <PageHeader
-        title="Analytics"
+        label="04 / Rankings"
+        title="Rankings"
         description={ranked ? `${view === "albums" ? "Album" : "Artist"} ranking · ${scopeLabel(scope)}` : undefined}
       />
       <Stack gap={5}>
         <RankingProgress progress={progress} />
         <Stack gap={2}>
-          <p className={styles.label}>Show</p>
+          <SectionLabel>Show</SectionLabel>
           <Tabs
             aria-label="Analytics view"
             items={ANALYTICS_VIEWS.map((option) => ({
@@ -76,7 +78,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
 
         {ranked ? (
           <Stack gap={3}>
-            <p className={styles.label}>Period</p>
+            <SectionLabel>Period</SectionLabel>
             <Tabs
               aria-label="Scope"
               items={[LIFETIME, ...ERAS.map((era): Scope => ({ kind: "era", era: era.key }))].map((choice) => ({
@@ -111,7 +113,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
             <tbody>
               {data.rows.map(({ rank, album }) => (
                 <tr key={album.albumId}>
-                  <td data-numeric>{rank}</td>
+                  <td data-numeric className={styles.rank}>{rank}</td>
                   <td>
                     <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={40} />
                   </td>
@@ -141,7 +143,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.artistId}>
-                  <td data-numeric>{row.rank}</td>
+                  <td data-numeric className={styles.rank}>{row.rank}</td>
                   <th scope="row">
                     <Link href={`/artists/${row.artistId}`}>{row.artistName}</Link>
                   </th>

@@ -7,12 +7,15 @@ const NO_MATCH_CANDIDATES = 5;
 /** A close match is only accepted when its year is this near the sheet's. */
 const ACCEPT_YEAR_FIT = 1;
 
+/** A catalog album about to be stored: the cover may have been looked up again, and may be missing. */
+export type MatchedAlbum = Omit<CatalogAlbum, "coverUrl"> & { coverUrl: string | null };
+
 export type MatchOutcome =
-  | { kind: "accepted"; album: CatalogAlbum }
+  | { kind: "accepted"; album: MatchedAlbum }
   | { kind: "no_match"; candidates: CatalogCandidate[] }
   | { kind: "ambiguous"; candidates: CatalogCandidate[] };
 
-export function toCandidate(album: CatalogAlbum): CatalogCandidate {
+export function toCandidate(album: MatchedAlbum): CatalogCandidate {
   return {
     catalogId: album.catalogId,
     title: album.title,

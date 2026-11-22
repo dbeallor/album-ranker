@@ -27,7 +27,7 @@ export function ImportReview({
 }) {
   return (
     <>
-      <PageHeader title="Import review" description={`${counts.open} left`} />
+      <PageHeader label="Import" title="Import review" description={`${counts.open} left`} />
       <Stack gap={4}>
         {done && (
           <Message tone={done.tone} role="status">

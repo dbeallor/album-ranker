@@ -9,8 +9,8 @@ import styles from "./ranking-progress.module.css";
 
 const count = (value: number) => value.toLocaleString("en-US");
 
-/** The overall ranking progress: the share of the way to an approximately right order, with what is left to play. */
-export function RankingProgress({ progress }: { progress: Measure | null }) {
+/** The overall ranking progress (`showPlay={false}` leaves out its link to the matchups, for a page that has its own): the share of the way to an approximately right order, with what is left to play. */
+export function RankingProgress({ progress, showPlay = true }: { progress: Measure | null; showPlay?: boolean }) {
   if (!progress) {
     return (
       <EmptyState>Add at least two albums to your library to track ranking progress.</EmptyState>
@@ -40,9 +40,11 @@ export function RankingProgress({ progress }: { progress: Measure | null }) {
         <p className={styles.muted}>
           The expected share of album pairs that are in the right order. Adding albums lowers it; playing matchups raises it.
         </p>
-        <div>
-          <ButtonLink href="/matchups">Play matchups</ButtonLink>
-        </div>
+        {showPlay ? (
+          <div>
+            <ButtonLink href="/matchups">Play matchups</ButtonLink>
+          </div>
+        ) : null}
       </Stack>
     </Card>
   );

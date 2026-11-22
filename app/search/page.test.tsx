@@ -81,7 +81,6 @@ describe("search page", () => {
       artist: "Stan Getz",
       artistId: "s",
       releaseYear: "1964",
-      coverUrl: "https://coverartarchive.org/a.jpg",
     });
   });
 

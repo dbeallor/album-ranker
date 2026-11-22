@@ -65,19 +65,21 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 - **Which app:** each log's `source` says where it came from: host and port, and, where the code can tell, the kind of run, preview name, branch, worktree and commit. The fields are in [docs/event-log-format.md](docs/event-log-format.md).
 - **Nothing runs in the app:** the recorder is injected by this command's browser. The app has no recorder code and no endpoint, and a build contains none.
 
-## Search albums
+## Add albums
 
-Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups.
+The header has a Menu button that opens a full-screen menu with four pages: Add albums, Library, Play and Rankings. The home page is the start of the same flow, with a search box, the library count, your ranking progress and the top five albums; it links to Import review only while spreadsheet rows wait for review.
+
+Open <http://localhost:3000/search> (Add albums) and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups. When an album is added (from search, import review or the import script) and the Cover Art Archive has no front cover for it, the server looks for a cover on Deezer, accepting only an album with the same title and artist, and stores it; with no match the grey placeholder stays. Results on the search page still show only Cover Art Archive covers, and albums already in your library are not changed.
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
 ## Library
 
-Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title (within one artist, by year, then title). Sorting by year, decade, era or artist puts a heading above each group. Sort by and Direction are always shown. A Filters section holds the search text, the scope (lifetime, an era, a decade or a year) and played or unplayed; it opens by itself when one of them is set. The header links to Add albums and Matchups, and an empty library or a filter with no match offers Search albums or Clear filters. The sort and filters are in the URL, so a view can be bookmarked. Each card has a Remove link that opens a confirmation page; removing deletes the album and all of its matchups, and can't be undone. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md) and [the ALBUM-35 spec](docs/superpowers/specs/2026-11-21-album-35-add-albums-library.md).
+Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title (within one artist, by year, then title). Sorting by year, decade, era or artist puts a heading above each group. Sort by and Direction are always shown. A Filters section holds the search text, the scope (lifetime, an era, a decade or a year) and played or unplayed; it opens by itself when one of them is set. The header links to Add albums and Play, and an empty library or a filter with no match offers Search albums or Clear filters. The sort and filters are in the URL, so a view can be bookmarked. Each card has a Remove link that opens a confirmation page; removing deletes the album and all of its matchups, and can't be undone. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md) and [the ALBUM-35 spec](docs/superpowers/specs/2026-11-21-album-35-add-albums-library.md).
 
-## Matchups
+## Play (matchups)
 
-Open <http://localhost:3000/matchups> to answer "which of these two do you like more?" for any two albums in your library, whatever their years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
+Open <http://localhost:3000/matchups> (Play) to answer "which of these two do you like more?" for any two albums in your library, whatever their years. Pick one, call it a tie, skip the pair, or undo the last answer (undo works repeatedly and serves the undone pair again).
 
 Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 
@@ -85,9 +87,9 @@ A new album (fewer than 8 matchups) is first matched against established albums,
 
 Beside the matchup count, the page shows how far you are toward an approximately right overall order, as "N% there · about R more to go" ("Target reached" at 100%). It is hidden with fewer than two library albums. How it is measured is in [the ALBUM-42 spec](docs/superpowers/specs/2026-11-22-album-42-ranking-progress.md).
 
-## Analytics
+## Rankings (analytics)
 
-Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library. The view tabs are labeled "Show" (Albums, Artists, Years, Decades, Eras) and the scope tabs and pickers "Period"; a period with no albums offers Show lifetime. The home page shows how many albums and matchups you have and links here.
+Open <http://localhost:3000/analytics> (Rankings) for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library. The view tabs are labeled "Show" (Albums, Artists, Years, Decades, Eras) and the scope tabs and pickers "Period"; a period with no albums offers Show lifetime. The home page shows how many albums and matchups you have and links here.
 
 A "Ranking progress" panel sits above the Show tabs on every view. It is library-wide and ignores the period. It shows the percent, "N of about M matchups", and the order confidence (the expected share of album pairs in the right order) against its 90% target, with a Play matchups link. The goal is the matchups played plus an estimate of how many more it takes to reach the target, so adding albums lowers the percent and playing matchups raises it. With fewer than two albums it shows an empty state. Details are in [the ALBUM-42 spec](docs/superpowers/specs/2026-11-22-album-42-ranking-progress.md).
 
@@ -95,7 +97,7 @@ A "Ranking progress" panel sits above the Show tabs on every view. It is library
 
 `npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then adds the albums to the library with the year from the sheet. Rows it can't match with confidence go to the review page.
 
-- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
+- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), plus a Cover Art Archive check (and a Deezer search when that has no cover) for each new album, so allow longer, and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
 - It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
 - Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog, keep it as a manual album, or skip it.
 - The spreadsheet is never committed; keep it outside the repo.
@@ -109,7 +111,7 @@ Reading the summary the script prints at the end:
 
 ## Browser tests
 
-Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.
+Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz, the Cover Art Archive and Deezer (`MUSICBRAINZ_URL`, `COVER_ART_ARCHIVE_URL`, `DEEZER_URL`), so no test calls a live service.
 
 1. One time: `npx playwright install chromium`
 2. `npm run test:e2e`
