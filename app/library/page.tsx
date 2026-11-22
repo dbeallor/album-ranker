@@ -102,7 +102,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
                 ))}
               </Select>
               <Select label="Direction" name="dir" fieldClassName={styles.sortField} defaultValue={dir ?? ""}>
-                <option value="">Default for this sort</option>
+                <option value="">Default</option>
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
               </Select>
