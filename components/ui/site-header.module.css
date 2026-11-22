@@ -64,7 +64,7 @@
 
 /* The scrolling row would clip a ring drawn outside the link, so draw it inside. */
 .link:focus-visible {
-  outline-offset: calc(var(--focus-offset) * -1);
+  outline-offset: -3px;
 }
 
 .link[aria-current="page"] {
