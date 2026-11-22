@@ -1,0 +1,3 @@
+# Copy to backend.hcl (gitignored). Both values come from `terraform -chdir=infra/bootstrap output`.
+bucket = "album-ranker-tfstate-123456789012"
+region = "us-east-1"

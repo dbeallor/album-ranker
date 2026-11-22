@@ -16,3 +16,10 @@ test-results/
 playwright-report/
 *.db.bak*
 recordings/
+dist/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+backend.hcl

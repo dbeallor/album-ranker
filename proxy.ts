@@ -10,6 +10,17 @@ function respond(response: NextResponse): NextResponse {
   return response;
 }
 
+/**
+ * The address the browser used. Behind CloudFront the request's Host is the function URL's, so a redirect built from
+ * `request.url` would point past CloudFront. The CloudFront function in infra/modules/app sets `x-forwarded-host`, and the
+ * function URL sets `x-forwarded-proto`; locally neither is set and the request's own URL is right.
+ */
+function publicOrigin(request: NextRequest): string {
+  const host = request.headers.get("x-forwarded-host");
+  if (!host) return request.url;
+  return `${request.headers.get("x-forwarded-proto") ?? "https"}://${host}`;
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const decision = gateDecision({
     gate: readGateConfig(),
@@ -22,7 +33,7 @@ export function proxy(request: NextRequest): NextResponse {
   });
 
   if (decision.action === "pass") return respond(NextResponse.next());
-  if (decision.action === "redirect") return respond(NextResponse.redirect(new URL(decision.location, request.url)));
+  if (decision.action === "redirect") return respond(NextResponse.redirect(new URL(decision.location, publicOrigin(request))));
   return respond(new NextResponse(null, { status: decision.status }));
 }
 

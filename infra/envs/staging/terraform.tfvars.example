@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) and edit.
+region                 = "us-east-1"
+musicbrainz_user_agent = "album-ranker/0.1 (you@example.com)"
+
+# Email for a monthly cost alert above 5 USD; leave empty for none.
+budget_email = ""
+
+# 1 keeps at most one copy of the function running. If the first apply fails because the account's Lambda concurrency
+# quota is too low to reserve any (a new account), set -1: the conditional S3 write still stops a second writer.
+reserved_concurrency = 1

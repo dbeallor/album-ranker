@@ -19,6 +19,7 @@
     "import": "node --conditions=react-server scripts/import.ts",
     "backfill-covers": "node --conditions=react-server scripts/backfill-covers.ts",
     "import:fixture": "node lib/import/fixtures/make-fixture.ts",
+    "build:lambda": "node scripts/build-lambda.ts",
     "preview": "node scripts/preview.ts",
     "record": "node scripts/record.ts"
   },

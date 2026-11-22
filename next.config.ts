@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 // Links from before the library and analytics pages. Query values pass through to the destination.
 // A `has` rule comes before the plain `/artists` rule so a decade picks its scope.
 const nextConfig: NextConfig = {
+  // A self-contained server in .next/standalone, which `npm run build:lambda` packages for AWS Lambda.
+  output: "standalone",
   // Also set by proxy.ts on the responses it answers itself.
   async headers() {
     return [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
