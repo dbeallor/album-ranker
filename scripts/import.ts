@@ -1,6 +1,7 @@
 // Imports the Albums sheet of a spreadsheet: `npm run import -- "/path/to/Best Albums.xlsx"`.
 // Run through `node --conditions=react-server`, which makes the `server-only` marker package resolve to its
 // empty module, so the catalog client loads outside Next.js. See the README.
+import { createResolveCover } from "../lib/catalog/cover-art.ts";
 import { createMusicBrainzClient } from "../lib/catalog/musicbrainz.ts";
 import { getConfig } from "../lib/config.ts";
 import { openDatabase } from "../lib/db/connection.ts";
@@ -25,6 +26,12 @@ const client = createMusicBrainzClient({
   baseUrl: () => musicbrainzUrl,
 });
 
+const resolveCover = createResolveCover({
+  fetch: (input, init) => fetch(input, init),
+  userAgent: () => musicbrainzUserAgent,
+  log: (message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])),
+});
+
 let db: ReturnType<typeof openDatabase> | undefined;
 try {
   // Read the file before opening the database, so a bad path or sheet leaves no database file behind.
@@ -34,6 +41,7 @@ try {
   const summary = await runImport(db, prepared, {
     search: (query) => client.searchReleaseGroups(query),
     sleep,
+    resolveCover,
     onProgress: (done, total) => console.log(`Processed ${done} of ${total} rows`),
     onCatalogError: (row, error) =>
       console.error(`Catalog error on row ${row.rowNumber}: ${error instanceof Error ? error.message : String(error)}`),
