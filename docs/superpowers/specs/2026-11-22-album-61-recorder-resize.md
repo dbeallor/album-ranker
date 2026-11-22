@@ -1,6 +1,7 @@
 # The recording browser follows window resizes
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #62, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-61](https://github.com/dbeallor/album-ranker/issues/61)
 **Follows:** [ALBUM-30 record local previews](2026-11-21-album-30-record-local-previews.md), [ALBUM-19 browser event log](2026-11-21-album-19-browser-event-log.md)
