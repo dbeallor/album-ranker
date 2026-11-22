@@ -1,6 +1,7 @@
 # Modernize the design and trim the pages to the core experience
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #51, with differences: [as-built](../as-built/2026-11-22-album-47-modernize-design.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-47](https://github.com/dbeallor/album-ranker/issues/47)
 **Follows:** [restyle with one design system](2026-11-21-album-31-restyle-design-system.md), [library and analytics UI pass](2026-11-22-album-38-library-analytics-ui.md), [ranking progress](2026-11-22-album-42-ranking-progress.md). Where the ticket text and what shipped differ, what shipped wins.
