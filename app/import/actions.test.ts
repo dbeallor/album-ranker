@@ -12,7 +12,10 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { keepManualAction, skipAction } from "./actions";
+const refresh = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ refresh }));
+
+import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
 async function redirectOf(action: Promise<void>): Promise<URL> {
   const message = await action.then(
@@ -44,25 +47,70 @@ describe("import review actions", () => {
     });
   }
 
-  it("keeping a manual album adds it to the library and goes back to /import with nothing in the query", async () => {
+  function seedMore(year: number, title: string) {
+    return createImportReviewItem(state.db as ReturnType<typeof memoryDb>, {
+      source: { title, artist: "Fake Artist A", year },
+      sourcePlacement: "listed",
+      candidates: [],
+    });
+  }
+
+  it("keeping a manual album adds it to the library, refreshes and redirects to ?done=<id> with no fragment when none are left", async () => {
     const review = seed();
     const url = await redirectOf(keepManualAction(form(review.id)));
     expect(url.pathname).toBe("/import");
-    expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
+    expect(url.hash).toBe("");
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toHaveLength(1);
   });
 
-  it("skipping goes back to /import with nothing in the query and adds nothing", async () => {
+  it("scrolls to the open item that takes the handled item's place", async () => {
+    const first = seed();
+    const second = seedMore(2002, "Fake Album Two");
+    const url = await redirectOf(skipAction(form(first.id)));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(first.id) });
+    expect(url.hash).toBe(`#item-${second.id}`);
+  });
+
+  it("choosing a catalog album redirects with done and the next item", async () => {
+    const first = seed();
+    const second = seedMore(2002, "Fake Album Two");
+    const data = form(first.id);
+    data.set("catalogId", "c-1");
+    data.set("title", "Fake Album One");
+    data.set("artist", "Fake Artist A");
+    data.set("releaseYear", "2001");
+    const url = await redirectOf(chooseAlbumAction(data));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(first.id) });
+    expect(url.hash).toBe(`#item-${second.id}`);
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toHaveLength(1);
+  });
+
+  it("skipping redirects to ?done=<id> and adds nothing", async () => {
     const review = seed();
     const url = await redirectOf(skipAction(form(review.id)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({});
+    expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
     expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toEqual([]);
   });
 
-  it("an item that is already resolved comes back with its message", async () => {
+  it("a second submit on the same item redirects to ?done=<id> without an error and changes nothing", async () => {
     const review = seed();
     await redirectOf(keepManualAction(form(review.id)));
+    const libraryAfterFirst = listLibrary(state.db as ReturnType<typeof memoryDb>);
     const url = await redirectOf(keepManualAction(form(review.id)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "This item is already resolved.", item: String(review.id) });
+    expect(url.searchParams.get("done")).toBe(String(review.id));
+    expect(url.searchParams.get("already")).toBe("1");
+    expect(url.searchParams.has("error")).toBe(false);
+    expect(listLibrary(state.db as ReturnType<typeof memoryDb>)).toEqual(libraryAfterFirst);
+
+    const skipUrl = await redirectOf(skipAction(form(review.id)));
+    expect(skipUrl.searchParams.has("error")).toBe(false);
+    expect(skipUrl.searchParams.get("done")).toBe(String(review.id));
+  });
+
+  it("an item that does not exist is still an error", async () => {
+    const url = await redirectOf(skipAction(form(999)));
+    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "Import review item 999 does not exist.", item: "999" });
   });
 });
