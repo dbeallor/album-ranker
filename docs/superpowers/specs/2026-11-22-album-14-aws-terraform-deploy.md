@@ -1,7 +1,7 @@
 # Deploy to AWS with Terraform, staging and production behind a password gate
 
 **Status:** Shipped
-**Shipped:** in PR #PRN, with differences: [as-built](../as-built/2026-11-22-album-14-aws-terraform-deploy.md)
+**Shipped:** in PR #63, with differences: [as-built](../as-built/2026-11-22-album-14-aws-terraform-deploy.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-14](https://github.com/dbeallor/album-ranker/issues/14)
 **Follows:** [MVP requirements](2026-11-20-album-ranker-mvp.md) § Shape (deploying is a follow-up), [data model and storage](2026-11-21-album-4-data-model-storage.md), [stack](../../stack.md)

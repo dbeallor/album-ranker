@@ -1,6 +1,6 @@
 # As-built: Deploy to AWS with Terraform
 
-**Shipped:** in PR #PRN
+**Shipped:** in PR #63
 **Ticket:** ALBUM-14
 **Spec:** [2026-11-22-album-14-aws-terraform-deploy.md](../specs/2026-11-22-album-14-aws-terraform-deploy.md)
 
