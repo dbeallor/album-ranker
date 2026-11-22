@@ -133,15 +133,52 @@ describe("library page", () => {
     expect((screen.getByLabelText("Matchups") as HTMLSelectElement).value).toBe("played");
   });
 
-  it("says so when the filters match nothing, and when the library is empty", async () => {
-    await renderPage({ q: "zzz" });
-    expect(screen.getByText("No albums match these filters.")).toBeDefined();
-    expect(screen.getByText("0 of 3 albums")).toBeDefined();
-    cleanup();
+  it.each<{ name: string; params: Params; open: boolean }>([
+    { name: "no filters", params: {}, open: false },
+    { name: "only sort and direction", params: { sort: "year", dir: "asc" }, open: false },
+    { name: "a search", params: { q: "bear" }, open: true },
+    { name: "a scope", params: { scope: "decade-1970" }, open: true },
+    { name: "a played filter", params: { played: "unplayed" }, open: true },
+  ])("opens Filters only when one is set: $name", async ({ params, open }) => {
+    await renderPage(params);
 
-    state.db = memoryDb();
+    const details = screen.getByText("Filters").closest("details")!;
+    expect(details.open).toBe(open);
+    expect(within(details).getByLabelText("Title or artist")).toBeDefined();
+    expect(within(details).queryByLabelText("Sort by")).toBeNull();
+    expect(screen.getByRole("button", { name: "Apply" }).closest("details")).toBeNull();
+  });
+
+  it("submits all five fields in one GET form", async () => {
     await renderPage();
-    expect(screen.getByText("No albums in the library yet.")).toBeDefined();
+
+    const form = screen.getByRole("button", { name: "Apply" }).closest("form")!;
+    expect([...form.elements].map((el) => (el as HTMLInputElement).name).filter(Boolean)).toEqual([
+      "sort",
+      "dir",
+      "q",
+      "scope",
+      "played",
+    ]);
+  });
+
+  it.each<{ name: string; empty: boolean; params: Params; message: string; action: string; href: string }>([
+    { name: "no match", empty: false, params: { q: "zzz" }, message: "No albums match these filters.", action: "Clear filters", href: "/library" },
+    { name: "empty library", empty: true, params: {}, message: "No albums in the library yet.", action: "Search albums", href: "/search" },
+  ])("says so and offers a next step: $name", async ({ empty, params, message, action, href }) => {
+    if (empty) state.db = memoryDb();
+    await renderPage(params);
+
+    const text = screen.getByText(message);
+    expect(text).toBeDefined();
+    expect(within(text.closest("div")!).getByRole("link", { name: action }).getAttribute("href")).toBe(href);
+  });
+
+  it("links the header to adding albums and to matchups", async () => {
+    await renderPage();
+
+    expect(screen.getByRole("link", { name: "Add albums" }).getAttribute("href")).toBe("/search");
+    expect(screen.getByRole("link", { name: "Matchups" }).getAttribute("href")).toBe("/matchups");
   });
 
   it.each(["nope", "decade-1975", "year-1800", "era-90s", ["lifetime", "lifetime"], ""])("calls notFound for scope %j", async (scope) => {

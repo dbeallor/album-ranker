@@ -68,10 +68,23 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
   const shown = groups.reduce((total, group) => total + group.albums.length, 0);
   const choices = scopeChoices(albums, scope);
   const removed = first(params.removed);
+  // Filters that narrow the list stay visible, so an active one is never hidden.
+  const filtersActive = q !== "" || scope.kind !== "lifetime" || played !== "all";
 
   return (
     <>
-      <PageHeader title="Library" description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`} />
+      <PageHeader
+        title="Library"
+        description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`}
+        actions={
+          <>
+            <ButtonLink href="/search" variant="primary">
+              Add albums
+            </ButtonLink>
+            <ButtonLink href="/matchups">Matchups</ButtonLink>
+          </>
+        }
+      />
       <Stack gap={5}>
         {removed !== "" && (
           <Message tone="success" role="status">
@@ -79,59 +92,70 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
           </Message>
         )}
         <form action="/library" method="get">
-          <Cluster align="end" gap={3}>
-            <Select label="Sort by" name="sort" fieldClassName={styles.field} defaultValue={sort}>
-              {SORT_KEYS.map((key) => (
-                <option key={key} value={key}>
-                  {SORT_LABELS[key]}
-                </option>
-              ))}
-            </Select>
-            <Select label="Direction" name="dir" fieldClassName={styles.field} defaultValue={dir ?? ""}>
-              <option value="">Default for this sort</option>
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </Select>
-            <TextField label="Title or artist" name="q" fieldClassName={styles.field} type="search" defaultValue={q} />
-            <Select label="Scope" name="scope" fieldClassName={styles.field} defaultValue={scopeValue(scope)}>
-              <option value="lifetime">Lifetime</option>
-              <optgroup label="Era">
-                {choices.eras.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
+          <Stack gap={3}>
+            <Cluster align="end" gap={3}>
+              <Select label="Sort by" name="sort" fieldClassName={styles.sortField} defaultValue={sort}>
+                {SORT_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {SORT_LABELS[key]}
                   </option>
                 ))}
-              </optgroup>
-              <optgroup label="Decade">
-                {choices.decades.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Year">
-                {choices.years.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </optgroup>
-            </Select>
-            <Select label="Matchups" name="played" fieldClassName={styles.field} defaultValue={played}>
-              {PLAYED_FILTERS.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit" variant="primary">
+              </Select>
+              <Select label="Direction" name="dir" fieldClassName={styles.sortField} defaultValue={dir ?? ""}>
+                <option value="">Default</option>
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </Select>
+            </Cluster>
+            <details className={styles.filters} open={filtersActive}>
+              <summary>Filters</summary>
+              <Cluster align="end" gap={3} className={styles.filterFields}>
+                <TextField label="Title or artist" name="q" fieldClassName={styles.field} type="search" defaultValue={q} />
+                <Select label="Scope" name="scope" fieldClassName={styles.field} defaultValue={scopeValue(scope)}>
+                  <option value="lifetime">Lifetime</option>
+                  <optgroup label="Era">
+                    {choices.eras.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Decade">
+                    {choices.decades.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Year">
+                    {choices.years.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                </Select>
+                <Select label="Matchups" name="played" fieldClassName={styles.field} defaultValue={played}>
+                  {PLAYED_FILTERS.map((filter) => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.label}
+                    </option>
+                  ))}
+                </Select>
+              </Cluster>
+            </details>
+            <Button type="submit" variant="primary" className={styles.apply}>
               Apply
             </Button>
-          </Cluster>
+          </Stack>
         </form>
 
         {groups.length === 0 ? (
-          <EmptyState>{albums.length === 0 ? "No albums in the library yet." : "No albums match these filters."}</EmptyState>
+          albums.length === 0 ? (
+            <EmptyState action={<ButtonLink href="/search">Search albums</ButtonLink>}>No albums in the library yet.</EmptyState>
+          ) : (
+            <EmptyState action={<ButtonLink href="/library">Clear filters</ButtonLink>}>No albums match these filters.</EmptyState>
+          )
         ) : (
           groups.map((group, index) => (
             <section key={index} className={styles.group}>

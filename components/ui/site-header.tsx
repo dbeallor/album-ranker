@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { cx } from "./cx";
 import styles from "./site-header.module.css";
 
-const NAV_ITEMS = [
+/** The main nav, exported so a test can check every link has a route. */
+export const NAV_ITEMS = [
   { href: "/search", label: "Search" },
   { href: "/library", label: "Library" },
   { href: "/matchups", label: "Matchups" },
