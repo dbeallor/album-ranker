@@ -104,6 +104,8 @@ describe("search page", () => {
     await renderPage("getz", { added: GETZ });
 
     expect(screen.queryByText("Added Getz / Gilberto to your library.") !== null).toBe(shown);
+    expect(screen.queryByRole("link", { name: "View library" })?.getAttribute("href") ?? null).toBe(shown ? "/library?sort=year" : null);
+    expect(screen.queryByRole("link", { name: "Play matchups" })?.getAttribute("href") ?? null).toBe(shown ? "/matchups" : null);
   });
 
   it("shows an error under the result named by item only", async () => {

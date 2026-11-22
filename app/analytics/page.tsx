@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -45,7 +45,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
   const { data, libraryAlbums } = loadAnalytics(getDb(), view, scope);
   const ranked = view === "albums" || view === "artists";
   const choices = scopeChoices(libraryAlbums, scope);
-  const emptyMessage = ranked && scope.kind !== "lifetime" ? `No albums in ${scopeLabel(scope)} yet.` : "No albums in the library yet.";
+  const scopeEmpty = ranked && scope.kind !== "lifetime";
+  const emptyMessage = scopeEmpty ? `No albums in ${scopeLabel(scope)} yet.` : "No albums in the library yet.";
+  const emptyAction = scopeEmpty ? (
+    <ButtonLink href={href(view)}>Show lifetime</ButtonLink>
+  ) : (
+    <ButtonLink href="/search">Search albums</ButtonLink>
+  );
 
   return (
     <>
@@ -81,7 +87,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
         ) : null}
 
         {data.rows.length === 0 ? (
-          <EmptyState>{emptyMessage}</EmptyState>
+          <EmptyState action={emptyAction}>{emptyMessage}</EmptyState>
         ) : data.view === "albums" ? (
           <Table label={`Album ranking, ${scopeLabel(scope)}`}>
             <thead>

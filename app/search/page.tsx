@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Cover } from "@/components/cover";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -51,6 +52,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         {added && (
           <Message tone="success" role="status">
             Added {added.title} to your library.
+            <Cluster gap={3}>
+              <Link href="/library?sort=year">View library</Link>
+              <Link href="/matchups">Play matchups</Link>
+            </Cluster>
           </Message>
         )}
         {result && !result.ok && (

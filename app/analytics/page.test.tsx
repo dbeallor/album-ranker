@@ -144,23 +144,28 @@ describe("analytics page", () => {
     expect(screen.queryByLabelText("Decade")).toBeNull();
   });
 
-  it.each<{ params: Params; message: string }>([
-    { params: { scope: "year-1999" }, message: "No albums in 1999 yet." },
-    { params: { view: "artists", scope: "era-pre-60s" }, message: "No albums in Pre-60s yet." },
-    { params: { scope: "decade-1990" }, message: "No albums in 1990s yet." },
-  ])("says so when the scope has no albums: $message", async ({ params, message }) => {
+  it.each<{ params: Params; message: string; href: string }>([
+    { params: { scope: "year-1999" }, message: "No albums in 1999 yet.", href: "/analytics?view=albums" },
+    { params: { view: "artists", scope: "era-pre-60s" }, message: "No albums in Pre-60s yet.", href: "/analytics?view=artists" },
+    { params: { scope: "decade-1990" }, message: "No albums in 1990s yet.", href: "/analytics?view=albums" },
+  ])("says so when the scope has no albums and offers lifetime: $message", async ({ params, message, href }) => {
     await renderPage(params);
 
     expect(screen.getByText(message)).toBeDefined();
+    expect(screen.getByRole("link", { name: "Show lifetime" }).getAttribute("href")).toBe(href);
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it.each(["albums", "years"])("says the library is empty for the %s view when it has no albums", async (view) => {
-    state.db = memoryDb();
-    await renderPage({ view });
+  it.each(["albums", "artists", "years", "decades", "eras"])(
+    "says the library is empty for the %s view and links to search",
+    async (view) => {
+      state.db = memoryDb();
+      await renderPage({ view });
 
-    expect(screen.getByText("No albums in the library yet.")).toBeDefined();
-  });
+      expect(screen.getByText("No albums in the library yet.")).toBeDefined();
+      expect(screen.getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
+    },
+  );
 
   it.each(["nope", "decade-1975", "year-1800", "era-90s", ["lifetime", "lifetime"], ""])("calls notFound for scope %j", async (scope) => {
     await expect(renderPage({ scope })).rejects.toThrow("NEXT_NOT_FOUND");

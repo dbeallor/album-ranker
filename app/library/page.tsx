@@ -71,7 +71,18 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
 
   return (
     <>
-      <PageHeader title="Library" description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`} />
+      <PageHeader
+        title="Library"
+        description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`}
+        actions={
+          <>
+            <ButtonLink href="/search" variant="primary">
+              Add albums
+            </ButtonLink>
+            <ButtonLink href="/matchups">Matchups</ButtonLink>
+          </>
+        }
+      />
       <Stack gap={5}>
         {removed !== "" && (
           <Message tone="success" role="status">
@@ -131,7 +142,11 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
         </form>
 
         {groups.length === 0 ? (
-          <EmptyState>{albums.length === 0 ? "No albums in the library yet." : "No albums match these filters."}</EmptyState>
+          albums.length === 0 ? (
+            <EmptyState action={<ButtonLink href="/search">Search albums</ButtonLink>}>No albums in the library yet.</EmptyState>
+          ) : (
+            <EmptyState action={<ButtonLink href="/library">Clear filters</ButtonLink>}>No albums match these filters.</EmptyState>
+          )
         ) : (
           groups.map((group, index) => (
             <section key={index} className={styles.group}>
