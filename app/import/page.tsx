@@ -7,6 +7,7 @@ import { getLibraryEntry } from "@/lib/db/library";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
 import { defaultSearchText, rankStoredCandidates, searchForReview } from "@/lib/import/match";
+import { ADD_ALBUM_ERRORS, type AddAlbumErrorCode } from "@/lib/library-service";
 import { openInReviewOrder } from "@/lib/import/review-order";
 import type { CatalogSearch } from "@/lib/import/types";
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
@@ -32,7 +33,8 @@ function errorText(db: DatabaseSync, code: string, albumParam: string): string |
     const entry = album && getLibraryEntry(db, album.id);
     return album && entry ? `${album.title} is already in your library (${entry.year}).` : "That album is already in your library.";
   }
-  return Object.hasOwn(ERROR_MESSAGES, code) ? ERROR_MESSAGES[code] : null;
+  if (Object.hasOwn(ERROR_MESSAGES, code)) return ERROR_MESSAGES[code];
+  return Object.hasOwn(ADD_ALBUM_ERRORS, code) ? ADD_ALBUM_ERRORS[code as AddAlbumErrorCode] : null;
 }
 
 function withLibraryYear(db: DatabaseSync, candidate: CatalogCandidate): CandidateView {

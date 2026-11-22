@@ -84,6 +84,27 @@ describe("addToLibraryAction", () => {
     expect(findAlbumByCatalogId(db(), CATALOG_ID)?.coverUrl).toBe(expected);
   });
 
+  it.each<{ name: string; overrides: Record<string, string> }>([
+    { name: "a bad library year", overrides: { year: "1800" } },
+    { name: "a bad catalog id", overrides: { catalogId: "x" } },
+    { name: "a bad artist id", overrides: { artistId: "artist-1" } },
+    { name: "a long title", overrides: { title: "t".repeat(301) } },
+    { name: "a long artist", overrides: { artist: "a".repeat(301) } },
+    { name: "a bad release year", overrides: { releaseYear: "99999" } },
+  ])("does not look up a cover for $name", async ({ overrides }) => {
+    const url = await redirectOf(addToLibraryAction(form(overrides)));
+
+    expect(url.searchParams.has("error")).toBe(true);
+    expect(state.resolveCover).not.toHaveBeenCalled();
+  });
+
+  it("looks up the cover with the lower-cased catalog id and trimmed names", async () => {
+    const lower = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    await redirectOf(addToLibraryAction(form({ catalogId: lower.toUpperCase(), title: "Kind of Blue", artist: "Miles Davis" })));
+
+    expect(state.resolveCover).toHaveBeenCalledWith({ catalogId: lower, title: "Kind of Blue", artist: "Miles Davis" });
+  });
+
   it("ignores the cover the browser sent", async () => {
     await redirectOf(addToLibraryAction(form({ coverUrl: DEEZER_COVER })));
 

@@ -1,12 +1,16 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { openDatabase } from "../lib/db/connection.ts";
 import { createImportReviewItem } from "../lib/db/import-review.ts";
 
+// "Use this album" accepts only UUID catalog ids, so each title gets a UUID made from it.
+const uuidFor = (text: string) => createHash("md5").update(text).digest("hex").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
 const candidate = (title: string, year: number) => ({
-  catalogId: `e2e-${title}`,
+  catalogId: uuidFor(title),
   title,
   artist: "E2E Artist",
-  artistId: "e2e-artist",
+  artistId: uuidFor("E2E Artist"),
   releaseYear: year,
   coverUrl: null,
 });

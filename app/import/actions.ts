@@ -8,6 +8,7 @@ import { getImportReviewItem, listImportReviewItems } from "@/lib/db/import-revi
 import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
+import { validateCatalogAlbum, type AddAlbumErrorCode } from "@/lib/library-service";
 import { nextOpenItemId } from "@/lib/import/review-order";
 import { resolveReviewItem, skipReviewItem, type ResolveChoice } from "@/lib/import/resolve";
 
@@ -44,8 +45,8 @@ function done(itemId: number, { already = false, moved = false }: Handled = {}):
   redirect(`/import?${params}${next === null ? "" : `#item-${next}`}`);
 }
 
-/** Why an action failed. The page maps each code to a message it wrote (`app/import/page.tsx`); `albumId` goes with `in_library`. */
-type FailCode = "not_found" | "missing_details" | "in_library" | "invalid";
+/** Why an action failed. The page maps each code to a message it wrote (`app/import/page.tsx`); `albumId` goes with `in_library`; a field the add check refuses uses that check's code (`ADD_ALBUM_ERRORS`). */
+type FailCode = "not_found" | "missing_details" | "in_library" | "invalid" | AddAlbumErrorCode;
 
 function fail(itemId: number | null, code: FailCode, albumId?: number): never {
   const params: Record<string, string> = { error: code };
@@ -54,25 +55,26 @@ function fail(itemId: number | null, code: FailCode, albumId?: number): never {
   return back(params);
 }
 
-function candidateFrom(formData: FormData): CatalogCandidate | null {
-  const catalogId = field(formData, "catalogId");
-  const title = field(formData, "title");
-  const artist = field(formData, "artist");
-  if (catalogId === "" || title === "" || artist === "") return null;
-  return {
-    catalogId,
-    title,
-    artist,
-    artistId: field(formData, "artistId") || null,
-    releaseYear: whole(field(formData, "releaseYear")),
-    // Not read from the form: the server picks the cover (see `withCover`).
-    coverUrl: null,
-  };
+/** The chosen album's fields, checked and cleaned by the same validator the search add uses; or the code to show. A form missing its catalog id, title or artist is `missing_details`. */
+function candidateFrom(formData: FormData): { ok: true; album: CatalogCandidate } | { ok: false; code: FailCode } {
+  if (field(formData, "catalogId") === "" || field(formData, "title") === "" || field(formData, "artist") === "") {
+    return { ok: false, code: "missing_details" };
+  }
+  const checked = validateCatalogAlbum({
+    catalogId: field(formData, "catalogId"),
+    title: field(formData, "title"),
+    artist: field(formData, "artist"),
+    artistId: field(formData, "artistId"),
+    releaseYear: field(formData, "releaseYear"),
+  });
+  if (!checked.ok) return { ok: false, code: checked.code };
+  // Not read from the form: the server picks the cover (see `withCover`).
+  return { ok: true, album: { ...checked.album, coverUrl: null } };
 }
 
 /** Fills in the album's cover, unless the album is stored already (it keeps its own). */
 async function withCover(album: CatalogCandidate): Promise<CatalogCandidate> {
-  if (findAlbumByCatalogId(getDb(), album.catalogId.toLowerCase())) return album;
+  if (findAlbumByCatalogId(getDb(), album.catalogId)) return album;
   return { ...album, coverUrl: await resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist }) };
 }
 
@@ -90,9 +92,9 @@ export async function chooseAlbumAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
   if (itemId === null) return fail(null, "not_found");
-  const album = candidateFrom(formData);
-  if (!album) return fail(itemId, "missing_details");
-  return resolve(itemId, { kind: "catalog", album: await withCover(album), moveHere: field(formData, "moveHere") === "1" });
+  const candidate = candidateFrom(formData);
+  if (!candidate.ok) return fail(itemId, candidate.code);
+  return resolve(itemId, { kind: "catalog", album: await withCover(candidate.album), moveHere: field(formData, "moveHere") === "1" });
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {
