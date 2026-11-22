@@ -44,6 +44,19 @@ export function getLibraryEntry(db: DatabaseSync, albumId: number): LibraryEntry
   return row ? toEntry(row) : undefined;
 }
 
+/** The library year of each of these catalog ids that is in the library; ids not in the library are left out. */
+export function libraryYearsByCatalogId(db: DatabaseSync, catalogIds: string[]): Map<string, number> {
+  if (catalogIds.length === 0) return new Map();
+  const placeholders = catalogIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT al.catalog_id, la.year FROM albums al JOIN library_albums la ON la.album_id = al.id
+       WHERE al.catalog_id IN (${placeholders})`,
+    )
+    .all(...catalogIds);
+  return new Map(rows.map((row) => [row.catalog_id as string, row.year as number]));
+}
+
 /** The library album an import row produced, by its source key (exact text, as stored). */
 export function findLibraryEntryBySource(db: DatabaseSync, source: SourceRowKey): LibraryEntry | undefined {
   const row = db

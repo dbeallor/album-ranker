@@ -52,6 +52,13 @@ export function countMatchups(db: DatabaseSync): number {
   return Number(db.prepare("SELECT COUNT(*) AS n FROM matchups").get()!.n);
 }
 
+/** Stored matchups with the album on either side. */
+export function countMatchupsForAlbum(db: DatabaseSync, albumId: number): number {
+  return Number(
+    db.prepare("SELECT COUNT(*) AS n FROM matchups WHERE album_a_id = ? OR album_b_id = ?").get(albumId, albumId)!.n,
+  );
+}
+
 /** Deletes and returns the newest matchup (created at, then id), or returns undefined if there are none. */
 export function undoLastMatchup(db: DatabaseSync): Matchup | undefined {
   return transaction(db, () => {

@@ -1,15 +1,40 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const state = vi.hoisted(() => ({ db: undefined as unknown as DatabaseSync }));
+vi.mock("@/lib/db/server", () => ({ getDb: () => state.db }));
 vi.mock("@/lib/catalog/search", () => ({ searchAlbums: vi.fn() }));
+vi.mock("./actions", () => ({ addToLibraryAction: vi.fn() }));
 
 import { searchAlbums } from "@/lib/catalog/search";
+import { createAlbum } from "@/lib/db/albums";
+import { addToLibrary } from "@/lib/db/library";
+import { memoryDb } from "@/lib/db/test-db";
 import SearchPage from "./page";
 
 const searchAlbumsMock = vi.mocked(searchAlbums);
 
-async function renderPage(q?: string) {
-  render(await SearchPage({ searchParams: Promise.resolve(q === undefined ? {} : { q }) }));
+const GETZ = "11111111-1111-1111-1111-111111111111";
+const UNDATED = "22222222-2222-2222-2222-222222222222";
+
+async function renderPage(q?: string, extra: Record<string, string | string[]> = {}) {
+  render(await SearchPage({ searchParams: Promise.resolve({ ...(q === undefined ? {} : { q }), ...extra }) }));
+}
+
+function twoResults() {
+  searchAlbumsMock.mockResolvedValue({
+    ok: true,
+    albums: [
+      { catalogId: GETZ, title: "Getz / Gilberto", artist: "Stan Getz", artistId: "s", year: 1964, coverUrl: "https://coverartarchive.org/a.jpg" },
+      { catalogId: UNDATED, title: "Undated", artist: "Someone", artistId: null, year: null, coverUrl: "https://coverartarchive.org/b.jpg" },
+    ],
+  });
+}
+
+function addToLibraryAs(catalogId: string, year: number) {
+  const album = createAlbum(state.db, { title: "Getz / Gilberto", artist: { name: "Stan Getz" }, catalogId });
+  addToLibrary(state.db, { albumId: album.id, year });
 }
 
 describe("search page", () => {
@@ -17,6 +42,7 @@ describe("search page", () => {
 
   beforeEach(() => {
     searchAlbumsMock.mockReset();
+    state.db = memoryDb();
   });
 
   it("shows the error message instead of crashing, and keeps the query in the box", async () => {
@@ -28,18 +54,65 @@ describe("search page", () => {
   });
 
   it("shows results with title, artist and year", async () => {
-    searchAlbumsMock.mockResolvedValue({
-      ok: true,
-      albums: [
-        { catalogId: "a", title: "Getz / Gilberto", artist: "Stan Getz", artistId: "s", year: 1964, coverUrl: "https://example.test/a.jpg" },
-        { catalogId: "b", title: "Undated", artist: "Someone", artistId: null, year: null, coverUrl: "https://example.test/b.jpg" },
-      ],
-    });
+    twoResults();
     await renderPage("getz");
 
     expect(screen.getByText("Getz / Gilberto")).toBeDefined();
     expect(screen.getByText("1964")).toBeDefined();
     expect(screen.getByText("Unknown year")).toBeDefined();
+  });
+
+  it("gives each result not in the library a year box (the catalog year, or empty with a hint) and an add button", async () => {
+    twoResults();
+    await renderPage("getz");
+
+    const years = screen.getAllByLabelText("Year in your library") as HTMLInputElement[];
+    expect(years.map((box) => box.value)).toEqual(["1964", ""]);
+    expect(years.every((box) => box.required && box.min === "1900" && box.max === "2100")).toBe(true);
+    expect(screen.getAllByText("The catalog has no year. Enter the year to file it under.")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Add to library" })).toHaveLength(2);
+
+    const form = years[0].closest("form")!;
+    const hidden = Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map((input) => [input.name, input.value]));
+    expect(hidden).toEqual({
+      q: "getz",
+      catalogId: GETZ,
+      title: "Getz / Gilberto",
+      artist: "Stan Getz",
+      artistId: "s",
+      releaseYear: "1964",
+      coverUrl: "https://coverartarchive.org/a.jpg",
+    });
+  });
+
+  it("shows a result already in the library with its library year and no form", async () => {
+    twoResults();
+    addToLibraryAs(GETZ, 1964);
+    await renderPage("getz");
+
+    expect(screen.getByText("In your library (1964)")).toBeDefined();
+    expect(screen.getAllByLabelText("Year in your library")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Add to library" })).toHaveLength(1);
+  });
+
+  it.each([
+    { name: "in the library", inLibrary: true, shown: true },
+    { name: "not in the library", inLibrary: false, shown: false },
+  ])("shows the added message only when the album is $name", async ({ inLibrary, shown }) => {
+    twoResults();
+    if (inLibrary) addToLibraryAs(GETZ, 1964);
+    await renderPage("getz", { added: GETZ });
+
+    expect(screen.queryByText("Added Getz / Gilberto to your library.") !== null).toBe(shown);
+  });
+
+  it("shows an error under the result named by item only", async () => {
+    twoResults();
+    await renderPage("getz", { error: "Enter a year from 1900 to 2100.", item: UNDATED });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Enter a year from 1900 to 2100.");
+    expect(alert.closest("li")!.textContent).toContain("Undated");
   });
 
   it("says when nothing was found", async () => {
