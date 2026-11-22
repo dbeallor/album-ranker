@@ -1,4 +1,5 @@
 // No `server-only` and only relative imports, so the import script can load this under Node's type stripping.
+import { MAX_BODY_BYTES, readJsonCapped } from "./read-json.ts";
 
 const DEFAULT_CAA_URL = "https://coverartarchive.org";
 const DEFAULT_DEEZER_URL = "https://api.deezer.com";
@@ -6,7 +7,7 @@ const DEEZER_RESULT_LIMIT = 10;
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_COVER_URL_LENGTH = 300;
 const MAX_NAME_LENGTH = 300;
-const CATALOG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const CATALOG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Hosts a stored cover may come from: the Cover Art Archive and the two the Deezer CDN serves covers from. */
 const COVER_HOSTS = new Set(["coverartarchive.org", "cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net"]);
@@ -84,21 +85,25 @@ function createCoverFinder(deps: CoverArtDeps) {
     try {
       const response = await deps.fetch(`${deps.deezerUrl?.() ?? DEFAULT_DEEZER_URL}/search/album?${params}`, {
         headers: { Accept: "application/json" },
+        redirect: "error",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) {
         log(`Deezer cover search for "${title}" answered ${response.status}`);
         return { kind: "failed", at: "deezer" };
       }
-      const data = ((await response.json()) as { data?: unknown } | null)?.data;
+      const data = ((await readJsonCapped(response, MAX_BODY_BYTES)) as { data?: unknown } | null)?.data;
       if (!Array.isArray(data)) {
         log(`Deezer cover search for "${title}" had no result list`);
         return { kind: "failed", at: "deezer" };
       }
 
-      for (const entry of data) {
+      // Deezer was asked for DEEZER_RESULT_LIMIT entries; read no more, whatever it sends.
+      for (const entry of data.slice(0, DEEZER_RESULT_LIMIT)) {
         const album = entry as { title?: unknown; cover_medium?: unknown; md5_image?: unknown; artist?: { name?: unknown } } | null;
         if (typeof album?.title !== "string" || typeof album.artist?.name !== "string") continue;
+        // The edition-tag regex is quadratic, so it never sees a name longer than the cap.
+        if (album.title.length > MAX_NAME_LENGTH || album.artist.name.length > MAX_NAME_LENGTH) continue;
         if (normalizeForMatch(album.title) !== wantedTitle || normalizeForMatch(album.artist.name) !== wantedArtist) continue;
         const cover = album.cover_medium;
         // Deezer's stock "no artwork" image has an empty md5, so its URL path contains "/cover//".

@@ -7,6 +7,10 @@ import type { CatalogQuery } from "./types";
 const BUSY = "The album catalog is busy. Try again in a moment.";
 const UNREACHABLE = "The album catalog couldn't be reached. Try again later.";
 
+const GROUP_ID = "11111111-2222-3333-4444-555555555555";
+const ARTIST_A = "aaaaaaaa-0000-4000-8000-000000000001";
+const ARTIST_B = "bbbbbbbb-0000-4000-8000-000000000002";
+
 const text = (value: string): CatalogQuery => ({ kind: "text", text: value });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -100,20 +104,20 @@ describe("searchAlbums results", () => {
   });
 
   const credits: { name: string; credit: unknown; artistId: string | null }[] = [
-    { name: "one artist", credit: [{ name: "A", artist: { id: "id-a", name: "A" } }], artistId: "id-a" },
+    { name: "one artist", credit: [{ name: "A", artist: { id: ARTIST_A, name: "A" } }], artistId: ARTIST_A },
     {
       name: "a collaboration joins ids with +",
       credit: [
-        { name: "A", joinphrase: " & ", artist: { id: "id-a", name: "A" } },
-        { name: "B", artist: { id: "id-b", name: "B" } },
+        { name: "A", joinphrase: " & ", artist: { id: ARTIST_A, name: "A" } },
+        { name: "B", artist: { id: ARTIST_B, name: "B" } },
       ],
-      artistId: "id-a+id-b",
+      artistId: `${ARTIST_A}+${ARTIST_B}`,
     },
     { name: "a credit with no ids", credit: [{ name: "A" }], artistId: null },
     { name: "a missing credit", credit: undefined, artistId: null },
   ];
   it.each(credits)("gives the artist id for $name", async ({ credit, artistId }) => {
-    const group = { id: "g1", title: "T", "primary-type": "Album", "artist-credit": credit };
+    const group = { id: GROUP_ID, title: "T", "primary-type": "Album", "artist-credit": credit };
     const { search } = setup(() => jsonResponse({ "release-groups": [group] }));
     const result = await search(text("album"));
     expect(result.ok && result.albums[0].artistId).toBe(artistId);
@@ -127,7 +131,7 @@ describe("searchAlbums results", () => {
       { date: "", year: null },
     ];
     const groups = dates.map(({ date }, i) => ({
-      id: `id-${i}`,
+      id: `11111111-2222-3333-4444-55555555555${i}`,
       title: `Album ${i}`,
       "primary-type": "Album",
       "first-release-date": date,
@@ -137,6 +141,65 @@ describe("searchAlbums results", () => {
     const result = await search(text("album"));
 
     expect(result.ok && result.albums.map((a) => a.year)).toEqual(dates.map((d) => d.year));
+  });
+});
+
+describe("searchAlbums answers it does not trust", () => {
+  const group = (overrides: Record<string, unknown>) => ({ id: GROUP_ID, title: "T", "primary-type": "Album", "artist-credit": [{ name: "A" }], ...overrides });
+  const fromGroups = (groups: unknown[]) => setup(() => jsonResponse({ "release-groups": groups }));
+
+  it("asks for no redirects, and a rejected fetch (what a redirect causes) is a catalog that can't be reached", async () => {
+    const { search, fetchMock, log } = setup(() => {
+      throw new TypeError("fetch failed");
+    });
+
+    expect(await search(text("getz gilberto"))).toEqual({ ok: false, message: UNREACHABLE });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: "error" });
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  const oversized: { name: string; respond: () => Response }[] = [
+    { name: "a Content-Length over 1 MB", respond: () => new Response("{}", { headers: { "Content-Length": String(1_048_577) } }) },
+    { name: "a body over 1 MB with no Content-Length", respond: () => new Response(new Blob([" ".repeat(1_048_577)]).stream()) },
+  ];
+  it.each(oversized)("refuses $name as a catalog that can't be reached", async ({ respond }) => {
+    const { search, log } = setup(respond);
+
+    expect(await search(text("getz gilberto"))).toEqual({ ok: false, message: UNREACHABLE });
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  const dropped: { name: string; groups: unknown[]; kept: unknown[] }[] = [
+    { name: "a release group id that is not a UUID", groups: [group({ id: "g1" }), group({ id: "../x", title: "U" })], kept: [] },
+    { name: "a title over 300 characters", groups: [group({ title: "t".repeat(301) })], kept: [] },
+    { name: "an artist credit over 300 characters", groups: [group({ "artist-credit": [{ name: "a".repeat(301) }] })], kept: [] },
+    { name: "a title of exactly 300 characters", groups: [group({ title: "t".repeat(300) })], kept: [GROUP_ID] },
+  ];
+  it.each(dropped)("drops $name", async ({ groups, kept }) => {
+    const { search } = fromGroups(groups);
+    const result = await search(text("album"));
+
+    expect(result.ok && result.albums.map((a) => a.catalogId)).toEqual(kept);
+  });
+
+  const credits: { name: string; credit: unknown; artist: string; artistId: string | null }[] = [
+    { name: "a null entry", credit: [null, { name: "A", artist: { id: ARTIST_A } }], artist: "A", artistId: ARTIST_A },
+    { name: "a string entry", credit: ["x", { name: "A", artist: { id: ARTIST_A } }], artist: "A", artistId: ARTIST_A },
+    { name: "a number entry", credit: [7, { name: "A", artist: { id: ARTIST_A } }], artist: "A", artistId: ARTIST_A },
+    { name: "an array entry", credit: [[], { name: "A", artist: { id: ARTIST_A } }], artist: "A", artistId: ARTIST_A },
+    { name: "an artist id that is not a UUID, keeping the name", credit: [{ name: "A", artist: { id: "nope" } }], artist: "A", artistId: null },
+    {
+      name: "one artist id that is not a UUID, keeping the other",
+      credit: [{ name: "A", joinphrase: " & ", artist: { id: "nope" } }, { name: "B", artist: { id: ARTIST_B } }],
+      artist: "A & B",
+      artistId: ARTIST_B,
+    },
+  ];
+  it.each(credits)("copes with $name in an artist credit", async ({ credit, artist, artistId }) => {
+    const { search } = fromGroups([group({ "artist-credit": credit })]);
+    const result = await search(text("album"));
+
+    expect(result.ok && result.albums.map((a) => [a.artist, a.artistId])).toEqual([[artist, artistId]]);
   });
 });
 
