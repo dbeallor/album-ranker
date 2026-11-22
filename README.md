@@ -73,7 +73,7 @@ MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICB
 
 ## Library
 
-Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title. Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md).
+Open <http://localhost:3000/library> for every album you have listened to, as a grid. Sort by rating, title, artist, year, decade, era, matchups played, wins, losses, ties, win rate, last matchup or date added, in either direction. Albums that tie on the sort key go by rating, then artist, then title (within one artist, by year, then title). Sorting by year, decade, era or artist puts a heading above each group. Filter by search text, by scope (lifetime, an era, a decade or a year) and by played or unplayed. The sort and filters are in the URL, so a view can be bookmarked. Details are in [the ALBUM-34 spec](docs/superpowers/specs/2026-11-21-album-34-elo-library-table.md).
 
 ## Matchups
 
