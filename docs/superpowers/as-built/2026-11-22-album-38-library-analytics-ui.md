@@ -1,6 +1,6 @@
 # As-built: Update the app UI for the library and analytics flow
 
-**Shipped:** in PR #TBD
+**Shipped:** in PR #44
 **Ticket:** ALBUM-38
 **Spec:** [2026-11-22-album-38-library-analytics-ui.md](../specs/2026-11-22-album-38-library-analytics-ui.md)
 

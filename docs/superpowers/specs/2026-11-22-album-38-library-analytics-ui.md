@@ -1,6 +1,7 @@
 # Update the app UI for the library and analytics flow
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #44, with differences: [as-built](../as-built/2026-11-22-album-38-library-analytics-ui.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-38](https://github.com/dbeallor/album-ranker/issues/38)
 **Follows:** [restyle with one design system](2026-11-21-album-31-restyle-design-system.md), [library table and analytics](2026-11-21-album-34-elo-library-table.md), [add albums to the library](2026-11-21-album-35-add-albums-library.md), [artist rating and sorts](2026-11-21-album-36-analytics-sorts.md). Where the ticket text and what shipped differ, what shipped wins.
