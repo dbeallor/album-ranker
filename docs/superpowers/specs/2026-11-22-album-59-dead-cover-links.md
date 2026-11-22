@@ -1,6 +1,7 @@
 # Backfill replaces dead Cover Art Archive links with Deezer covers
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #60, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-59](https://github.com/dbeallor/album-ranker/issues/59)
 **Follows:** [ALBUM-55 cover backfill](2026-11-22-album-55-cover-backfill.md), [ALBUM-48 album art fallback](2026-11-22-album-48-album-art-fallback.md)
