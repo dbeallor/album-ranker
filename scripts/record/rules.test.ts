@@ -11,6 +11,8 @@ import {
   portOf,
   previewCommandFor,
   recordingFolder,
+  sizeTimeline,
+  type SizeInput,
   type PreviewCandidate,
   type SourceInput,
 } from "./rules.ts";
@@ -189,6 +191,37 @@ describe("buildSource", () => {
 
   it.each(cases)("%s", (_name, input, expected) => {
     expect(buildSource(input)).toEqual(expected);
+  });
+});
+
+describe("sizeTimeline", () => {
+  const START = 1_000;
+  const requested = { width: 1280, height: 720 };
+  const input = (over: Partial<SizeInput>): SizeInput => ({ reports: [], startedAtMs: START, requested, headless: false, ...over });
+
+  const cases: [string, Partial<SizeInput>, unknown][] = [
+    ["no report, headed: size not known", {}, { viewport: null, resizes: [] }],
+    ["no report, headless: the requested size", { headless: true }, { viewport: requested, resizes: [] }],
+    ["first report is the viewport, not the requested size", { reports: [{ ts: 1_100, width: 1280, height: 590 }] }, { viewport: { width: 1280, height: 590 }, resizes: [] }],
+    [
+      "later sizes become resizes with t from startedAt",
+      { reports: [{ ts: 1_100, width: 1280, height: 590 }, { ts: 6_120, width: 600, height: 812 }] },
+      { viewport: { width: 1280, height: 590 }, resizes: [{ t: 5_120, width: 600, height: 812 }] },
+    ],
+    [
+      "a report equal to the previous size is dropped, a return to an earlier size is kept",
+      { reports: [{ ts: 1_100, width: 800, height: 600 }, { ts: 2_000, width: 800, height: 600 }, { ts: 3_000, width: 500, height: 600 }, { ts: 4_000, width: 800, height: 600 }] },
+      { viewport: { width: 800, height: 600 }, resizes: [{ t: 2_000, width: 500, height: 600 }, { t: 3_000, width: 800, height: 600 }] },
+    ],
+    [
+      "a resize before startedAt is clamped to t 0",
+      { reports: [{ ts: 900, width: 800, height: 600 }, { ts: 950, width: 700, height: 600 }] },
+      { viewport: { width: 800, height: 600 }, resizes: [{ t: 0, width: 700, height: 600 }] },
+    ],
+  ];
+
+  it.each(cases)("%s", (_name, over, expected) => {
+    expect(sizeTimeline(input(over))).toEqual(expected);
   });
 });
 

@@ -150,7 +150,7 @@ Any checkout can run these. A ticket preview needs a worktree for its branch, fo
 If the preview isn't running, the command prints the `npm run preview -- <target>` line that starts it. Click through the app in the window. Close the window or press Ctrl-C to stop (only the page you start on is checked as local, so pages you reach by following an external link are recorded too); the command prints where it saved the log.
 
 - **Where:** `recordings/<YYYYMMDD-HHMMSS>-<port>/events.json` in the checkout you ran it from (gitignored), or `<dir>/events.json` with `--out <dir>`. While you work the file is rewritten at most once a second, so a crash loses at most the last second.
-- **Viewport:** 1280x720 unless `--viewport <W>x<H>` says otherwise, so click positions match the `viewport` in the log.
+- **Viewport:** the window starts at 1280x720 unless `--viewport <W>x<H>` says otherwise, and the page follows the window, so resizing it changes the layout as in a normal browser. The log's `viewport` (the page size at the first load) and `resizes` (each later size) say what click positions were measured against.
 - **Which app:** each log's `source` says where it came from: host and port, and, where the code can tell, the kind of run, preview name, branch, worktree and commit. The fields are in [docs/event-log-format.md](docs/event-log-format.md).
 - **Nothing runs in the app:** the recorder is injected by this command's browser. The app has no recorder code and no endpoint, and a build contains none.
 

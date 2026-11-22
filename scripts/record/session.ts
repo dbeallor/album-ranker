@@ -4,11 +4,14 @@ import type { BrowserType, Page } from "@playwright/test";
 import { recorderScript } from "../../e2e/recorder/inject.ts";
 import { buildLog } from "../../e2e/recorder/log.ts";
 import type { LogSource, SentEvent } from "../../e2e/recorder/recorder.ts";
+import { sizeTimeline, type SizeReport } from "./rules.ts";
+import { sizeScript } from "./size-script.ts";
 
 export type SessionOptions = {
   /** Playwright's `chromium`. A script can pass it with `headless: true`. */
   browser: BrowserType;
   url: string;
+  /** The size a headless page has for the whole session, or the size a headed window starts at. */
   viewport: { width: number; height: number };
   outFile: string;
   source: LogSource;
@@ -39,12 +42,15 @@ export async function runSession(options: SessionOptions): Promise<SessionResult
   const headless = options.headless ?? false;
 
   const sent: SentEvent[] = [];
+  const sizes: SizeReport[] = [];
   const openedAtMs = now();
   // `t` counts from the first event, so a log starts at 0.
   const startedAtMs = () => sent[0]?.ts ?? openedAtMs;
 
   const save = async (): Promise<void> => {
-    const log = buildLog({ sent, startedAtMs: startedAtMs(), source, viewport });
+    const startedAt = startedAtMs();
+    const { viewport: pageSize, resizes } = sizeTimeline({ reports: sizes, startedAtMs: startedAt, requested: viewport, headless });
+    const log = buildLog({ sent, startedAtMs: startedAt, source, viewport: pageSize, resizes });
     await mkdir(dirname(outFile), { recursive: true });
     // Write beside the file and rename, so a kill mid-write never leaves half a log.
     const partial = `${outFile}.partial`;
@@ -78,12 +84,18 @@ export async function runSession(options: SessionOptions): Promise<SessionResult
   const closed = new Promise<void>((resolve) => instance.once("disconnected", () => resolve()));
 
   try {
-    const context = await instance.newContext({ viewport });
+    // A headed page takes the window's size, so resizing the window changes the layout. A headless run has no window.
+    const context = await instance.newContext({ viewport: headless ? viewport : null });
     await context.exposeBinding("__albumRecorderSend", (_source, event: SentEvent) => {
       sent.push(event);
       saveSoon();
     });
     await context.addInitScript({ content: recorderScript() });
+    await context.exposeBinding("__albumRecorderViewport", (_source, size: SizeReport) => {
+      sizes.push(size);
+      saveSoon();
+    });
+    await context.addInitScript({ content: sizeScript() });
 
     // Chromium started by Playwright keeps running after its last window closes, so end the session ourselves.
     const watch = (opened: Page): void => {
