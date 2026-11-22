@@ -1,7 +1,7 @@
 # Fall back to another source for album art
 
 **Status:** Shipped
-**Shipped:** in PR #50, as specified
+**Shipped:** in PR #50, with differences: [as-built](../as-built/2026-11-22-album-48-album-art-fallback.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-48](https://github.com/dbeallor/album-ranker/issues/48)
 **Follows:** [ALBUM-35 add albums to the library](2026-11-21-album-35-add-albums-library.md)
