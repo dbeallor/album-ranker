@@ -60,9 +60,9 @@ describe("addToLibraryAction", () => {
       stored: true,
     },
     {
-      name: "failure goes back to the search with the error and the album",
+      name: "failure goes back to the search with the error code and the album",
       overrides: { year: "1800" },
-      params: { q: "kind of blue", error: "Enter a year from 1900 to 2100.", item: CATALOG_ID },
+      params: { q: "kind of blue", error: "year", item: CATALOG_ID },
       stored: false,
     },
   ])("$name", async ({ overrides, params, stored }) => {

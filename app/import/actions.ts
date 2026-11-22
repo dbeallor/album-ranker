@@ -44,8 +44,14 @@ function done(itemId: number, { already = false, moved = false }: Handled = {}):
   redirect(`/import?${params}${next === null ? "" : `#item-${next}`}`);
 }
 
-function fail(itemId: number | null, message: string): never {
-  return back(itemId === null ? { error: message } : { error: message, item: String(itemId) });
+/** Why an action failed. The page maps each code to a message it wrote (`app/import/page.tsx`); `albumId` goes with `in_library`. */
+type FailCode = "not_found" | "missing_details" | "in_library" | "invalid";
+
+function fail(itemId: number | null, code: FailCode, albumId?: number): never {
+  const params: Record<string, string> = { error: code };
+  if (itemId !== null) params.item = String(itemId);
+  if (albumId !== undefined) params.album = String(albumId);
+  return back(params);
 }
 
 function candidateFrom(formData: FormData): CatalogCandidate | null {
@@ -75,32 +81,33 @@ function resolve(itemId: number, choice: ResolveChoice): never {
   if (result.ok) return done(itemId, { moved: result.movedFromYear !== null });
   // A second click on an item the first click already handled is not an error.
   if (result.code === "not_open") return done(itemId, { already: true });
-  return fail(itemId, result.message);
+  if (result.code === "album_in_library") return fail(itemId, "in_library", result.albumId);
+  return fail(itemId, result.code === "invalid" ? "invalid" : "not_found");
 }
 
 /** Use this album (a candidate or a search result), or Move it here when `moveHere` is set. */
 export async function chooseAlbumAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
+  if (itemId === null) return fail(null, "not_found");
   const album = candidateFrom(formData);
-  if (!album) return fail(itemId, "That album is missing its catalog details.");
+  if (!album) return fail(itemId, "missing_details");
   return resolve(itemId, { kind: "catalog", album: await withCover(album), moveHere: field(formData, "moveHere") === "1" });
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
+  if (itemId === null) return fail(null, "not_found");
   return resolve(itemId, { kind: "manual" });
 }
 
 export async function skipAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
-  if (itemId === null) return fail(null, "That review item could not be found.");
+  if (itemId === null) return fail(null, "not_found");
   const result = skipReviewItem(getDb(), itemId);
   if (result.ok) return done(itemId);
   if (result.code === "not_open") return done(itemId, { already: true });
-  return fail(itemId, result.message);
+  return fail(itemId, "not_found");
 }

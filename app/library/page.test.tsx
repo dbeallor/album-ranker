@@ -103,15 +103,18 @@ describe("library page", () => {
     expect(screen.getAllByRole("link", { name: "Remove" })).toHaveLength(3);
   });
 
-  it.each([
-    { name: "many matchups", params: { removed: "Kind of Blue", matchups: "7" }, text: "Removed Kind of Blue and its 7 matchups." },
-    { name: "one matchup", params: { removed: "Kind of Blue", matchups: "1" }, text: "Removed Kind of Blue and its 1 matchup." },
-    { name: "no matchups", params: { removed: "Kind of Blue", matchups: "0" }, text: "Removed Kind of Blue." },
-    { name: "a bad count", params: { removed: "Kind of Blue", matchups: "lots" }, text: "Removed Kind of Blue." },
+  it.each<{ name: string; params: Params; text: string | null }>([
+    { name: "many matchups", params: { removed: "1", matchups: "7" }, text: "Removed the album and its 7 matchups." },
+    { name: "one matchup", params: { removed: "1", matchups: "1" }, text: "Removed the album and its 1 matchup." },
+    { name: "no matchups", params: { removed: "1", matchups: "0" }, text: "Removed the album." },
+    { name: "a bad count", params: { removed: "1", matchups: "lots" }, text: "Removed the album." },
+    { name: "made-up text in removed shows nothing", params: { removed: "Kind of Blue", matchups: "7" }, text: null },
+    { name: "no removed param shows nothing", params: { matchups: "7" }, text: null },
   ])("says what was removed: $name", async ({ params, text }) => {
     await renderPage(params);
 
-    expect(screen.getByText(text)).toBeDefined();
+    expect(screen.queryByRole("status")?.textContent ?? null).toBe(text);
+    expect(document.body.textContent).not.toContain("Kind of Blue");
   });
 
   it("shows the filtered count against the whole library", async () => {
