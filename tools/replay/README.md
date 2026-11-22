@@ -29,6 +29,19 @@ node dev/dash-at.mjs 2026-11-20T23:30:00Z ship               # screenshot the da
 
 Snapshot (`fixtures/<date>/`: the transcript read from `~/.t3/userdata/statev2.sqlite`, threads, PRs, specs, dashboard data) -> `timeline/<date>.json` -> the ground-truth test (`node --test lib/` checks `stateAt` against `live-api.json`) -> `story/<date>.mjs` -> `--dry` -> draft render with `TTS=say` -> frame QA -> the ElevenLabs render. `.claude/skills/replay-thread-video` has the steps, `replay-fidelity-checklist` the rules.
 
+## Build time
+
+Every video must show how long the user spent building, not the wall-clock span: a build-time readout on screen, and narration that places the viewer by it ("about two hours into the build"). Time the user was away with no agent running does not count. This is the user's rule for every render, whatever else they ask for.
+
+Definition (the gantt-based rule; keep it identical everywhere it is stated):
+- Agent-running time: the union of the working `segments` of every gantt row (children too) of the sessions in the timeline's `sessions` (chief, helpers, ticket children), from `fixtures/<date>/gantt/*.json` and `gantt-history.json`, clipped to [first command, snapshot]. The gantt folder also holds other threads (the one rendering these videos, unrelated worktree threads). They are not in `sessions` and are excluded.
+- User-present time: each command in `commands[].t` is an instant of activity. A gap of at most 5 minutes between two pieces of activity (segment edges, commands) counts as active, since the user is reading or thinking. A longer gap with no agent running is idle and not counted.
+- The threshold is `DEFAULT_IDLE_GAP_MS` (5 minutes) in `lib/active-time.mjs`, overridden per timeline with `timeline.activeTime.idleGapMs`.
+
+Status: `lib/active-time.mjs` (`activeIntervals`, `elapsedAt`, `totalActive`, tested in `lib/active-time.test.mjs`) and `node dev/build-time.mjs timeline/<date>.json` (prints the intervals, the total and the build time at every command) exist. The on-video graphic does not. Building it is the first step of the next render: a readout in the caption strip's right end (label "BUILD TIME", `h:mm:ss` in tabular digits, a thin bar against the total), driven by the stage's fake clock through `elapsedAt`, paused with a plain "idle time not counted" state while a `later` jump crosses an idle gap. Time-lapse chips switch from clock ranges to build-time durations ("⏩ 7 min", "idle time skipped, not counted"). Document the new stage call in `STAGE_API.md`. Real UI timestamps (dashboard, T3 message times) stay: it is a faithful recording.
+
+For 2026-11-21 the rule gives three stretches (23:01:19 to 23:27:20, 23:43:21 to 23:57:21, 05:06:17 to 06:05:21 UTC), 1:39:05 in all; "approve 3" at 05:06:17 is at 0:40:01.
+
 ## Voiceover
 
 The default voice is the user's cloned ElevenLabs voice. Set `ELEVENLABS_VOICE_ID` in `.env` (copy `.env.example`; gitignored). The API key comes from `ELEVENLABS_API_KEY`, else the macOS Keychain, where you store it once with:
@@ -124,6 +137,7 @@ The sidebar shows the project's other top-level threads from `threads.json`: `si
 - `story/<date>.mjs`: narration and stage actions per beat
 - `timeline/<date>.json`: tickets, sessions, stage events and commands with real UTC times
 - `fixtures/<date>/`: recorded dashboard JSON, gantt sessions, spec versions, PR data
+- `lib/active-time.mjs`: active build time; `dev/build-time.mjs`: prints it for a timeline
 - `lib/`: director (what a story can do), `state-at` (dashboard state at an instant), recorder, media, dashboard serving, `diff` (a `.diff` file to files and hunks), `captions` (caption pieces), `clock-format` (time labels, the chip, `HH:MM:SS` roll-over), `beat-range` (`BEATS`)
 - `static/stage.html`: the stage; `dev/dash-at.mjs`: dashboard screenshot tool
 

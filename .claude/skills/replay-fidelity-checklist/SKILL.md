@@ -44,6 +44,13 @@ Used by `replay-thread-video` while authoring (`tools/replay/story/`, `timeline/
 **Numbers**
 18. Every number in the narration (counts, costs, minutes, ports, tests, files) is checked against the fixtures (`spend.json`, PR bodies, chief messages, timeline times), and the narration is corrected when it differs. Reason: a viewer trusts a spoken number.
 
+**Build time** (the video quantifies the time the user actually spent building or had agents running, not the wall-clock span)
+21. A build-time readout is visible in every beat, in the caption strip, not covering captions or T3 chrome. The tool needs the graphic built first (see `replay-thread-video`, Build time).
+22. Active time follows the README definition: agent segments of the timeline's own sessions only (unrelated gantt sessions excluded), user commands, gaps of at most 5 minutes bridged, longer idle gaps not counted. Reason: AFK time must not inflate the number.
+23. The readout never moves backwards, does not advance across an idle gap (shows a paused state during a `later`), equals `elapsedAt` at spot-checked cues, and ends at the session's total active time (`node dev/build-time.mjs`).
+24. Narration and captions never state the time of day, the date, or that the user stepped away or came back. Position in the session is a build-time phrase, and each one matches `dev/build-time.mjs` at that beat. Grep `say:` and `caption:` for a.m., p.m., o'clock, midnight, tonight, night, evening, morning, away, back. Reason: the user wants build time, not clock time.
+25. Chips and any overlay the renderer adds speak in build-time durations ("7 min", "idle time skipped, not counted"), never clock times. Real UI timestamps stay.
+
 **Editing**
 15. Never edit an old story or timeline to fit new data; copy to a new date. Reason: old videos must stay reproducible.
 16. Never overwrite an earlier video; use a versioned name. Reason: the user compares versions.
@@ -70,6 +77,6 @@ Extract frames at the start of each beat and at every clock jump, approval and G
 
 - Subagent models are not visible in T3 itself; the cards show the model from the thread history.
 - Voiceover is a clone of the user's voice (ElevenLabs), or macOS `say` when no key or voice id is set or with `TTS=say`.
-- Long waits are shortened; the chip shows the real clock range.
+- Long waits are shortened; the chip shows the build time skipped (until the graphic exists, the old chip shows the clock range, which fails item 25).
 - GitHub pages are redrawn from fixtures, not screenshots.
 - Headless Chrome drops clicks after the first on `t3code://` links, so the driver plays what T3 does with the link (`lib/dash.mjs`).

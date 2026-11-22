@@ -21,3 +21,10 @@ export async function loadFixtures(dir) {
   const prDetails = Object.fromEntries(live.merged.map(({ detail, prUrl }) => [prUrl.split('/').pop(), detail]))
   return { sessions, specs, prDetails }
 }
+
+/** The gantt data active time is counted from: `{ sessions, history }` (the gantt folder and gantt-history.json). Needs no dashboard code. */
+export function loadActiveFixtures(dir) {
+  const sessions = Object.fromEntries(fs.readdirSync(path.join(dir, 'gantt')).map((f) => read(path.join(dir, 'gantt', f))).map((s) => [s.sessionId, s]))
+  const hf = path.join(dir, 'gantt-history.json')
+  return { sessions, history: fs.existsSync(hf) ? read(hf) : { sessions: {} } }
+}
