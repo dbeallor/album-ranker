@@ -141,6 +141,11 @@ describe("analytics rankings and summaries", () => {
     expect(buildArtistRanking(built, LIFETIME).map((row) => row.artistName)).toEqual(order);
   });
 
+  it("scores an all-unplayed artist at the base rating", () => {
+    const unplayed = [album(1, "Aardvark", 2000, 1500), album(1, "Aardvark", 2001, 1500)];
+    expect(buildArtistRanking(unplayed, LIFETIME)[0].score).toBe(1500);
+  });
+
   it("breaks an artist tie on the same name by artist id", () => {
     const tied = [album(9, "Same", 2000, 1500), album(8, "Same", 2001, 1500)];
     expect(buildArtistRanking(tied, LIFETIME).map((row) => row.artistId)).toEqual([8, 9]);

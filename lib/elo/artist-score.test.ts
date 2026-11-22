@@ -19,6 +19,8 @@ describe("artistScore", () => {
   it("scores six albums above three, with less than double the points above 1500", () => {
     const three = artistScore(Array(3).fill(1700))!;
     const six = artistScore(Array(6).fill(1700))!;
+    expect(three).toBeCloseTo(1694.59, 2);
+    expect(six).toBeCloseTo(1756.49, 2);
     expect(six).toBeGreaterThan(three);
     expect(six - 1500).toBeLessThan(2 * (three - 1500));
   });

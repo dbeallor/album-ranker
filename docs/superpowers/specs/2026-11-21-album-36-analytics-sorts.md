@@ -67,7 +67,7 @@ An album with no counted matchup sorts last on last matchup in either direction,
 
 Today ties on a sort key, and in the rankings, fall back to the album id. They now fall back to rating (highest first), then artist name (case-insensitive), then title (case-insensitive), then album id, so the order is stable and reads sensibly:
 
-- every library sort key's tie-break, except the artist sort, which keeps its order inside an artist: year, then title (then rating and id);
+- every library sort key's tie-break, except the artist sort, which keeps its order inside an artist: artist id, year, title, then album id;
 - the album ranking on `/analytics`;
 - the lifetime `rank` on each library card (so the rank on the card and in the lifetime ranking agree).
 
