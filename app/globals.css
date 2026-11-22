@@ -14,7 +14,7 @@
   --color-text-muted: #5a564d;
   --color-border: #cfcabb;
   --color-border-strong: #6b665a;
-  --color-accent: #c2360c;
+  --color-accent: #b83009;
   --color-accent-hover: #9c2a08;
   --color-accent-text: #fffaf3;
   --color-accent-soft: #f7ddd0;
@@ -23,7 +23,7 @@
   --color-danger-soft: #fbe4df;
   --color-success: #067647;
   --color-success-soft: #dff1e6;
-  --color-focus: #c2360c;
+  --color-focus: #b83009;
   --color-backdrop: rgb(14 14 13 / 0.6);
 
   /* Type: Archivo (display, set by next/font in app/layout.tsx) and Inter (body). */

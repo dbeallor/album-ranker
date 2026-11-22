@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { cx } from "./cx";
 import styles from "./site-header.module.css";
 
@@ -27,6 +27,11 @@ function isCurrent(pathname: string, href: string): boolean {
 export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRef<"header">) {
   const pathname = usePathname();
   const dialog = useRef<HTMLDialogElement>(null);
+
+  // Back and forward change the route without a click on a menu link, so close the menu here too.
+  useEffect(() => {
+    dialog.current?.close();
+  }, [pathname]);
 
   return (
     <header className={cx(styles.header, className)} {...rest}>

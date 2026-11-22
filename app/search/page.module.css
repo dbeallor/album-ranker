@@ -14,16 +14,16 @@
 }
 
 /* Cover at the top of the row, and smaller on a phone so the text keeps its width. */
-.result > div {
+.resultRow {
   align-items: flex-start;
 }
 
-.result > div > div:first-child {
+.resultCover {
   width: 6rem;
 }
 
 @media (min-width: 640px) {
-  .result > div > div:first-child {
+  .resultCover {
     width: 10rem;
   }
 }

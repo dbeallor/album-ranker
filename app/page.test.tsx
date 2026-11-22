@@ -42,23 +42,31 @@ describe("home page", () => {
     state.db = memoryDb();
   });
 
-  it("opens with the headline and the three numbered steps", async () => {
+  it("opens with the headline and the four numbered steps", async () => {
     seed(3);
     await renderHome();
 
     expect(screen.getByRole("heading", { level: 1, name: "Rank the albums you love." })).toBeDefined();
     const steps = screen.getAllByRole("heading", { level: 2 }).filter((h) => /^\d\d \//.test(h.textContent ?? ""));
-    expect(steps.map((h) => h.textContent)).toEqual(["01 / Add albums", "02 / Play", "03 / Rankings"]);
+    expect(steps.map((h) => h.textContent)).toEqual(["01 / Add albums", "02 / Library", "03 / Play", "04 / Rankings"]);
   });
 
   it("searches the catalog with a GET form to /search", async () => {
     await renderHome();
 
-    const box = within(section("01 / Add albums")).getByRole("searchbox", { name: "Album or artist" });
+    const box = within(section("Add albums")).getByRole("searchbox", { name: "Album or artist" });
     expect(box.getAttribute("name")).toBe("q");
     expect(box.closest("form")!.getAttribute("action")).toBe("/search");
     expect(box.closest("form")!.getAttribute("method")).toBe("get");
-    expect(within(section("01 / Add albums")).getByRole("link", { name: "View library" }).getAttribute("href")).toBe("/library");
+  });
+
+  it("links to the library from its own section, with the album count", async () => {
+    seed(3);
+    await renderHome();
+
+    const library = section("Library");
+    expect(within(library).getByText("3 albums")).toBeDefined();
+    expect(within(library).getByRole("link", { name: "View library" }).getAttribute("href")).toBe("/library");
   });
 
   describe("with an empty library", () => {
@@ -66,10 +74,10 @@ describe("home page", () => {
       await renderHome();
 
       expect(screen.getByText("Your library is empty. Search for an album to start.")).toBeDefined();
-      expect(screen.queryByRole("list", { name: "Top albums" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "03 / Rankings" })).toBeNull();
+      expect(document.querySelector("ul[aria-hidden]")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Rankings" })).toBeNull();
       expect(screen.queryByRole("link", { name: "See the rankings" })).toBeNull();
-      const play = section("02 / Play");
+      const play = section("Play");
       expect(within(play).getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
       expect(within(play).getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
       expect(within(play).queryByRole("link", { name: "Play matchups" })).toBeNull();
@@ -82,10 +90,10 @@ describe("home page", () => {
       await renderHome();
 
       expect(screen.getByText("1 album in your library · 0 matchups played")).toBeDefined();
-      expect(screen.getAllByRole("img", { name: /Fake Album 0/ })).toHaveLength(2);
-      expect(within(section("02 / Play")).getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
+      expect(screen.getAllByRole("img", { name: /Fake Album 0/, hidden: true })).toHaveLength(2);
+      expect(within(section("Play")).getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
       expect(screen.queryByRole("link", { name: "Play matchups" })).toBeNull();
-      const top = within(section("03 / Rankings")).getAllByRole("listitem");
+      const top = within(section("Rankings")).getAllByRole("listitem");
       expect(top).toHaveLength(1);
       expect(top[0].textContent).toContain("Fake Album 0");
     });
@@ -106,15 +114,15 @@ describe("home page", () => {
       seed(12, 2);
       await renderHome();
 
-      const play = section("02 / Play");
+      const play = section("Play");
       expect(within(play).getByRole("heading", { name: "Ranking progress" })).toBeDefined();
       expect(within(play).getAllByRole("link", { name: "Play matchups" })).toHaveLength(1);
       expect(within(play).getByRole("link", { name: "Play matchups" }).getAttribute("href")).toBe("/matchups");
 
-      expect(within(screen.getByRole("list", { name: "Top albums" })).getAllByRole("listitem")).toHaveLength(8);
-      const top = within(section("03 / Rankings")).getAllByRole("listitem");
+      expect(document.querySelectorAll("ul[aria-hidden] > li")).toHaveLength(8);
+      const top = within(section("Rankings")).getAllByRole("listitem");
       expect(top).toHaveLength(5);
-      expect(within(section("03 / Rankings")).getByRole("link", { name: "See the rankings" }).getAttribute("href")).toBe("/analytics");
+      expect(within(section("Rankings")).getByRole("link", { name: "See the rankings" }).getAttribute("href")).toBe("/analytics");
     });
 
     it("lists the top five in rating order, linking each artist", async () => {
@@ -123,7 +131,7 @@ describe("home page", () => {
       recordMatchup(db, { albumAId: first, albumBId: second, result: "b" });
       await renderHome();
 
-      const top = within(section("03 / Rankings")).getAllByRole("listitem");
+      const top = within(section("Rankings")).getAllByRole("listitem");
       expect(top.map((row) => within(row).getByRole("strong", { hidden: true }).textContent)).toEqual([
         "Fake Album 1",
         "Fake Album 2",

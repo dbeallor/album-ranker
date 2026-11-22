@@ -70,6 +70,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
               return (
                 <li key={album.catalogId} className={styles.result}>
                   <ListRow
+                    className={styles.resultRow}
+                    coverClassName={styles.resultCover}
                     cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={160} />}
                     title={album.title}
                     subtitle={album.artist}

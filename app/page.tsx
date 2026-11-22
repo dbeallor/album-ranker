@@ -50,7 +50,7 @@ export default async function Home() {
       )}
 
       {ranking.length > 0 && (
-        <ul className={styles.strip} aria-label="Top albums">
+        <ul className={styles.strip} aria-hidden="true">
           {ranking.slice(0, STRIP_COVERS).map(({ album }) => (
             <li key={album.albumId}>
               <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={240} fill />
@@ -69,6 +69,13 @@ export default async function Home() {
             Search
           </Button>
         </InlineForm>
+      </Stack>
+
+      <Stack as="section" gap={4} aria-labelledby="home-library">
+        <SectionLabel as="h2" id="home-library">
+          02 / Library
+        </SectionLabel>
+        <p>{albums === 0 ? "No albums in your library yet." : plural(albums, "album")}</p>
         <div>
           <ButtonLink href="/library">View library</ButtonLink>
         </div>
@@ -76,7 +83,7 @@ export default async function Home() {
 
       <Stack as="section" gap={4} aria-labelledby="home-play">
         <SectionLabel as="h2" id="home-play">
-          02 / Play
+          03 / Play
         </SectionLabel>
         {progress ? (
           <>
@@ -97,12 +104,12 @@ export default async function Home() {
       {ranking.length > 0 && (
         <Stack as="section" gap={4} aria-labelledby="home-rankings">
           <SectionLabel as="h2" id="home-rankings">
-            03 / Rankings
+            04 / Rankings
           </SectionLabel>
           <ol className={styles.top}>
             {ranking.slice(0, TOP_ALBUMS).map(({ rank, album }) => (
               <li key={album.albumId} className={styles.topRow}>
-                <span className={styles.rank}>{rank}</span>
+                <span className={styles.rank} aria-hidden="true">{rank}</span>
                 <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />
                 <div className={styles.topText}>
                   <strong>{album.title}</strong>

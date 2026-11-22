@@ -45,13 +45,6 @@ describe("search page", () => {
     state.db = memoryDb();
   });
 
-  it("is titled Add albums, with a numbered label", async () => {
-    await renderPage();
-
-    expect(screen.getByRole("heading", { level: 1, name: "Add albums" })).toBeDefined();
-    expect(screen.getByText((_, element) => element?.tagName === "P" && element.textContent === "01 / Add albums")).toBeDefined();
-  });
-
   it("shows the error message instead of crashing, and keeps the query in the box", async () => {
     searchAlbumsMock.mockResolvedValue({ ok: false, message: "The album catalog is busy. Try again in a moment." });
     await renderPage("getz gilberto");

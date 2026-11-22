@@ -15,3 +15,4 @@
 - Small shared-part additions not in the spec: `Cover` takes a `fill` prop and `RankingProgress` takes `showPlay`.
 - Matchup choices are at most 24rem wide and centred on desktop so the buttons stay above the fold.
 - Shadows are removed everywhere, not only on cards.
+- The main nav now lives in a dialog opened by script, so it needs JavaScript. The home page links cover the whole flow (search, library, play, rankings) without it.

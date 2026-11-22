@@ -18,7 +18,11 @@ export function SectionLabel({ as: Tag = "p", children, className, ...rest }: Se
     <Tag className={cx(styles.label, className)} {...rest}>
       {match ? (
         <>
-          <span className={styles.number}>{match[1]}</span> / {match[2]}
+          <span className={styles.number} aria-hidden="true">
+            {match[1]}
+          </span>
+          <span aria-hidden="true"> / </span>
+          {match[2]}
         </>
       ) : (
         children
