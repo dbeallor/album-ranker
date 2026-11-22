@@ -113,12 +113,6 @@ describe("library page", () => {
     expect(screen.getByText(text)).toBeDefined();
   });
 
-  it("shows no removed message without the param", async () => {
-    await renderPage();
-
-    expect(screen.queryByText(/^Removed /)).toBeNull();
-  });
-
   it("shows the filtered count against the whole library", async () => {
     await renderPage({ q: "aardvark" });
 

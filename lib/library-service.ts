@@ -26,10 +26,13 @@ export type RemoveFromLibraryResult =
   | { ok: true; title: string; matchups: number }
   | { ok: false; message: string; stale?: true; matchups?: number };
 
-const CATALOG_ID = /^[0-9a-f-]{36}$/i;
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const CATALOG_ID = new RegExp(`^${UUID}$`, "i");
+const ARTIST_ID = new RegExp(`^${UUID}(\\+${UUID})*$`, "i");
 const WHOLE_NUMBER = /^\d+$/;
 const COVER_HOST = "https://coverartarchive.org/";
 const MAX_TEXT = 300;
+const MAX_ARTIST_ID = 400;
 const YEAR_MESSAGE = "Enter a year from 1900 to 2100.";
 
 function wholeNumber(value: Raw): number | undefined {
@@ -46,7 +49,7 @@ function text(value: Raw): string {
 }
 
 function blank(value: Raw): boolean {
-  return value === null || value === undefined || text(value) === "";
+  return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 }
 
 /**
@@ -58,8 +61,15 @@ export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbu
   const year = wholeNumber(input.year);
   if (year === undefined || year < 1900 || year > 2100) return { ok: false, message: YEAR_MESSAGE };
 
-  const catalogId = text(input.catalogId);
-  if (!CATALOG_ID.test(catalogId)) return { ok: false, message: "That album's catalog id isn't valid." };
+  const rawCatalogId = text(input.catalogId);
+  if (!CATALOG_ID.test(rawCatalogId)) return { ok: false, message: "That album's catalog id isn't valid." };
+  const catalogId = rawCatalogId.toLowerCase();
+
+  const rawArtistId = text(input.artistId);
+  if (rawArtistId.length > MAX_ARTIST_ID || (rawArtistId !== "" && !ARTIST_ID.test(rawArtistId))) {
+    return { ok: false, message: "That album's artist id isn't valid." };
+  }
+  const artistId = rawArtistId.toLowerCase();
 
   const title = text(input.title);
   const artist = text(input.artist);
@@ -67,10 +77,10 @@ export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbu
   if (artist === "" || artist.length > MAX_TEXT) return { ok: false, message: "That album's artist isn't valid." };
 
   const coverUrl = text(input.coverUrl);
-  if (coverUrl !== "" && !coverUrl.startsWith(COVER_HOST)) return { ok: false, message: "That album's cover isn't valid." };
+  if (coverUrl !== "" && (!coverUrl.startsWith(COVER_HOST) || coverUrl.length > MAX_TEXT)) return { ok: false, message: "That album's cover isn't valid." };
 
   const releaseYear = blank(input.releaseYear) ? null : wholeNumber(input.releaseYear);
-  if (releaseYear === undefined) return { ok: false, message: "That album's release year isn't valid." };
+  if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) return { ok: false, message: "That album's release year isn't valid." };
 
   return transaction(db, () => {
     const existing = findAlbumByCatalogId(db, catalogId);
@@ -80,7 +90,7 @@ export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbu
       existing ??
       createAlbum(db, {
         title,
-        artist: { name: artist, catalogId: text(input.artistId) || null },
+        artist: { name: artist, catalogId: artistId || null },
         catalogId,
         releaseYear,
         coverUrl: coverUrl || null,

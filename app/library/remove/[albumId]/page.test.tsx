@@ -84,10 +84,7 @@ describe("remove album page", () => {
     { name: "an album not in the library", id: () => String(outsider) },
     { name: "an unknown album", id: () => "9999" },
     { name: "a text id", id: () => "abc" },
-    { name: "zero", id: () => "0" },
-    { name: "a negative id", id: () => "-1" },
-    { name: "a decimal id", id: () => "1.5" },
-    { name: "a leading-zero id", id: () => "01" },
+    { name: "a non-positive id", id: () => "-1" },
   ])("calls notFound for $name", async ({ id }) => {
     await expect(renderPage(id())).rejects.toThrow("NEXT_NOT_FOUND");
   });

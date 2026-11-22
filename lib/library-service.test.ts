@@ -10,12 +10,15 @@ import { loadRatings } from "./ratings";
 
 const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
 const OTHER_CATALOG_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const ARTIST_ID = "bbbbbbbb-1111-2222-3333-444444444444";
+const OTHER_ARTIST_ID = "cccccccc-1111-2222-3333-444444444444";
+const THIRD_ARTIST_ID = "dddddddd-1111-2222-3333-444444444444";
 
 const input = (overrides: Partial<AddCatalogAlbumInput> = {}): AddCatalogAlbumInput => ({
   catalogId: CATALOG_ID,
   title: "Kind of Blue",
   artist: "Miles Davis",
-  artistId: "artist-1",
+  artistId: ARTIST_ID,
   releaseYear: "1959",
   coverUrl: `https://coverartarchive.org/release-group/${CATALOG_ID}/front-250`,
   year: "1959",
@@ -34,7 +37,7 @@ describe("addCatalogAlbumToLibrary", () => {
     const album = findAlbumByCatalogId(db, CATALOG_ID)!;
     expect(album).toMatchObject({
       title: "Kind of Blue",
-      artist: { name: "Miles Davis", catalogId: "artist-1" },
+      artist: { name: "Miles Davis", catalogId: ARTIST_ID },
       releaseYear: 1959,
       coverUrl: `https://coverartarchive.org/release-group/${CATALOG_ID}/front-250`,
     });
@@ -52,6 +55,23 @@ describe("addCatalogAlbumToLibrary", () => {
     const result = addCatalogAlbumToLibrary(db, input({ releaseYear: null, coverUrl: "", artistId: null, year: 1971 }));
     expect(result).toEqual({ ok: true, added: true });
     expect(findAlbumByCatalogId(db, CATALOG_ID)).toMatchObject({ releaseYear: null, coverUrl: null, artist: { catalogId: null } });
+  });
+
+  it("takes a collaboration artist id, stored lower-case", () => {
+    const artistId = `${ARTIST_ID.toUpperCase()}+${OTHER_ARTIST_ID}`;
+    expect(addCatalogAlbumToLibrary(db, input({ artistId }))).toEqual({ ok: true, added: true });
+    expect(findAlbumByCatalogId(db, CATALOG_ID)!.artist.catalogId).toBe(artistId.toLowerCase());
+  });
+
+  it("stores an upper-case catalog id lower-case and treats it as the same album", () => {
+    expect(addCatalogAlbumToLibrary(db, input({ catalogId: OTHER_CATALOG_ID.toUpperCase() }))).toEqual({ ok: true, added: true });
+    expect(findAlbumByCatalogId(db, OTHER_CATALOG_ID)).toBeDefined();
+    expect(addCatalogAlbumToLibrary(db, input({ catalogId: OTHER_CATALOG_ID }))).toEqual({ ok: true, added: false });
+    expect(listAlbums(db)).toHaveLength(1);
+  });
+
+  it.each([1, 2100])("takes a release year of %i", (releaseYear) => {
+    expect(addCatalogAlbumToLibrary(db, input({ releaseYear }))).toEqual({ ok: true, added: true });
   });
 
   it("shares an artist between albums with the same catalog artist id", () => {
@@ -109,8 +129,16 @@ describe("addCatalogAlbumToLibrary", () => {
     { name: "an artist over 300 characters", overrides: { artist: "a".repeat(301) } },
     { name: "a cover from another host", overrides: { coverUrl: "https://example.com/cover.jpg" } },
     { name: "a cover over plain http", overrides: { coverUrl: "http://coverartarchive.org/x" } },
+    { name: "a cover over 300 characters", overrides: { coverUrl: `https://coverartarchive.org/${"x".repeat(300)}` } },
     { name: "a fractional release year", overrides: { releaseYear: "1959.5" } },
     { name: "a text release year", overrides: { releaseYear: "soon" } },
+    { name: "a release year of 0", overrides: { releaseYear: 0 } },
+    { name: "a release year of 2101", overrides: { releaseYear: "2101" } },
+    { name: "a huge release year", overrides: { releaseYear: "99999999999999999999" } },
+    { name: "an artist id that is not an id", overrides: { artistId: "artist-1" } },
+    { name: "an artist id with a trailing plus", overrides: { artistId: `${ARTIST_ID}+` } },
+    { name: "an artist id with a bad second id", overrides: { artistId: `${ARTIST_ID}+nope` } },
+    { name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") } },
   ])("refuses $name and writes nothing", ({ overrides }) => {
     const result = addCatalogAlbumToLibrary(db, input(overrides));
     expect(result.ok).toBe(false);
@@ -132,9 +160,9 @@ describe("removeFromLibrary", () => {
 
   beforeEach(() => {
     db = memoryDb();
-    miles = add(CATALOG_ID, "Kind of Blue", "Miles Davis", "artist-miles", 1959);
-    coltrane = add(OTHER_CATALOG_ID, "Giant Steps", "John Coltrane", "artist-trane", 1960);
-    evans = add("99999999-8888-7777-6666-555555555555", "Waltz for Debby", "Bill Evans", "artist-evans", 1961);
+    miles = add(CATALOG_ID, "Kind of Blue", "Miles Davis", ARTIST_ID, 1959);
+    coltrane = add(OTHER_CATALOG_ID, "Giant Steps", "John Coltrane", OTHER_ARTIST_ID, 1960);
+    evans = add("99999999-8888-7777-6666-555555555555", "Waltz for Debby", "Bill Evans", THIRD_ARTIST_ID, 1961);
     recordMatchup(db, { albumAId: miles, albumBId: coltrane, result: "a", createdAt: "2024-01-01T00:00:00.000Z" });
     recordMatchup(db, { albumAId: evans, albumBId: miles, result: "b", createdAt: "2024-01-02T00:00:00.000Z" });
     recordMatchup(db, { albumAId: coltrane, albumBId: evans, result: "a", createdAt: "2024-01-03T00:00:00.000Z" });
@@ -164,7 +192,7 @@ describe("removeFromLibrary", () => {
   });
 
   it("keeps the artist while it has other albums, and drops it when none remain", () => {
-    add("00000000-0000-0000-0000-000000000001", "Sketches of Spain", "Miles Davis", "artist-miles", 1960);
+    add("00000000-0000-0000-0000-000000000001", "Sketches of Spain", "Miles Davis", ARTIST_ID, 1960);
     removeFromLibrary(db, miles, 2);
     expect(listAlbums(db).some((album) => album.artist.name === "Miles Davis")).toBe(true);
 
@@ -190,7 +218,7 @@ describe("removeFromLibrary", () => {
   });
 
   it("words a single current matchup in the singular", () => {
-    const solo = add("00000000-0000-0000-0000-000000000002", "Solo", "Solo Artist", "artist-solo", 1962);
+    const solo = add("00000000-0000-0000-0000-000000000002", "Solo", "Solo Artist", "eeeeeeee-1111-2222-3333-444444444444", 1962);
     recordMatchup(db, { albumAId: solo, albumBId: miles, result: "a" });
     expect(removeFromLibrary(db, solo, 0)).toMatchObject({ message: "This album now has 1 matchup. Check and confirm again." });
   });
