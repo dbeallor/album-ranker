@@ -1,7 +1,7 @@
 # Check the shipped password gate against the sweep's list
 
 **Status:** Shipped
-**Shipped:** in PR #PRN, as specified
+**Shipped:** in PR #73, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-65](https://github.com/dbeallor/album-ranker/issues/65)
 **Follows:** [ALBUM-64 security sweep report](2026-11-22-album-64-security-sweep-report.md) (finding S1), [ALBUM-14 AWS deploy](2026-11-22-album-14-aws-terraform-deploy.md)
