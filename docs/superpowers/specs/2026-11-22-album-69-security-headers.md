@@ -1,6 +1,7 @@
 # Security headers and no X-Powered-By
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #76, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-69](https://github.com/dbeallor/album-ranker/issues/69)
 **Follows:** [ALBUM-64 security sweep report](2026-11-22-album-64-security-sweep-report.md) (findings S5 to S8)
