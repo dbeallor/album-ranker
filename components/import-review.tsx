@@ -53,7 +53,7 @@ export function describeReason(item: ImportReviewItem): string {
     case "duplicate_album":
       return `The matched album is already in your library (${item.reasonDetail}).`;
     case "rank_taken":
-      return `Rank ${item.sourceRank} in ${item.source.year} is already held by ${item.reasonDetail}.`;
+      return "Sent to review for a rank clash. Ranks are no longer used, so any choice adds the album to your library.";
   }
 }
 

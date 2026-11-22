@@ -175,7 +175,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
   );
 }
 
-/** A GET form that picks one decade or year, keeping the view. Selecting nothing leaves the page as it is. */
+/** A GET form that picks one decade or year, keeping the view. With nothing chosen nothing is submitted, so the page shows Lifetime. */
 function ScopePicker({
   view,
   label,

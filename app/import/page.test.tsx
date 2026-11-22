@@ -91,7 +91,7 @@ describe("import review page", () => {
     expect(boxes.map((box) => box.value)).toEqual(["Fake Album Early Fake Artist A", "Fake Album Later Fake Artist B"]);
   });
 
-  it("names the year of a duplicate album match and the album holding a rank taken in an old item", async () => {
+  it("names the year of a duplicate album match and explains a rank taken in an old item", async () => {
     const db = state.db as DatabaseSync;
     createImportReviewItem(db, {
       source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
@@ -111,7 +111,7 @@ describe("import review page", () => {
     await renderPage();
 
     expect(screen.getByText("The matched album is already in your library (1999).")).toBeDefined();
-    expect(screen.getByText("Rank 1 in 2002 is already held by Fake Album Holder - Fake Artist E.")).toBeDefined();
+    expect(screen.getByText("Sent to review for a rank clash. Ranks are no longer used, so any choice adds the album to your library.")).toBeDefined();
   });
 
   it("offers Move it here for a candidate that is already in the library", async () => {
