@@ -1,6 +1,7 @@
 # Favour new and under-played albums in the matchup picker
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #45, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-43](https://github.com/dbeallor/album-ranker/issues/43)
 **Follows:** [ALBUM-7 Elo matchups](2026-11-21-album-7-elo-matchup.md), [ALBUM-35 add albums to the library](2026-11-21-album-35-add-albums-library.md)
