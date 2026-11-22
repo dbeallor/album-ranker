@@ -1,6 +1,7 @@
 # Show the pages as links in the top bar
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #56, with differences: [as-built](../as-built/2026-11-22-album-54-top-bar-links.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-54](https://github.com/dbeallor/album-ranker/issues/54)
 **Follows:** [ALBUM-47 modernize the design](2026-11-22-album-47-modernize-design.md)
