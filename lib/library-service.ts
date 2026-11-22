@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { isAllowedCoverUrl } from "./catalog/cover-art";
 import { createAlbum, deleteAlbum, findAlbumByCatalogId, getAlbum } from "./db/albums";
 import { addToLibrary, getLibraryEntry } from "./db/library";
 import { countMatchupsForAlbum } from "./db/matchups";
@@ -30,7 +31,6 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const CATALOG_ID = new RegExp(`^${UUID}$`, "i");
 const ARTIST_ID = new RegExp(`^${UUID}(\\+${UUID})*$`, "i");
 const WHOLE_NUMBER = /^\d+$/;
-const COVER_HOST = "https://coverartarchive.org/";
 const MAX_TEXT = 300;
 const MAX_ARTIST_ID = 400;
 const YEAR_MESSAGE = "Enter a year from 1900 to 2100.";
@@ -77,7 +77,7 @@ export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbu
   if (artist === "" || artist.length > MAX_TEXT) return { ok: false, message: "That album's artist isn't valid." };
 
   const coverUrl = text(input.coverUrl);
-  if (coverUrl !== "" && (!coverUrl.startsWith(COVER_HOST) || coverUrl.length > MAX_TEXT)) return { ok: false, message: "That album's cover isn't valid." };
+  if (coverUrl !== "" && !isAllowedCoverUrl(coverUrl)) return { ok: false, message: "That album's cover isn't valid." };
 
   const releaseYear = blank(input.releaseYear) ? null : wholeNumber(input.releaseYear);
   if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) return { ok: false, message: "That album's release year isn't valid." };
