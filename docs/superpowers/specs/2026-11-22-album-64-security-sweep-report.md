@@ -14,6 +14,16 @@
   - The unmerged #14 branches that exist locally (`feat/album-14-deploy-password-gate`, `feat/album-14-aws-terraform-deploy`) were not reviewed.
 - Severity is judged for the app once #14 ships (on the internet, behind a password gate). Each finding says how it stands today.
 
+## Changes on `main` after the review
+
+#14 merged (PR #63, `ce03c5f`) while this report was being written. The sweep reviewed `c66e880`, before it, so it did not review the gate, `proxy.ts`, `lib/auth/`, the S3 sync or the Terraform. Where that changes a ticket:
+
+- [#65](https://github.com/dbeallor/album-ranker/issues/65) became "check the shipped gate against the S1 list". The gate now exists: `proxy.ts` matches everything except `/_next/static`, and each action calls `requireSession()`. S1's text below describes `main` before the gate.
+- [#69](https://github.com/dbeallor/album-ranker/issues/69) is no longer blocked. `next.config.ts` already has a `headers()` (`X-Robots-Tag`), so the header work extends it.
+- [#66](https://github.com/dbeallor/album-ranker/issues/66) gets a note to recheck the bind address, including the standalone server used on AWS.
+- The other findings are in code #14 did not touch, except that `lib/config.ts` and `lib/db/` changed. Re-check the line numbers before fixing.
+- A second sweep of the deployed code is a separate ticket if wanted.
+
 ## Correction to one assumption
 
 The brief says the app is on 127.0.0.1 only today. That holds for `npm run preview` and the Playwright server, which pass `--hostname 127.0.0.1`. It does not hold for `npm run dev` and `npm start`, which listen on every interface (S2). "Today" below means: reachable from the same network when started with `npm run dev`, loopback only when started as a preview.
@@ -297,11 +307,11 @@ All are sub-issues of [#11](https://github.com/dbeallor/album-ranker/issues/11) 
 
 | Ticket | Findings | Priority | Blocked by |
 | --- | --- | --- | --- |
-| [#65](https://github.com/dbeallor/album-ranker/issues/65) Make the #14 password gate cover every page and server action | S1 | high | #14 |
+| [#65](https://github.com/dbeallor/album-ranker/issues/65) Check the shipped password gate against the sweep's coverage list | S1 | high | none (#14 merged) |
 | [#66](https://github.com/dbeallor/album-ranker/issues/66) Bind dev and start to 127.0.0.1 only | S2 | medium | none |
 | [#67](https://github.com/dbeallor/album-ranker/issues/67) Validate add and import form fields the same way, before any lookup | S3, S9 | low | none |
 | [#68](https://github.com/dbeallor/album-ranker/issues/68) Show fixed messages instead of text from the URL | S4 | low | none |
-| [#69](https://github.com/dbeallor/album-ranker/issues/69) Add security headers and hide X-Powered-By | S5, S6, S7, S8 | low | #14 |
+| [#69](https://github.com/dbeallor/album-ranker/issues/69) Add security headers and hide X-Powered-By | S5, S6, S7, S8 | low | none (#14 merged) |
 | [#70](https://github.com/dbeallor/album-ranker/issues/70) Harden catalog responses: redirects, size and id shapes | S10, S11, S12 | low | none |
 
 ## Checks by the builder
