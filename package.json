@@ -19,10 +19,12 @@
     "import": "node --conditions=react-server scripts/import.ts",
     "backfill-covers": "node --conditions=react-server scripts/backfill-covers.ts",
     "import:fixture": "node lib/import/fixtures/make-fixture.ts",
+    "build:lambda": "node scripts/build-lambda.ts",
     "preview": "node scripts/preview.ts",
     "record": "node scripts/record.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1175.0",
     "next": "^16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

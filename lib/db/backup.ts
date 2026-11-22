@@ -34,8 +34,8 @@ function vacuumInto(db: DatabaseSync, target: string): void {
   db.prepare("VACUUM INTO ?").run(target);
 }
 
-/** Opens `path` read-only, checks it is a healthy database with a `schema_migrations` table and returns its migration versions. */
-function inspectBackup(path: string): number[] {
+/** Opens `path` read-only, checks it is a healthy database with a `schema_migrations` table and returns its migration versions. Also used to vet a database downloaded from S3. */
+export function inspectBackup(path: string): number[] {
   let db: DatabaseSync;
   try {
     db = new DatabaseSync(path, { readOnly: true });

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import { removeFromLibrary } from "@/lib/library-service";
 
@@ -10,6 +11,7 @@ function field(formData: FormData, name: string): string {
 }
 
 export async function removeAlbumAction(formData: FormData): Promise<void> {
+  await requireSession();
   const albumId = field(formData, "albumId");
   const result = removeFromLibrary(getDb(), albumId, field(formData, "matchups"));
   if (result.ok) {

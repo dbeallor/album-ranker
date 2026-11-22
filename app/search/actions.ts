@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { resolveCover } from "@/lib/catalog/server-cover";
 import { findAlbumByCatalogId } from "@/lib/db/albums";
+import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import { addCatalogAlbumToLibrary } from "@/lib/library-service";
 
@@ -12,6 +13,7 @@ function field(formData: FormData, name: string): string {
 }
 
 export async function addToLibraryAction(formData: FormData): Promise<void> {
+  await requireSession();
   const q = field(formData, "q");
   const catalogId = field(formData, "catalogId");
   const title = field(formData, "title");

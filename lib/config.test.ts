@@ -49,6 +49,9 @@ describe("getConfig", () => {
     vi.stubEnv("MUSICBRAINZ_URL", undefined);
     vi.stubEnv("COVER_ART_ARCHIVE_URL", undefined);
     vi.stubEnv("DEEZER_URL", undefined);
+    vi.stubEnv("DEPLOY_ENV", undefined);
+    vi.stubEnv("APP_PASSWORD", undefined);
+    vi.stubEnv("ORIGIN_SECRET", undefined);
     if (env !== undefined) {
       vi.stubEnv(variable, env);
     }
@@ -57,6 +60,75 @@ describe("getConfig", () => {
       expect(() => getConfig()).toThrow(expected.message);
     } else {
       expect(getConfig()[field]).toBe(expected);
+    }
+  });
+});
+
+type GateCase = {
+  name: string;
+  deployEnv: string | undefined;
+  password: string | undefined;
+  expected: { deployEnv: string | null; appPassword: string | null } | Error;
+};
+
+const LONG = "correct horse battery";
+
+const gateCases: GateCase[] = [
+  { name: "neither set means no gate", deployEnv: undefined, password: undefined, expected: { deployEnv: null, appPassword: null } },
+  { name: "a local password of any length turns the gate on", deployEnv: undefined, password: "short", expected: { deployEnv: null, appPassword: "short" } },
+  { name: "a local empty password means no gate", deployEnv: undefined, password: "", expected: { deployEnv: null, appPassword: null } },
+  { name: "staging with a long password is read", deployEnv: "staging", password: LONG, expected: { deployEnv: "staging", appPassword: LONG } },
+  { name: "production with a long password is read", deployEnv: "production", password: LONG, expected: { deployEnv: "production", appPassword: LONG } },
+  { name: "a password of exactly 12 characters passes", deployEnv: "staging", password: "123456789012", expected: { deployEnv: "staging", appPassword: "123456789012" } },
+  { name: "deployed with APP_PASSWORD unset throws naming it", deployEnv: "staging", password: undefined, expected: new Error("APP_PASSWORD") },
+  { name: "deployed with APP_PASSWORD empty throws naming it", deployEnv: "production", password: "", expected: new Error("APP_PASSWORD") },
+  { name: "deployed with a password under 12 characters throws naming it", deployEnv: "staging", password: "12345678901", expected: new Error("APP_PASSWORD") },
+  { name: "an unknown DEPLOY_ENV throws naming it", deployEnv: "prod", password: LONG, expected: new Error("DEPLOY_ENV") },
+  { name: "an empty DEPLOY_ENV throws naming it", deployEnv: "", password: LONG, expected: new Error("DEPLOY_ENV") },
+];
+
+describe("getConfig gate settings", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(gateCases)("$name", ({ deployEnv, password, expected }) => {
+    vi.stubEnv("DEPLOY_ENV", deployEnv);
+    vi.stubEnv("APP_PASSWORD", password);
+
+    if (expected instanceof Error) {
+      expect(() => getConfig()).toThrow(expected.message);
+    } else {
+      const config = getConfig();
+      expect({ deployEnv: config.deployEnv, appPassword: config.appPassword }).toEqual(expected);
+    }
+  });
+});
+
+type S3Case = { name: string; bucket: string | undefined; key: string | undefined; expected: { bucket: string; key: string } | null | Error };
+
+const s3Cases: S3Case[] = [
+  { name: "neither set means a local file", bucket: undefined, key: undefined, expected: null },
+  { name: "both empty means a local file", bucket: "", key: "", expected: null },
+  { name: "both set gives S3 storage", bucket: "my-bucket", key: "album-ranker.db", expected: { bucket: "my-bucket", key: "album-ranker.db" } },
+  { name: "only the bucket throws naming both", bucket: "my-bucket", key: undefined, expected: new Error("DATABASE_S3_BUCKET and DATABASE_S3_KEY") },
+  { name: "only the key throws naming both", bucket: undefined, key: "album-ranker.db", expected: new Error("DATABASE_S3_BUCKET and DATABASE_S3_KEY") },
+  { name: "a bucket with an empty key throws", bucket: "my-bucket", key: "", expected: new Error("DATABASE_S3_KEY") },
+];
+
+describe("getConfig S3 storage settings", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(s3Cases)("$name", ({ bucket, key, expected }) => {
+    vi.stubEnv("DATABASE_S3_BUCKET", bucket);
+    vi.stubEnv("DATABASE_S3_KEY", key);
+
+    if (expected instanceof Error) {
+      expect(() => getConfig()).toThrow(expected.message);
+    } else {
+      expect(getConfig().databaseS3).toEqual(expected);
     }
   });
 });

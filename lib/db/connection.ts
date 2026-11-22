@@ -28,6 +28,8 @@ export type OpenOptions = {
   backupDir?: string;
   /** Folder of migration files. Defaults to `lib/db/migrations` under the working directory. */
   migrationsDir?: string;
+  /** Skip the pre-migrate backup. S3 storage mode sets this: bucket versioning already keeps the version before the migration. */
+  skipBackup?: boolean;
 };
 
 /**
@@ -44,7 +46,7 @@ export function openDatabase(path: string, options: OpenOptions = {}): DatabaseS
   db.exec("PRAGMA foreign_keys = ON");
   enableWal(db);
   try {
-    if (existing && pendingMigrations(db, options.migrationsDir).length > 0) {
+    if (existing && !options.skipBackup && pendingMigrations(db, options.migrationsDir).length > 0) {
       backupDatabase(db, path, "pre-migrate", options.backupDir ?? getConfig().backupDir);
     }
     migrate(db, options.migrationsDir);

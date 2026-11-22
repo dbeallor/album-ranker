@@ -22,7 +22,7 @@ export function Tabs({ items, className, ...rest }: TabsProps) {
                 {item.label}
               </span>
             ) : (
-              <Link href={item.href} className={styles.tab}>
+              <Link prefetch={false} href={item.href} className={styles.tab}>
                 {item.label}
               </Link>
             )}

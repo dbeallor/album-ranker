@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { resolveCover } from "@/lib/catalog/server-cover";
 import { findAlbumByCatalogId } from "@/lib/db/albums";
 import { getImportReviewItem, listImportReviewItems } from "@/lib/db/import-review";
+import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
 import { nextOpenItemId } from "@/lib/import/review-order";
@@ -79,6 +80,7 @@ function resolve(itemId: number, choice: ResolveChoice): never {
 
 /** Use this album (a candidate or a search result), or Move it here when `moveHere` is set. */
 export async function chooseAlbumAction(formData: FormData): Promise<void> {
+  await requireSession();
   const itemId = whole(field(formData, "itemId"));
   if (itemId === null) return fail(null, "That review item could not be found.");
   const album = candidateFrom(formData);
@@ -87,12 +89,14 @@ export async function chooseAlbumAction(formData: FormData): Promise<void> {
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {
+  await requireSession();
   const itemId = whole(field(formData, "itemId"));
   if (itemId === null) return fail(null, "That review item could not be found.");
   return resolve(itemId, { kind: "manual" });
 }
 
 export async function skipAction(formData: FormData): Promise<void> {
+  await requireSession();
   const itemId = whole(field(formData, "itemId"));
   if (itemId === null) return fail(null, "That review item could not be found.");
   const result = skipReviewItem(getDb(), itemId);

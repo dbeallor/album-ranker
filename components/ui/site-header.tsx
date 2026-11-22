@@ -27,7 +27,7 @@ export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRe
   return (
     <header className={cx(styles.header, className)} {...rest}>
       <div className={styles.inner}>
-        <Link href="/" className={styles.brand}>
+        <Link prefetch={false} href="/" className={styles.brand}>
           Album ranker
         </Link>
         <nav aria-label="Main" className={styles.nav}>
@@ -35,6 +35,7 @@ export function SiteHeader({ className, ...rest }: React.ComponentPropsWithoutRe
             {NAV_ITEMS.map((item) => (
               <li key={item.href}>
                 <Link
+                  prefetch={false}
                   href={item.href}
                   className={styles.link}
                   aria-current={isCurrent(pathname, item.href) ? "page" : undefined}

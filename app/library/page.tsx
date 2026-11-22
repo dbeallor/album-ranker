@@ -165,7 +165,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
                     <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={240} fill />
                     <div className={styles.tileText}>
                       <strong>{album.title}</strong>
-                      <Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>
+                      <Link prefetch={false} href={`/artists/${album.artistId}`}>{album.artistName}</Link>
                       <span className={styles.meta}>
                         {`${album.year} · Rating ${Math.round(album.rating)} · Rank ${album.rank} · W-L-T ${formatRecord(album)}`}
                       </span>
