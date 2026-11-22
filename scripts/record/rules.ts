@@ -1,5 +1,5 @@
 import type { GitInfo } from "../../e2e/recorder/source.ts";
-import type { LogSource } from "../../e2e/recorder/recorder.ts";
+import type { LogSource, Resize } from "../../e2e/recorder/recorder.ts";
 import type { PreviewRecord } from "../preview/index.ts";
 import { ticketNumberOf, type Result, type Target } from "../preview/rules.ts";
 
@@ -20,6 +20,8 @@ export const DEFAULT_VIEWPORT: Viewport = { width: 1280, height: 720 };
 export const USAGE = [
   "Usage:",
   "  npm run record -- <target> [--out <dir>] [--viewport <W>x<H>]",
+  "",
+  "--viewport is the size the window starts at. The page follows the window if you resize it.",
   "",
   "<target> is one of:",
   "  main | <ticket number> | <branch>   the running preview of that target",
@@ -119,6 +121,33 @@ export function parseArgs(argv: string[]): Result<RecordCommand> {
     return target;
   }
   return { ok: true, value: { target: target.value, out, viewport } };
+}
+
+/** A page size the browser reported: `ts` is the browser clock in ms, `width` and `height` are `innerWidth` and `innerHeight`. */
+export type SizeReport = { ts: number; width: number; height: number };
+
+export type SizeInput = {
+  /** In arrival order. */
+  reports: SizeReport[];
+  startedAtMs: number;
+  requested: Viewport;
+  headless: boolean;
+};
+
+/**
+ * The log's `viewport` and `resizes` from what the pages reported. A report equal to the size before it is dropped.
+ * With no report, a headless run (fixed viewport) gives the requested size and a headed run gives `null`.
+ */
+export function sizeTimeline({ reports, startedAtMs, requested, headless }: SizeInput): { viewport: Viewport | null; resizes: Resize[] } {
+  const changes = reports.filter((report, i) => i === 0 || report.width !== reports[i - 1].width || report.height !== reports[i - 1].height);
+  const [first, ...later] = changes;
+  if (!first) {
+    return { viewport: headless ? requested : null, resizes: [] };
+  }
+  return {
+    viewport: { width: first.width, height: first.height },
+    resizes: later.map(({ ts, width, height }) => ({ t: Math.max(0, ts - startedAtMs), width, height })),
+  };
 }
 
 /** The line that starts the preview a `main`, ticket or branch target needs. */
