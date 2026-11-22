@@ -10,6 +10,7 @@
 - Reserved concurrency is the variable `reserved_concurrency` (default 1). AWS requires a large unreserved quota to reserve any, so a new account's first apply can fail; set it to `-1` and the conditional S3 write is then the only guard against two writers. The README says so.
 - The data bucket has `prevent_destroy`, so `terraform destroy` fails at plan time (the spec said only while it holds data). The README says how to tear down on purpose.
 - A free CloudFront viewer-request function copies `Host` into `x-forwarded-host`, and the login redirect builds its address from `x-forwarded-host`. Both are needed so redirects and server actions work behind CloudFront. The spec lists neither.
+- The guessing limit keys on `x-viewer-ip`, which the same CloudFront function sets from the viewer's address (overwriting anything the viewer sends), because the managed origin request policy doesn't forward `CloudFront-Viewer-Address`.
 - An unknown or empty `DEPLOY_ENV` throws at startup instead of counting as local.
 - A failed login redirects to `/login?error=wrong|locked` and the page maps the code to a fixed message, instead of showing a server action's returned text.
 - The proxy covers everything except `/_next/static`. A request counts as a page (redirect to login) when it is a GET or HEAD that accepts HTML; anything else gets 401.

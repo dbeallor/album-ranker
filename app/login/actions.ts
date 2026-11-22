@@ -4,7 +4,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { safeEqual } from "@/lib/auth/compare";
-import { clientIp, loginLimiter } from "@/lib/auth/login-limiter";
+import { clientIp, loginLimiter, VIEWER_IP_HEADER } from "@/lib/auth/login-limiter";
 import { safeNext } from "@/lib/auth/redirect-target";
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
 import { gatePasswordProblem, readGateConfig } from "@/lib/config";
@@ -24,7 +24,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   const next = safeNext(formData.get("next"));
   if (gate.appPassword === null) redirect(next); // no gate configured: nothing to log in to
 
-  const ip = clientIp((await headers()).get("cloudfront-viewer-address"));
+  const ip = clientIp((await headers()).get(VIEWER_IP_HEADER));
   if (loginLimiter.isLocked(ip)) redirect(loginUrl(next, "locked"));
 
   const password = formData.get("password");

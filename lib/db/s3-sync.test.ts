@@ -152,9 +152,12 @@ describe("S3 sync", () => {
     const sync = newSync();
     await request(sync);
     store.object = null;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await sync.beforeRequest();
 
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("vanished"));
+    error.mockRestore();
     expect(albumTitles(sync.db())).toEqual([]);
     expect(store.puts).toEqual(["put If-None-Match *"]);
   });

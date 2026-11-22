@@ -47,10 +47,10 @@ const shared = globalThis as typeof globalThis & { __albumRankerLoginLimiter?: L
 /** One limiter per server process, even when Next.js bundles this module into more than one route. */
 export const loginLimiter: LoginLimiter = (shared.__albumRankerLoginLimiter ??= createLoginLimiter());
 
-/** The client IP from CloudFront's `CloudFront-Viewer-Address` (`ip:port`); one shared bucket when it is absent. */
-export function clientIp(viewerAddress: string | null): string {
-  if (!viewerAddress) return "unknown";
-  const colon = viewerAddress.lastIndexOf(":");
-  const ip = colon === -1 ? viewerAddress : viewerAddress.slice(0, colon);
-  return ip.replace(/^\[|\]$/g, "") || "unknown";
+/** Name of the header that carries the client IP: the CloudFront function in infra/modules/app sets it from the viewer's address. */
+export const VIEWER_IP_HEADER = "x-viewer-ip";
+
+/** The client IP from the `x-viewer-ip` header; one shared bucket when it is absent (local runs). */
+export function clientIp(viewerIp: string | null): string {
+  return viewerIp?.trim() || "unknown";
 }

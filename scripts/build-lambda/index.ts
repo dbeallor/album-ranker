@@ -32,7 +32,8 @@ function git(...args: string[]): string {
 
 function copyPackageFolder(from: string, to: string): void {
   // Nested installs are separate entries in the closure; type declarations are not needed to run.
-  cpSync(from, to, { recursive: true, filter: (source) => !["node_modules", "dist-types"].includes(basename(source)) });
+  // force: a folder Next.js already traced may be partial, so merge over it.
+  cpSync(from, to, { recursive: true, force: true, filter: (source) => !["node_modules", "dist-types"].includes(basename(source)) });
 }
 
 export function main(): void {
@@ -66,7 +67,7 @@ export function main(): void {
 
   // Next.js tracing leaves out what only lambda/server.ts imports (@aws-sdk/client-s3 and what it needs).
   for (const dir of packageClosure(ROOT, packages)) {
-    if (!existsSync(join(LAMBDA, dir))) copyPackageFolder(join(ROOT, dir), join(LAMBDA, dir));
+    copyPackageFolder(join(ROOT, dir), join(LAMBDA, dir));
   }
 
   // server.js is CommonJS and sits under the root package.json (no "type"), so the TypeScript folders get their own

@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({ set: [] as [string, string, Record<string, unk
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({ set: (name: string, value: string, options: Record<string, unknown>) => state.set.push([name, value, options]) }),
-  headers: async () => ({ get: (name: string) => (name === "cloudfront-viewer-address" ? state.viewer : null) }),
+  headers: async () => ({ get: (name: string) => (name === "x-viewer-ip" ? state.viewer : null) }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -39,7 +39,7 @@ describe("loginAction", () => {
     vi.stubEnv("DEPLOY_ENV", "staging");
     vi.stubEnv("APP_PASSWORD", PASSWORD);
     state.set = [];
-    state.viewer = "203.0.113.7:1000";
+    state.viewer = "203.0.113.7";
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -76,12 +76,12 @@ describe("loginAction", () => {
   });
 
   it("locks an IP after 10 wrong passwords, and refuses even the right one", async () => {
-    state.viewer = "198.51.100.9:1000";
+    state.viewer = "198.51.100.9";
     for (let i = 0; i < 10; i++) expect(await run({ password: "nope" })).toBe("redirect:/login?error=wrong");
     expect(await run({ password: PASSWORD })).toBe("redirect:/login?error=locked");
     expect(state.set).toHaveLength(0);
 
-    state.viewer = "198.51.100.10:1000";
+    state.viewer = "198.51.100.10";
     expect(await run({ password: PASSWORD })).toBe("redirect:/");
   });
 });

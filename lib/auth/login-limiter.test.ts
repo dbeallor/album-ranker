@@ -34,9 +34,9 @@ describe("login limiter", () => {
 
 describe("clientIp", () => {
   it.each([
-    { name: "an IPv4 address and port", header: "203.0.113.7:46532", expected: "203.0.113.7" },
-    { name: "an IPv6 address and port", header: "2001:db8::1:46532", expected: "2001:db8::1" },
-    { name: "an IPv6 address in brackets", header: "[2001:db8::1]:46532", expected: "2001:db8::1" },
+    { name: "an IPv4 address", header: "203.0.113.7", expected: "203.0.113.7" },
+    { name: "an IPv6 address", header: "2001:db8::1", expected: "2001:db8::1" },
+    { name: "an address with spaces around it", header: " 203.0.113.7 ", expected: "203.0.113.7" },
     { name: "no header", header: null, expected: "unknown" },
     { name: "an empty header", header: "", expected: "unknown" },
   ])("$name", ({ header, expected }) => {

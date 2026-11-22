@@ -5,8 +5,10 @@ import { readGateConfig } from "@/lib/config";
 
 const ROBOTS = "noindex, nofollow";
 
-function respond(response: NextResponse): NextResponse {
+function respond(response: NextResponse, options: { noStore?: boolean } = {}): NextResponse {
   response.headers.set("X-Robots-Tag", ROBOTS);
+  // The proxy's own answers (redirects and refusals) must never be kept by a cache; the app sets its own headers on a pass.
+  if (options.noStore) response.headers.set("Cache-Control", "no-store");
   return response;
 }
 
@@ -33,8 +35,10 @@ export function proxy(request: NextRequest): NextResponse {
   });
 
   if (decision.action === "pass") return respond(NextResponse.next());
-  if (decision.action === "redirect") return respond(NextResponse.redirect(new URL(decision.location, publicOrigin(request))));
-  return respond(new NextResponse(null, { status: decision.status }));
+  if (decision.action === "redirect") {
+    return respond(NextResponse.redirect(new URL(decision.location, publicOrigin(request))), { noStore: true });
+  }
+  return respond(new NextResponse(null, { status: decision.status }), { noStore: true });
 }
 
 // Build files come straight from S3 in a deployed environment; locally they are public and the login page needs them.

@@ -194,7 +194,10 @@ export function createS3Sync(options: S3SyncOptions): S3Sync {
       if (head && rejected?.etag === head.etag) throw new StoredDatabaseError(rejected.reason);
       if (head && db) log("The stored database changed. Reloading.");
       if (head) await download();
-      else await createFresh();
+      else {
+        if (db) console.error("[s3-sync] The stored database object vanished while a copy was loaded. Creating a new empty one.");
+        await createFresh();
+      }
     },
 
     async afterRequest() {

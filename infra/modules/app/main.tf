@@ -98,6 +98,34 @@ resource "aws_s3_bucket_ownership_controls" "data" {
   }
 }
 
+# Refuse plain-HTTP access.
+data "aws_iam_policy_document" "data_bucket" {
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.data.arn, "${aws_s3_bucket.data.arn}/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "data" {
+  bucket = aws_s3_bucket.data.id
+  policy = data.aws_iam_policy_document.data_bucket.json
+
+  depends_on = [aws_s3_bucket_public_access_block.data]
+}
+
 # Every write replaces the object, so old versions are the automatic backup: keep each for 30 days after it is replaced.
 resource "aws_s3_bucket_lifecycle_configuration" "data" {
   bucket = aws_s3_bucket.data.id
@@ -232,7 +260,7 @@ data "aws_iam_policy_document" "app" {
   statement {
     sid       = "ReadWriteDatabase"
     actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.data.arn}/*"]
+    resources = ["${aws_s3_bucket.data.arn}/${local.database_key}"]
   }
 
   statement {
@@ -328,16 +356,19 @@ resource "aws_cloudfront_origin_access_control" "assets" {
 }
 
 # The function sees the function URL's host name as Host. Next.js takes the address the browser used from
-# x-forwarded-host (server action origin check, login redirect), so pass it along.
+# x-forwarded-host (server action origin check, login redirect), so pass it along. It also sets x-viewer-ip, which the
+# login limiter keys on: the managed origin request policy doesn't forward CloudFront-Viewer-Address. Assigning the header
+# overwrites anything the viewer sent.
 resource "aws_cloudfront_function" "forward_host" {
   name    = "${local.name}-forward-host"
   runtime = "cloudfront-js-2.0"
   publish = true
-  comment = "Copies Host to x-forwarded-host for the Next.js server"
+  comment = "Copies Host to x-forwarded-host and sets x-viewer-ip for the Next.js server"
   code    = <<-JS
     function handler(event) {
       var request = event.request;
       request.headers["x-forwarded-host"] = { value: request.headers.host.value };
+      request.headers["x-viewer-ip"] = { value: event.viewer.ip };
       return request;
     }
   JS
