@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Message } from "@/components/ui/message";
 import { Stack } from "@/components/ui/stack";
 import { pairKey } from "@/lib/elo/pick";
+import { formatPercent } from "@/lib/elo/progress";
 import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
 import type { AlbumCard } from "@/lib/ratings";
 import styles from "./matchup-screen.module.css";
@@ -120,7 +121,15 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
         <Button type="button" variant="secondary" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
           Undo
         </Button>
-        <p className={styles.muted}>{view.count} matchups played</p>
+        <Stack gap={1} className={styles.counts}>
+          <p className={styles.muted}>{view.count} matchups played</p>
+          {view.progress && (
+            <p className={styles.muted}>
+              {formatPercent(view.progress.percent)}% there ·{" "}
+              {view.progress.remaining === 0 ? "Target reached" : `about ${view.progress.remaining.toLocaleString("en-US")} more to go`}
+            </p>
+          )}
+        </Stack>
       </Cluster>
     </Stack>
   );

@@ -106,4 +106,27 @@ describe("matchup actions", () => {
     }
     expect(served.has(ids[5])).toBe(false);
   });
+
+  it("fills the progress on load, answer, skip and undo, and the percent changes after an answer", () => {
+    const loaded = loadMatchupState(db, new Set(), random);
+    expect(loaded.progress).toMatchObject({ albumCount: 5, played: 0, percent: 0 });
+
+    const answered = asView(answerMatchup(db, ids[0], ids[2], "a", [], random));
+    expect(answered.progress).toMatchObject({ albumCount: 5, played: 1 });
+    expect(answered.progress!.percent).toBeGreaterThan(0);
+
+    const skipped = asView(skipMatchup(db, ids[1], ids[3], [], random));
+    expect(skipped.progress).toEqual(answered.progress);
+
+    const undone = asView(undoMatchup(db, [], random));
+    expect(undone.progress).toEqual(loaded.progress);
+  });
+
+  it("fills the progress when undo falls back to a fresh pair", () => {
+    answerMatchup(db, ids[0], ids[2], "a", [], random);
+    db.prepare("DELETE FROM library_albums WHERE album_id = ?").run(ids[2]);
+
+    const undone = asView(undoMatchup(db, [], random));
+    expect(undone.progress).toMatchObject({ albumCount: 4, played: 0 });
+  });
 });
