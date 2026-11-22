@@ -9,12 +9,12 @@
 
 ## Goal
 
-Put the app on AWS in two environments, staging and production, each with its own HTTPS address, its own SQLite file and its own password, so a phone and a laptop see the same rankings. Every AWS resource is defined in Terraform in this repo. Idle cost is close to zero: nothing is billed by the hour.
+Put the app on AWS in two environments, staging and production, each with its own HTTPS address on the domain `album-ranker.com` (production at `album-ranker.com`, staging at `staging.album-ranker.com`), its own SQLite file and its own password, so a phone and a laptop see the same rankings. Every AWS resource is defined in Terraform in this repo. Idle cost is close to zero: about $0.60 a month, almost all of it the DNS zone.
 
 ## The shape
 
 ```
-browser ──HTTPS──> CloudFront (*.cloudfront.net)
+browser ──HTTPS──> CloudFront (album-ranker.com / staging.album-ranker.com, certificate from ACM)
                      ├─ /_next/static/*  ──> S3 assets bucket (build files, no data)
                      └─ everything else  ──> Lambda function URL ──> Next.js server (one copy)
                                                                        │  /tmp/album-ranker.db
@@ -67,13 +67,25 @@ Prices are us-east-1 list prices as I know them, rechecked in the build. "Free t
 | AWS Budgets alert (optional, emails you above $5 a month) | 1 | First two budgets free | $0 | $0 |
 | **Total** | | | **about $0.05** | **about $0.05** |
 
+Domain `album-ranker.com` (added in changes requested on the first review: use the GoDaddy domain from day 1):
+
+| Component | Billed by | Idle cost |
+|---|---|---|
+| Route 53 hosted zone for `album-ranker.com` (one, shared by both environments) | $0.50 a month per zone plus $0.40 per million queries | **about $0.50 a month, always on** |
+| ACM certificates (one per environment, in us-east-1 for CloudFront) | Free for public certificates | $0 |
+| Route 53 records (validation, alias A and AAAA per environment) | Free (alias queries to CloudFront are free) | $0 |
+| CloudFront response headers policy (HSTS and others) | Free | $0 |
+| Domain registration and renewal at GoDaddy | Your GoDaddy plan, outside AWS and Terraform | not counted |
+
+The hosted zone is the one idle-billed component. It is what lets Terraform create the certificate's validation records and the CloudFront aliases, so no DNS record is clicked together by hand. Without it, every record would be a manual GoDaddy step on every fresh copy, which the ticket rules out. Total idle cost for both environments: about $0.60 a month.
+
 Shared, created once by the bootstrap step:
 
 | Component | Billed by | Idle cost |
 |---|---|---|
 | S3 state bucket (versioned, encrypted, holds both environments' Terraform state) | Storage and requests | under $0.01 |
 
-**Always-on, idle-billed components: none.** Every component above bills by request or by storage used. Light use (a few hundred page loads and matchups a month) stays inside the free allowances. New accounts on AWS's credit-based free plan get the same always-free allowances for Lambda and CloudFront; the build rechecks this.
+**Always-on, idle-billed components: one, the Route 53 hosted zone ($0.50 a month, justified under Domain below).** Every other component bills by request or by storage used. Light use (a few hundred page loads and matchups a month) stays inside the free allowances. New accounts on AWS's credit-based free plan get the same always-free allowances for Lambda and CloudFront; the build rechecks this.
 
 ## Terraform
 
@@ -83,6 +95,15 @@ Shared, created once by the bootstrap step:
 - **Secrets.** Terraform generates each environment's password and the CloudFront-to-function secret with `random_password` and passes them to the function as environment variables. They live only in the encrypted state and the function's config. You read the password with `terraform output -raw password`. A new password: `terraform apply -replace=module.app.random_password.app`.
 - **Variables.** `region` (default `us-east-1`), `environment`, `musicbrainz_user_agent` (holds your contact email), `budget_email` (optional). They go in `terraform.tfvars` in each env folder, which is gitignored; a `terraform.tfvars.example` is committed. The state bucket name goes in a gitignored `backend.hcl`, from the bootstrap output.
 - **Gitignore additions.** `*.tfstate`, `*.tfstate.*`, `.terraform/`, `*.tfvars` (except the examples), `backend.hcl`, `dist/`. The `.terraform.lock.hcl` provider lock files are committed.
+
+## The domain
+
+- **DNS lives in Route 53, the registration stays at GoDaddy.** `infra/dns/` creates the hosted zone for `album-ranker.com` (its own state, `album-ranker/dns.tfstate`) and outputs its name servers and zone ID. You set those four name servers at GoDaddy once (My Products, the domain, DNS, Nameservers, "I'll use my own nameservers"). That is the one manual step beyond the account setup. A GoDaddy Terraform provider was ruled out: it needs GoDaddy API keys that GoDaddy now restricts to accounts with many domains, and an unofficial provider.
+- **Per environment.** The module takes `domain_name` and `zone_id`. Production is `album-ranker.com`, staging is `staging.album-ranker.com`. The module creates an ACM certificate for the name in us-east-1, its DNS validation records, the CloudFront alias, and alias A and AAAA records. Viewers get TLS 1.2 or newer (`TLSv1.2_2021`, SNI only, which costs nothing).
+- **Security headers.** A CloudFront response headers policy adds `Strict-Transport-Security` (one year), `X-Content-Type-Options`, `Referrer-Policy` and `X-Frame-Options: DENY`. This also closes the security review's note about missing headers.
+- **The `*.cloudfront.net` address still works** and is still behind the origin check and the gate. It shows the same login page. Its cookie is separate, since a cookie belongs to the host that set it.
+- **Order on a fresh copy.** Bootstrap, then `infra/dns`, then set the name servers at GoDaddy, then wait for them to take effect (usually minutes, up to a few hours), then staging and production. An environment's first apply waits for the certificate to validate, which needs the name servers to have taken effect; the README says what the wait looks like and how to rerun.
+- **Login and cookies.** The cookie is host-only, so the staging and production cookies are separate by host as well as by key. Server actions keep working because the CloudFront function already passes the viewer's `Host` as `x-forwarded-host`.
 
 ## How a version reaches an environment
 
@@ -151,7 +172,7 @@ In the build: `terraform fmt -check` and `terraform validate` for every root, an
 ## Acceptance
 
 - Staging and production each ask for their own password and show nothing without it.
-- Both are served over HTTPS on their CloudFront addresses.
+- Production is served over HTTPS at `https://album-ranker.com` and staging at `https://staging.album-ranker.com`, each with a valid certificate.
 - A change made on one device shows on another after reload, in each environment.
 - A change made in staging does not show in production.
 - Every AWS resource of both environments is defined in Terraform, and the README steps create a fresh copy of each environment with Terraform alone, beyond the account setup the README lists.
@@ -162,13 +183,18 @@ In the build: `terraform fmt -check` and `terraform validate` for every root, an
 ## Non-goals
 
 - Creating the AWS account or handling its credentials.
-- A custom domain (the CloudFront addresses are enough; adding one later is a certificate and an alias in the module).
+- Registering or renewing the domain, and `www.album-ranker.com` (the domain is already registered at GoDaddy and stays there).
 - Automatic deploys on merge or CI.
 - Accounts, multiple users, sharing, a sign-out button (a new password signs everyone out).
 - Running the spreadsheet import or the cover backfill inside AWS.
 - Any album, ranking or rating features. Local previews (#20) and browser test runs (#19).
 
 ## Calls I made
+
+- **Domain, changes requested after the first approval:** `album-ranker.com` from day 1 (production at the apex, staging at `staging.album-ranker.com`).
+- **Route 53 for DNS, with the GoDaddy name servers pointed at it,** rather than a GoDaddy API provider or manual CNAME records. It adds about $0.50 a month, the one always-on component, and one manual GoDaddy step.
+- **One hosted zone for both environments,** in its own Terraform root. Staging uses a subdomain, so no second zone.
+- **No `www`.** Say so if you want `www.album-ranker.com` to redirect to the apex.
 
 - **Lambda with the SQLite file kept in S3, not a server with a disk.** It is the only option I found with no idle bill (about $0.10 a month for both environments versus about $15 for the cheapest always-on server). The price is a 1 to 3 second cold start after idle, the occasional refused parallel request, and a whole-file upload on every write. EC2 is the fallback if you'd rather pay for always-on.
 - **Reserved concurrency 1, so at most one copy runs.** This keeps the ticket's one-copy rule exactly. A second request arriving mid-request gets a 429 and works on retry.
