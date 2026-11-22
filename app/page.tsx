@@ -64,7 +64,7 @@ export default async function Home() {
           01 / Add albums
         </SectionLabel>
         <InlineForm method="get" action="/search">
-          <TextField type="search" name="q" aria-label="Album or artist" className={styles.search} />
+          <TextField type="search" name="q" aria-label="Album or artist" placeholder="Search an album or artist" className={styles.search} />
           <Button type="submit" variant="primary">
             Search
           </Button>

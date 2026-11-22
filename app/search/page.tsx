@@ -42,7 +42,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
       <PageHeader label="01 / Add albums" title="Add albums" />
       <Stack gap={5}>
         <InlineForm method="get" action="/search">
-          <TextField type="search" name="q" defaultValue={query} aria-label="Album or artist" className={styles.search} />
+          <TextField type="search" name="q" defaultValue={query} aria-label="Album or artist" placeholder="Search an album or artist" className={styles.search} />
           <Button type="submit" variant="primary">
             Search
           </Button>

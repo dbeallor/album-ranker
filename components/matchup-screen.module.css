@@ -29,6 +29,13 @@
     width: 100%;
     margin-inline: 0;
   }
+
+  /* Each choice stays narrow enough that the cover, title and button fit one desktop screen. */
+  .pick {
+    width: 100%;
+    max-width: 24rem;
+    margin-inline: auto;
+  }
 }
 
 .text {

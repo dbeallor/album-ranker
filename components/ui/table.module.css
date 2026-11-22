@@ -35,9 +35,13 @@
 }
 
 .table tbody th {
+  min-width: 8rem;
   color: var(--color-text);
   font-size: var(--text-base);
-  font-weight: var(--weight-regular);
+  font-weight: var(--weight-bold);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
   white-space: normal;
 }
 

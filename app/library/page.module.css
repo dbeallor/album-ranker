@@ -71,6 +71,10 @@
   font-size: var(--text-sm);
 }
 
-.remove {
+/* Flush with the text above it, not centred in a padded button. */
+.tile .remove {
   align-self: flex-start;
+  padding-left: 0;
+  padding-right: var(--space-2);
+  justify-content: flex-start;
 }

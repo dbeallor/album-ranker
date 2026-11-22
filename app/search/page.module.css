@@ -12,3 +12,18 @@
   padding: var(--space-3) 0;
   border-top: var(--rule);
 }
+
+/* Cover at the top of the row, and smaller on a phone so the text keeps its width. */
+.result > div {
+  align-items: flex-start;
+}
+
+.result > div > div:first-child {
+  width: 6rem;
+}
+
+@media (min-width: 640px) {
+  .result > div > div:first-child {
+    width: 10rem;
+  }
+}
