@@ -124,9 +124,9 @@ describe("loaders against a database", () => {
 
     expect(page.name).toBe("Aardvark");
     expect(page.ratedAlbumCount).toBe(2);
-    expect(page.albums.map((x) => [x.albumId, x.year, x.rating, x.coverUrl === null])).toEqual([
-      [a2, 1969, 1500, true],
-      [a1, 1971, 1500, false],
+    expect(page.albums.map((x) => [x.albumId, x.year, x.rating, x.coverUrl === null, x.wins, x.losses, x.ties])).toEqual([
+      [a2, 1969, 1500, true, 0, 0, 0],
+      [a1, 1971, 1500, false, 0, 0, 0],
     ]);
 
     const cat = loadArtistPage(db, db.prepare("SELECT id FROM artists WHERE name = 'Cat'").get()!.id as number)!;

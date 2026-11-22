@@ -9,6 +9,7 @@ import { ListRow } from "@/components/ui/list-row";
 import { PageHeader } from "@/components/ui/page-header";
 import { loadArtistPage } from "@/lib/artists";
 import { getDb } from "@/lib/db/server";
+import { formatRecord } from "@/lib/elo/record";
 
 export default async function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   await connection(); // ratings are replayed per request, not at build time
@@ -40,7 +41,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ id: str
                 cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />}
                 title={album.title}
                 subtitle={album.year}
-                meta={`Rating ${Math.round(album.rating)}`}
+                meta={`Rating ${Math.round(album.rating)} · W-L-T ${formatRecord(album)}`}
               />
             </Card>
           ))}

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 import { createAlbum } from "@/lib/db/albums";
 import { memoryDb } from "@/lib/db/test-db";
 import { addToLibrary } from "@/lib/db/library";
+import { recordMatchup } from "@/lib/db/matchups";
 import ArtistPage from "./page";
 
 async function renderPage(id: string) {
@@ -32,6 +33,8 @@ describe("artist page", () => {
     addToLibrary(db, { albumId: one.id, year: 1971 });
     addToLibrary(db, { albumId: two.id, year: 1972 });
     addToLibrary(db, { albumId: three.id, year: 1973 });
+    recordMatchup(db, { albumAId: one.id, albumBId: two.id, result: "a", createdAt: "2025-01-01T00:00:00.000Z" });
+    recordMatchup(db, { albumAId: two.id, albumBId: one.id, result: "tie", createdAt: "2025-01-02T00:00:00.000Z" });
     artistId = String(one.artist.id);
   });
   afterEach(cleanup);
@@ -41,7 +44,12 @@ describe("artist page", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Aardvark" })).toBeDefined();
     expect(screen.getByText("Score 1500 from 3 albums")).toBeDefined();
-    expect(screen.getAllByText("Rating 1500")).toHaveLength(3);
+    expect(screen.queryAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      expect.stringContaining("First1971Rating 1515 · W-L-T 1-0-1"),
+      expect.stringContaining("Second1972Rating 1485 · W-L-T 0-1-1"),
+      expect.stringContaining("Third1973Rating 1500 · W-L-T 0-0-0"),
+    ]);
+    expect(within(screen.getByText("First").closest("li")!).getByText("1971")).toBeDefined();
     expect(screen.queryByText("Not in library")).toBeNull();
     expect(screen.getByRole("link", { name: "All artists" }).getAttribute("href")).toBe("/analytics?view=artists");
   });

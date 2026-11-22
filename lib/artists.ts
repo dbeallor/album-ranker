@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { listAlbums } from "./db/albums";
 import { listLibrary } from "./db/library";
 import { artistScore } from "./elo/artist-score";
+import { loadLibraryAlbums } from "./library-albums";
 import { loadRatings } from "./ratings";
 import { decadeOf } from "./scopes";
 
@@ -75,6 +76,9 @@ export type ArtistPageAlbum = {
   coverUrl: string | null;
   year: number;
   rating: number;
+  wins: number;
+  losses: number;
+  ties: number;
 };
 
 export type ArtistPage = {
@@ -91,24 +95,9 @@ export function loadArtistPage(db: DatabaseSync, artistId: number): ArtistPage |
   const owned = listAlbums(db).filter((album) => album.artist.id === artistId);
   if (owned.length === 0) return undefined;
 
-  const { ratings } = loadRatings(db);
-  const entries = new Map(listLibrary(db).map((entry) => [entry.albumId, entry]));
-
-  const albums = owned
-    .flatMap((album) => {
-      const entry = entries.get(album.id);
-      const rating = ratings.get(album.id);
-      if (!entry || rating === undefined) return [];
-      return [
-        {
-          albumId: album.id,
-          title: album.title,
-          coverUrl: album.coverUrl,
-          year: entry.year,
-          rating,
-        },
-      ];
-    })
+  const albums = loadLibraryAlbums(db)
+    .filter((album) => album.artistId === artistId)
+    .map(({ albumId, title, coverUrl, year, rating, wins, losses, ties }) => ({ albumId, title, coverUrl, year, rating, wins, losses, ties }))
     .sort((a, b) => a.year - b.year || a.albumId - b.albumId);
 
   return {

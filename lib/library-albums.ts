@@ -3,10 +3,16 @@ import { listAlbums } from "./db/albums";
 import { listLibrary } from "./db/library";
 import { computeRecords } from "./elo/record";
 import type { LibraryAlbum } from "./library-view";
+import type { ReplayMatchup } from "./elo/replay";
 import { loadRatings } from "./ratings";
 
 /** Every library album with its rating, lifetime rank and record, replayed from the stored data on every call. */
 export function loadLibraryAlbums(db: DatabaseSync): LibraryAlbum[] {
+  return loadLibrary(db).albums;
+}
+
+/** The library albums plus the matchups that counted toward their ratings. */
+export function loadLibrary(db: DatabaseSync): { albums: LibraryAlbum[]; used: ReplayMatchup[] } {
   const entries = new Map(listLibrary(db).map((entry) => [entry.albumId, entry]));
   const { ratings, used } = loadRatings(db);
   const records = computeRecords([...entries.keys()], used);
@@ -40,5 +46,5 @@ export function loadLibraryAlbums(db: DatabaseSync): LibraryAlbum[] {
     .forEach((album, index) => {
       album.rank = index + 1;
     });
-  return albums;
+  return { albums, used };
 }
