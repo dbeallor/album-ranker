@@ -19,7 +19,7 @@ export function loadRatings(db: DatabaseSync): { ratings: Map<number, number>; u
   return computeRatings({ albumIds: listLibrary(db).map((entry) => entry.albumId), matchups: listMatchups(db) });
 }
 
-/** The one place the ranking progress is derived from replayed ratings, so every path that shows it agrees. */
+/** The ranking progress for a replay result, as `loadRatings` returns it. */
 export function progressOf({ ratings, used }: { ratings: Map<number, number>; used: ReplayMatchup[] }): RankingProgress | null {
   return computeProgress(ratings, used);
 }

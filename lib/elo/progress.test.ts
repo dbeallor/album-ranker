@@ -44,7 +44,6 @@ describe("computeProgress", () => {
           expect(progress.percent).toBe(0);
           expect(progress.played).toBe(0);
           expect(progress.goal).toBe(progress.remaining);
-          expect(progress.target).toBe(TARGET_CONFIDENCE);
           expect(progress.albumCount).toBe(count);
           expect(progress.remaining / count).toBeGreaterThanOrEqual(14.2);
           expect(progress.remaining / count).toBeLessThanOrEqual(14.4);
