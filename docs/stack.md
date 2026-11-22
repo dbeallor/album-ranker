@@ -15,14 +15,13 @@ One web app with a small server, one SQLite file, run on localhost, config from 
 | Spreadsheet reader | `read-excel-file`, read-only, used by the import script (`npm run import`). `write-excel-file` (dev dependency) generates the test fixture. See [the import spec](superpowers/specs/2026-11-21-album-10-spreadsheet-import.md) |
 | Database | SQLite in one file through Node's built-in `node:sqlite`, plain SQL with no ORM, numbered `.sql` migrations in `lib/db/migrations/` |
 | Styling | Plain CSS, no library: design tokens, dark theme and base styles in `app/globals.css`, layout in CSS Modules next to each component, and shared components in `components/ui/`. `lib/design-system.test.ts` keeps raw colors and inline styles out of everything else. See [the ALBUM-31 spec](superpowers/specs/2026-11-21-album-31-restyle-design-system.md) |
-| Drag and drop | `@dnd-kit/core`, `@dnd-kit/sortable` and `@dnd-kit/utilities`: mouse, touch (200 ms hold) and keyboard in one model, with Move up and Move down buttons as the alternative. Used by the decade lists and the year page. See [the ALBUM-9 spec](superpowers/specs/2026-11-21-album-9-decade-top-25.md) and [the ALBUM-6 spec](superpowers/specs/2026-11-21-album-6-year-ranking-screen.md) |
 
 TypeScript is held at 6.0.x until typescript-eslint supports 7.x.
 
 ## Why
 
 - **One process for the page and the server.** Server components, route handlers and server actions run on the server, so the SQLite file never reaches the browser and any catalog key stays server-side.
-- **React for the hard screens.** The year page (#6) and the decade list (#9) need drag and drop with keyboard and touch, and React has the most mature libraries for that.
+- **React for the interactive screens.** The matchup screen and the server-rendered library and analytics pages (#34) share components, and React has the most mature tooling for that.
 - **TypeScript end to end.** The Elo replay (#7), the data model (#4) and the import script (#10) share types with the screens.
 - **The import script runs on the same code.** `scripts/import.ts` (`npm run import`, #10) imports the same modules and runs through Node's type stripping, as `scripts/migrate.ts` does (`npm run db:migrate`). It runs with `node --conditions=react-server`, which makes the `server-only` marker package resolve to its empty module, so server-only modules such as the catalog client load outside Next.js.
 - **npm** ships with Node and needs no extra install.
