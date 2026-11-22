@@ -35,6 +35,9 @@ export type LogSource = {
   commit?: string;
 };
 
+/** The page size after a window resize, `t` ms since `startedAt`. */
+export type Resize = { t: number; width: number; height: number };
+
 export type EventLog = {
   format: "album-ranker-events";
   version: 2;
@@ -42,7 +45,10 @@ export type EventLog = {
   /** Only for Playwright runs. */
   test?: string;
   startedAt: string;
+  /** The page size in CSS pixels when the first page loaded, or `null` if it is not known. */
   viewport: { width: number; height: number } | null;
+  /** Each later page size, in order. A click was measured against the last size at or before its `t`. */
+  resizes: Resize[];
   events: RecordedEvent[];
 };
 

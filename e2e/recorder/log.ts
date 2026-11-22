@@ -1,4 +1,4 @@
-import type { EventLog, LogSource, RecordedEvent, SentEvent } from "./recorder.ts";
+import type { EventLog, LogSource, RecordedEvent, Resize, SentEvent } from "./recorder.ts";
 
 /** Fills in `seq` and `t` (ms since `startedAtMs`) on the events the browser sent. */
 export function toEvents(sent: SentEvent[], startedAtMs: number): RecordedEvent[] {
@@ -13,12 +13,14 @@ export type BuildLogInput = {
   startedAtMs: number;
   source: LogSource;
   viewport: { width: number; height: number } | null;
+  /** Later page sizes. Leave it out for a fixed viewport. */
+  resizes?: Resize[];
   /** The test's title. Leave it out for a session someone clicked through. */
   test?: string;
 };
 
 /** A version 2 log. Fields that are undefined are left out of `source` and the log, never written as null. */
-export function buildLog({ sent, startedAtMs, source, viewport, test }: BuildLogInput): EventLog {
+export function buildLog({ sent, startedAtMs, source, viewport, resizes = [], test }: BuildLogInput): EventLog {
   const known = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined)) as LogSource;
   return {
     format: "album-ranker-events",
@@ -27,6 +29,7 @@ export function buildLog({ sent, startedAtMs, source, viewport, test }: BuildLog
     ...(test === undefined ? {} : { test }),
     startedAt: new Date(startedAtMs).toISOString(),
     viewport,
+    resizes,
     events: toEvents(sent, startedAtMs),
   };
 }

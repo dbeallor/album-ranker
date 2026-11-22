@@ -15,6 +15,11 @@ This is version 2. It is a proposal that was not agreed with the renderer; if th
 - `test` is optional: only Playwright runs have it. A version 1 reader could rely on `test` being a string, so this is version 2, not an additive change.
 - Events, `startedAt`, `viewport` and the `seq`/`t` rules are unchanged. Nothing read version 1 yet.
 
+### Changes within version 2
+
+- New top-level `resizes` list: each page size after the first (see [File](#file)). It is additive, so the version stays 2 and a reader that ignores unknown fields keeps working. A reader that wants it checks the field is there; every log written now has it.
+- `viewport` is now the size measured from the page when the first page loaded, not the size that was requested. A log written before this change has the requested size and no `resizes`.
+
 ## File
 
 JSON, UTF-8, one object:
@@ -32,7 +37,8 @@ JSON, UTF-8, one object:
     "commit": "3abd2de0c1f4..."
   },
   "startedAt": "2026-11-21T15:04:05.123Z",
-  "viewport": { "width": 1280, "height": 720 },
+  "viewport": { "width": 1280, "height": 590 },
+  "resizes": [{ "t": 1650, "width": 600, "height": 812 }],
   "events": [
     { "seq": 0, "t": 0, "type": "navigation", "kind": "load", "url": "/" },
     { "seq": 1, "t": 412, "type": "click", "x": 64, "y": 103, "target": { "tag": "a", "selector": "main > p:nth-of-type(1) > a", "text": "Search albums" } },
@@ -49,7 +55,8 @@ JSON, UTF-8, one object:
 - `source`: where the log came from, below.
 - `test`: the test's full title, for example `"search page: search for an album"`. Only in a Playwright run; the example above is a recorded session, so it has none.
 - `startedAt`: ISO time of the first event, so the first event has `t: 0`.
-- `viewport`: the page size in CSS pixels, or `null` if none was set.
+- `viewport`: the page size in CSS pixels when the first page loaded, or `null` if it is not known.
+- `resizes`: each later page size, in order: `t` is ms since `startedAt` (same clock as events, at least 0), `width` and `height` are CSS pixels. A click at time `t` was measured against the last resize at or before `t`, or `viewport` if there is none. A browser test has a fixed viewport, so its `resizes` is `[]`.
 - `events`: the ordered log.
 
 ## Source
@@ -104,6 +111,6 @@ Scrolling, hover, mouse movement, keys other than through `input` and `submit`, 
 npm run record -- <target> [--out <dir>] [--viewport <W>x<H>]
 ```
 
-`<target>` is `main`, a ticket number or a branch (the running preview of it), a port (`3000`) or a URL on `localhost`, `127.0.0.1` or `[::1]`. The command opens a Chromium window (one-time install: `npx playwright install chromium`) on that app. You click through it; closing the window or pressing Ctrl-C ends the session and writes the log. The first event is the `load` of the opened URL. The viewport is fixed at 1280x720 unless `--viewport` says otherwise, and the log's `viewport` is that size. Cover images load normally in a recording; the browser test blocks them.
+`<target>` is `main`, a ticket number or a branch (the running preview of it), a port (`3000`) or a URL on `localhost`, `127.0.0.1` or `[::1]`. The command opens a Chromium window (one-time install: `npx playwright install chromium`) on that app. You click through it; closing the window or pressing Ctrl-C ends the session and writes the log. The first event is the `load` of the opened URL. The window starts at 1280x720 unless `--viewport` says otherwise, and the page follows the window: resize it and the layout changes as in a normal browser. The log's `viewport` is the page size at the first load (a little under the window's height, because of the toolbar), and each later size, once the resizing stops for 250 ms, is an entry in `resizes`. Cover images load normally in a recording; the browser test blocks them.
 
 Nothing records while the command isn't running: the app has no recorder code and no endpoint.
