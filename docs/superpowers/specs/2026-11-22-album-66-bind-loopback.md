@@ -48,7 +48,7 @@ No change. The issue's comment asks to check the standalone server on AWS. It is
 
 ## Calls I made
 
-- To reach the app from another device, the README points at `npx next dev --hostname 0.0.0.0` rather than adding a script, an env var or `npm run dev -- --hostname ...`. It names `next start`, not `next dev`, because the dev server shows stack traces and blocks LAN origins. Passing a second `--hostname` through npm relies on which one Next's argument parser keeps; running Next directly has one flag and no doubt.
+- To reach the app from another device, the README points at `npm run build && npx next start --hostname 0.0.0.0` rather than adding a script, an env var or `npm run dev -- --hostname ...`. It names `next start`, not `next dev`, because the dev server shows stack traces and blocks LAN origins. Passing a second `--hostname` through npm relies on which one Next's argument parser keeps; running Next directly has one flag and no doubt.
 - The README tells you to set `APP_PASSWORD` before opening the app to the network.
 - A small test guards the two script lines, so a later edit can't silently drop the flag. It reads `package.json`; it doesn't start Next.
 - The `localhost:3000` links in the README stay, instead of changing every one to `127.0.0.1:3000`. The build checks that `localhost` still reaches the app.
