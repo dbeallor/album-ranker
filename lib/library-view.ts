@@ -11,12 +11,14 @@ export type LibraryAlbum = {
   year: number;
   addedAt: string;
   rating: number;
-  /** Lifetime rank over the whole library: rating, highest first, a tie to the lower album id. */
+  /** Lifetime rank over the whole library, by `bestFirst`. */
   rank: number;
   played: number;
   wins: number;
   losses: number;
   ties: number;
+  /** The latest counted matchup for the album, or null with none. */
+  lastMatchupAt: string | null;
 };
 
 export const SORT_KEYS = [
@@ -29,7 +31,9 @@ export const SORT_KEYS = [
   "played",
   "wins",
   "losses",
+  "ties",
   "winrate",
+  "lastmatchup",
   "added",
 ] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
@@ -46,7 +50,9 @@ export const SORT_LABELS: Record<SortKey, string> = {
   played: "Matchups played",
   wins: "Wins",
   losses: "Losses",
+  ties: "Ties",
   winrate: "Win rate",
+  lastmatchup: "Last matchup",
   added: "Date added",
 };
 
@@ -61,7 +67,9 @@ export const DEFAULT_DIRS: Record<SortKey, SortDir> = {
   played: "desc",
   wins: "desc",
   losses: "desc",
+  ties: "desc",
   winrate: "desc",
+  lastmatchup: "desc",
   added: "desc",
 };
 
@@ -90,7 +98,10 @@ type Compare = (a: LibraryAlbum, b: LibraryAlbum) => number;
 
 const text = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase());
 const byId: Compare = (a, b) => a.albumId - b.albumId;
-const bestFirst: Compare = (a, b) => b.rating - a.rating || byId(a, b);
+
+/** The one order for ties everywhere: rating, highest first, then artist name, title (case-insensitive), album id. */
+export const bestFirst: Compare = (a, b) =>
+  b.rating - a.rating || text(a.artistName, b.artistName) || text(a.title, b.title) || byId(a, b);
 const eraIndex = (album: LibraryAlbum) => ERAS.findIndex((era) => era.key === eraOf(album.year));
 const winRate = (album: LibraryAlbum) => (album.wins + album.ties / 2) / album.played;
 
@@ -99,15 +110,19 @@ type SortSpec = {
   main: Compare;
   /** What orders albums that tie on the main key. Always ends with the album id. */
   tail: Compare;
+  /** Albums with no value for the main key; they go last in both directions. */
+  missing?: (album: LibraryAlbum) => boolean;
   /** Dividers: the group an album falls in, and the heading for a group. Absent for a sort without dividers. */
   group?: { key: (album: LibraryAlbum) => string | number; heading: (album: LibraryAlbum) => string };
 };
 
+const isoCompare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 const numeric = (value: (album: LibraryAlbum) => number): Compare => (a, b) => value(a) - value(b);
 
 const SORTS: Record<SortKey, SortSpec> = {
-  rating: { main: numeric((a) => a.rating), tail: byId },
-  title: { main: (a, b) => text(a.title, b.title), tail: byId },
+  rating: { main: numeric((a) => a.rating), tail: bestFirst },
+  title: { main: (a, b) => text(a.title, b.title), tail: bestFirst },
   artist: {
     main: (a, b) => text(a.artistName, b.artistName),
     tail: (a, b) => a.artistId - b.artistId || a.year - b.year || text(a.title, b.title) || byId(a, b),
@@ -131,8 +146,10 @@ const SORTS: Record<SortKey, SortSpec> = {
   played: { main: numeric((a) => a.played), tail: bestFirst },
   wins: { main: numeric((a) => a.wins), tail: bestFirst },
   losses: { main: numeric((a) => a.losses), tail: bestFirst },
-  winrate: { main: numeric(winRate), tail: bestFirst },
-  added: { main: (a, b) => (a.addedAt < b.addedAt ? -1 : a.addedAt > b.addedAt ? 1 : 0), tail: byId },
+  ties: { main: numeric((a) => a.ties), tail: bestFirst },
+  winrate: { main: numeric(winRate), tail: bestFirst, missing: (a) => a.played === 0 },
+  lastmatchup: { main: (a, b) => isoCompare(a.lastMatchupAt!, b.lastMatchupAt!), tail: bestFirst, missing: (a) => a.lastMatchupAt === null },
+  added: { main: (a, b) => isoCompare(a.addedAt, b.addedAt), tail: bestFirst },
 };
 
 function matches(album: LibraryAlbum, { q, scope, played }: ViewOptions): boolean {
@@ -155,11 +172,9 @@ function albumCount(n: number): string {
 export function buildLibraryView(albums: LibraryAlbum[], options: ViewOptions): LibraryGroup[] {
   const spec = SORTS[options.sort];
   const sign = (options.dir ?? DEFAULT_DIRS[options.sort]) === "asc" ? 1 : -1;
-  const unplayedLast = options.sort === "winrate";
 
   const sorted = albums.filter((album) => matches(album, options)).sort((a, b) => {
-    // An album with no matchups has no win rate, so it goes last in both directions.
-    if (unplayedLast && (a.played === 0 || b.played === 0)) return (a.played === 0 ? 1 : 0) - (b.played === 0 ? 1 : 0) || spec.tail(a, b);
+    if (spec.missing && (spec.missing(a) || spec.missing(b))) return Number(spec.missing(a)) - Number(spec.missing(b)) || spec.tail(a, b);
     return sign * spec.main(a, b) || spec.tail(a, b);
   });
   if (sorted.length === 0) return [];
