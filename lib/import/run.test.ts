@@ -193,8 +193,8 @@ describe("rows that need the fallback searches", () => {
       [1964, "Meet the Temptations"],
       [1964, "Getz / Gilberto"],
     ]);
-    // Trio and the typo each need the second search; Getz/Gilberto is found by the first.
-    expect(search).toHaveBeenCalledTimes(2 + 2 + 1);
+    // Each row finds only a close album, so each runs all 4 steps.
+    expect(search).toHaveBeenCalledTimes(3 * 4);
   });
 
   it("still sends a doubtful row to review, with the closest candidates first", async () => {
@@ -297,6 +297,34 @@ describe("catalog errors", () => {
 
     expect(sleep.mock.calls).toEqual([[5000]]);
     expect(summary).toMatchObject({ imported: 1, notReached: 0 });
+  });
+
+  it("retries only the step that failed, not the steps before it", async () => {
+    const rows = [rawRow({ album: "Fake Album One", artist: "Fake Artist A", year: 2001 })];
+    const titleOnly: CatalogQuery = { kind: "fields", title: "Fake Album One" };
+    let failed = false;
+    const search = vi.fn<CatalogSearch>(async (query) => {
+      // Step 3 fails once; nothing is ever found, so all four steps run.
+      if (JSON.stringify(query) === JSON.stringify(titleOnly) && !failed) {
+        failed = true;
+        throw new CatalogError("busy", "busy");
+      }
+      return [];
+    });
+    const sleep = vi.fn<RunDeps["sleep"]>(async () => {});
+
+    const summary = await runImport(memoryDb(), prepareRows(rows), { search, sleep });
+
+    expect(sleep.mock.calls).toEqual([[5000]]);
+    expect(summary).toMatchObject({ notReached: 0, review: { no_match: 1 } });
+    // Steps 1 and 2 once each, step 3 twice (it failed, then succeeded), then step 4.
+    expect(search.mock.calls.map(([query]) => query)).toEqual([
+      { kind: "text", text: "Fake Album One Fake Artist A" },
+      { kind: "fields", title: "Fake Album One", artist: "Fake Artist A" },
+      titleOnly,
+      titleOnly,
+      { kind: "fields", artist: "Fake Artist A" },
+    ]);
   });
 
   it("reports each failed attempt", async () => {

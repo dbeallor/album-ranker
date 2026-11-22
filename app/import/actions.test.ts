@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAlbum, findAlbumByCatalogId } from "@/lib/db/albums";
 import { createImportReviewItem } from "@/lib/db/import-review";
-import { listLibrary } from "@/lib/db/library";
+import { addToLibrary, listLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown, resolveCover: vi.fn() }));
@@ -144,6 +144,20 @@ describe("import review actions", () => {
       await redirectOf(chooseAlbumAction(choice(review.id)));
 
       expect(stored()?.coverUrl).toBeNull();
+    });
+
+    it("marks the redirect moved=1 only when the album was already in the library", async () => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const album = createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: CATALOG_ID });
+      addToLibrary(db, { albumId: album.id, year: 1999 });
+      const moving = seed();
+      const move = await redirectOf(chooseAlbumAction(choice(moving.id, { moveHere: "1" })));
+      expect(Object.fromEntries(move.searchParams)).toEqual({ done: String(moving.id), moved: "1" });
+      expect(listLibrary(db).map((entry) => entry.year)).toEqual([2001]);
+
+      const adding = seedMore(2002, "Fake Album Two");
+      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "another", title: "Fake Album Two" })));
+      expect(Object.fromEntries(add.searchParams)).toEqual({ done: String(adding.id) });
     });
 
     it("skips the lookup and keeps the stored cover when the album already exists", async () => {

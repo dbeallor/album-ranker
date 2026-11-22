@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Cover } from "@/components/cover";
 import { Button } from "@/components/ui/button";
@@ -65,19 +65,20 @@ export function describeYearGap(sheetYear: number, catalogYear: number | null): 
 }
 
 /** Whether any form in the card is submitting. While one is, every button in the card is disabled. */
-const BusyContext = createContext<{ busy: boolean; setFormPending: (pending: boolean) => void }>({
+const BusyContext = createContext<{ busy: boolean; reportPending: (change: 1 | -1) => void }>({
   busy: false,
-  setFormPending: () => {},
+  reportPending: () => {},
 });
 
-/** Sits inside a form and tells the card when that form starts and stops submitting. */
+/** Sits inside a form and tells the card while that form is submitting. The card counts the forms, so one finishing doesn't end another's wait. */
 function ReportPending() {
   const { pending } = useFormStatus();
-  const { setFormPending } = useContext(BusyContext);
+  const { reportPending } = useContext(BusyContext);
   useEffect(() => {
-    setFormPending(pending);
-    return () => setFormPending(false);
-  }, [pending, setFormPending]);
+    if (!pending) return;
+    reportPending(1);
+    return () => reportPending(-1);
+  }, [pending, reportPending]);
   return null;
 }
 
@@ -154,9 +155,11 @@ function CandidateList({ item, candidates, actions }: { item: ImportReviewItem; 
  */
 export function ReviewCard({ view, actions }: { view: ReviewItemView; actions: ReviewActions }) {
   const { item, search } = view;
-  const [busy, setBusy] = useState(false);
+  const [pendingForms, setPendingForms] = useState(0);
+  const reportPending = useCallback((change: 1 | -1) => setPendingForms((count) => count + change), []);
+  const busy = pendingForms > 0;
   return (
-    <BusyContext.Provider value={{ busy, setFormPending: setBusy }}>
+    <BusyContext.Provider value={{ busy, reportPending }}>
       <Card as="li" id={`item-${item.id}`}>
         <Stack gap={4}>
           <Stack gap={1}>

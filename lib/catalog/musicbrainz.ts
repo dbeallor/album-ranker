@@ -63,10 +63,23 @@ function fieldTerm(field: string, word: string): string {
   return `${field}:${escapeWord(lower)}${fuzzy}`;
 }
 
-/** Every title word must be in the release group's title, and at least one artist word in its artist. */
+/** Words that say nothing about who an artist is: with "or" between the artist words, they would match any artist with one. */
+const ARTIST_FILLER = new Set(["the", "and"]);
+
+/** The artist's words without "the" and "and", unless that would leave none. */
+function artistQueryWords(artist: string): string[] {
+  const words = queryWords(artist);
+  const named = words.filter((word) => !ARTIST_FILLER.has(word.toLowerCase()));
+  return named.length > 0 ? named : words;
+}
+
+/**
+ * Every title word must be in the release group's title, and at least one artist word in its artist. The artist's
+ * "the" and "and" are left out (see `artistQueryWords`), since one of them matching would be enough.
+ */
 export function buildFieldsQuery({ title = "", artist = "" }: { title?: string; artist?: string }): string {
   const titleWords = queryWords(title).map((word) => fieldTerm("releasegroup", word));
-  const artistWords = queryWords(artist).map((word) => fieldTerm("artist", word));
+  const artistWords = artistQueryWords(artist).map((word) => fieldTerm("artist", word));
   const parts: string[] = [];
   if (titleWords.length > 0) parts.push(`(${titleWords.join(" AND ")})`);
   if (artistWords.length > 0) parts.push(`(${artistWords.join(" OR ")})`);

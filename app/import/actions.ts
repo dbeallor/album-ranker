@@ -24,18 +24,22 @@ function back(params: Record<string, string>): never {
   redirect(`/import?${new URLSearchParams(params)}`);
 }
 
+/** How an item came to be handled, for the page's message: `already` (an earlier click did it), `moved` (an album that was in the library moved to the sheet's year). */
+type Handled = { already?: boolean; moved?: boolean };
+
 /**
  * An item is handled (by this click, or by an earlier one): refresh the page and land on a URL that differs from the
  * one the click came from, so the router shows the new state. The fragment scrolls to the open item that now sits
  * where this one was, if any are left.
  */
-function done(itemId: number, alreadyHandled = false): never {
+function done(itemId: number, { already = false, moved = false }: Handled = {}): never {
   refresh();
   const db = getDb();
   const handled = getImportReviewItem(db, itemId);
   const next = handled ? nextOpenItemId(listImportReviewItems(db), handled) : null;
   const params = new URLSearchParams({ done: String(itemId) });
-  if (alreadyHandled) params.set("already", "1");
+  if (already) params.set("already", "1");
+  if (moved) params.set("moved", "1");
   redirect(`/import?${params}${next === null ? "" : `#item-${next}`}`);
 }
 
@@ -67,9 +71,9 @@ async function withCover(album: CatalogCandidate): Promise<CatalogCandidate> {
 
 function resolve(itemId: number, choice: ResolveChoice): never {
   const result = resolveReviewItem(getDb(), itemId, choice);
-  if (result.ok) return done(itemId);
+  if (result.ok) return done(itemId, { moved: result.movedFromYear !== null });
   // A second click on an item the first click already handled is not an error.
-  if (result.code === "not_open") return done(itemId, true);
+  if (result.code === "not_open") return done(itemId, { already: true });
   return fail(itemId, result.message);
 }
 
@@ -93,6 +97,6 @@ export async function skipAction(formData: FormData): Promise<void> {
   if (itemId === null) return fail(null, "That review item could not be found.");
   const result = skipReviewItem(getDb(), itemId);
   if (result.ok) return done(itemId);
-  if (result.code === "not_open") return done(itemId, true);
+  if (result.code === "not_open") return done(itemId, { already: true });
   return fail(itemId, result.message);
 }

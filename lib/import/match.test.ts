@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CatalogQuery } from "../catalog/types.ts";
+import type { CatalogAlbum, CatalogQuery } from "../catalog/types.ts";
 import { gradeArtist, gradeTitle, type Grade } from "./grade.ts";
 import {
   chooseMatch,
@@ -11,6 +11,7 @@ import {
   toCandidate,
 } from "./match.ts";
 import { RECORDING_CATALOG, catalogAlbum, fakeCatalogSearch, importRow } from "./test-support.ts";
+import type { CatalogSearch } from "./types.ts";
 
 const row = (title: string, artist: string, year = 2001) => importRow({ key: { title, artist, year } });
 
@@ -99,6 +100,11 @@ describe("gradeTitle", () => {
     { name: "one typo in long titles", sheet: "Meet the Tempations", catalog: "Meet the Temptations", grade: "close" },
     { name: "a typo in a short title", sheet: "Blur", catalog: "Blue", grade: "none" },
     { name: "two typos", sheet: "Meet the Tempatons", catalog: "Meet the Temptations", grade: "none" },
+    { name: "a typo in each of two words", sheet: "Fake Albom Namez", catalog: "Fake Album Names", grade: "none" },
+    { name: "a different volume number", sheet: "Greatest Hits Vol. 2", catalog: "Greatest Hits Vol. 3", grade: "none" },
+    { name: "a different roman numeral", sheet: "Led Zeppelin II", catalog: "Led Zeppelin III", grade: "none" },
+    { name: "a different year in the title", sheet: "Fake Album 2000", catalog: "Fake Album 2001", grade: "none" },
+    { name: "a different number inside a long word", sheet: "Fake Blink182", catalog: "Fake Blink183", grade: "none" },
     { name: "words in another order", sheet: "Fake Album One", catalog: "One Fake Album", grade: "none" },
     { name: "a different title", sheet: "Fake Album One", catalog: "Fake Album Two", grade: "none" },
   ];
@@ -121,6 +127,9 @@ describe("gradeArtist", () => {
     },
     { name: "one typo in long names", sheet: "Procol Harem", catalog: "Procol Harum", grade: "close" },
     { name: "a typo in a short name", sheet: "Blur", catalog: "Blue", grade: "none" },
+    { name: "a one-word name inside a longer one", sheet: "Prince", catalog: "Prince Buster", grade: "none" },
+    { name: "a name that is just The and a word, inside a longer one", sheet: "The Band", catalog: "The Band of Horses", grade: "none" },
+    { name: "a different number in a name", sheet: "Fake Artist 2", catalog: "Fake Artist 3", grade: "none" },
     { name: "the same words in another order", sheet: "Joao Gilberto", catalog: "Gilberto Joao", grade: "none" },
     { name: "words only partly shared", sheet: "Bill Evans", catalog: "Bill Frisell", grade: "none" },
     { name: "a different artist", sheet: "Fake Artist A", catalog: "Somebody Else Entirely", grade: "none" },
@@ -177,7 +186,15 @@ describe("chooseMatch with close matches", () => {
   const sheet = row("Meet the Temptations", "The Temptations", 1964);
   const typo = (id: string, year: number | null) => catalogAlbum(id, "Meet the Tempations", "The Temptations", year);
 
-  const cases: { name: string; results: ReturnType<typeof typo>[]; outcome: "accepted" | "no_match"; ids: string[] }[] = [
+  const volume = row("Greatest Hits Vol. 2", "Fake Artist A", 1990);
+  const zeppelin = row("Led Zeppelin II", "Led Zeppelin", 1969);
+  const cases: {
+    name: string;
+    sheet?: ReturnType<typeof row>;
+    results: ReturnType<typeof typo>[];
+    outcome: "accepted" | "no_match";
+    ids: string[];
+  }[] = [
     { name: "one close match in the sheet's year is accepted", results: [typo("a", 1964)], outcome: "accepted", ids: ["a"] },
     { name: "one close match a year off is accepted", results: [typo("a", 1965)], outcome: "accepted", ids: ["a"] },
     { name: "a close match two years off goes to review", results: [typo("a", 1966)], outcome: "no_match", ids: ["a"] },
@@ -188,9 +205,23 @@ describe("chooseMatch with close matches", () => {
       outcome: "no_match",
       ids: ["near", "far"],
     },
+    {
+      name: "another volume number in the sheet's year goes to review",
+      sheet: volume,
+      results: [catalogAlbum("a", "Greatest Hits Vol. 3", "Fake Artist A", 1990)],
+      outcome: "no_match",
+      ids: ["a"],
+    },
+    {
+      name: "another roman numeral in the sheet's year goes to review",
+      sheet: zeppelin,
+      results: [catalogAlbum("a", "Led Zeppelin III", "Led Zeppelin", 1969)],
+      outcome: "no_match",
+      ids: ["a"],
+    },
   ];
-  it.each(cases)("$name", ({ results, outcome, ids }) => {
-    const result = chooseMatch(sheet, results);
+  it.each(cases)("$name", ({ sheet: own, results, outcome, ids }) => {
+    const result = chooseMatch(own ?? sheet, results);
     expect(result.kind).toBe(outcome);
     if (result.kind === "accepted") expect(result.album.catalogId).toBe(ids[0]);
     if (result.kind === "no_match") expect(result.candidates.map((c) => c.catalogId)).toEqual(ids);
@@ -224,6 +255,18 @@ describe("chooseMatch with close matches", () => {
 
 describe("matchRow", () => {
   const text = (value: string): CatalogQuery => ({ kind: "text", text: value });
+  /** The four searches of the ladder, in order. */
+  const ladder = (title: string, artist: string): CatalogQuery[] => [
+    text(`${title} ${artist}`),
+    { kind: "fields", title, artist },
+    { kind: "fields", title },
+    { kind: "fields", artist },
+  ];
+  /** A search that answers every query with the same albums. */
+  const fakeSearchOf = (albums: CatalogAlbum[], calls: CatalogQuery[]): CatalogSearch => async (query) => {
+    calls.push(query);
+    return albums;
+  };
 
   it("searches for the album and artist together first", async () => {
     const search = vi.fn(async () => [catalogAlbum("a", "Fake Album One", "Fake Artist A", 2001)]);
@@ -251,12 +294,30 @@ describe("matchRow", () => {
     const result = await matchRow(row("Not In Catalog", "Nobody Known", 1970), search);
 
     expect(result).toEqual({ kind: "no_match", candidates: [] });
-    expect(calls).toEqual([
-      text("Not In Catalog Nobody Known"),
-      { kind: "fields", title: "Not In Catalog", artist: "Nobody Known" },
-      { kind: "fields", title: "Not In Catalog" },
-      { kind: "fields", artist: "Nobody Known" },
-    ]);
+    expect(calls).toEqual(ladder("Not In Catalog", "Nobody Known"));
+  });
+
+  it("keeps searching past a close result and accepts the exact album a later step finds", async () => {
+    const reissue = catalogAlbum("reissue", "Fake Album One: Deluxe", "Fake Artist A", 2001);
+    const exact = catalogAlbum("exact", "Fake Album One", "Fake Artist A", 2001);
+    const calls: CatalogQuery[] = [];
+    const search: CatalogSearch = async (query) => {
+      calls.push(query);
+      return query.kind === "text" ? [reissue] : [reissue, exact];
+    };
+    const result = await matchRow(row("Fake Album One", "Fake Artist A"), search);
+
+    expect(result).toEqual({ kind: "accepted", album: exact });
+    expect(calls).toEqual([text("Fake Album One Fake Artist A"), { kind: "fields", title: "Fake Album One", artist: "Fake Artist A" }]);
+  });
+
+  it("searches at most four times when every result is only close", async () => {
+    const calls: CatalogQuery[] = [];
+    const reissue = catalogAlbum("reissue", "Fake Album One: Deluxe", "Fake Artist A", 2001);
+    const result = await matchRow(row("Fake Album One", "Fake Artist A"), fakeSearchOf([reissue], calls));
+
+    expect(calls).toHaveLength(4);
+    expect(result).toEqual({ kind: "accepted", album: reissue });
   });
 
   it("keeps the ladder's results ranked in the review candidates, deduped by catalog id", async () => {
@@ -281,22 +342,16 @@ describe("matchRow", () => {
       calls: CatalogQuery[];
     }[] = [
       {
-        name: "an extra artist word (Trio) is found by the fields search",
+        name: "an extra artist word (Trio) is found by the fields search, then the rest of the ladder runs",
         row: ["Portraits in Jazz", "Bill Evans Trio", 1960],
         accepted: "evans-portrait",
-        calls: [
-          text("Portraits in Jazz Bill Evans Trio"),
-          { kind: "fields", title: "Portraits in Jazz", artist: "Bill Evans Trio" },
-        ],
+        calls: ladder("Portraits in Jazz", "Bill Evans Trio"),
       },
       {
-        name: "a typo in the title is found by the fields search",
+        name: "a typo in the title is found by the fields search, then the rest of the ladder runs",
         row: ["Meet the Tempations", "The Temptations", 1964],
         accepted: "temps-meet",
-        calls: [
-          text("Meet the Tempations The Temptations"),
-          { kind: "fields", title: "Meet the Tempations", artist: "The Temptations" },
-        ],
+        calls: ladder("Meet the Tempations", "The Temptations"),
       },
       {
         name: "a title equal to the artist is decided by the year, on the first search",
@@ -305,10 +360,10 @@ describe("matchRow", () => {
         calls: [text("Procol Harum Procol Harum")],
       },
       {
-        name: "punctuation and accents match on the first search",
+        name: "punctuation and accents are close, so the ladder runs on, and the album is still found",
         row: ["Getz/Gilberto", "Stan Getz & Joao Gilberto", 1964],
         accepted: "getz-gilberto",
-        calls: [text("Getz/Gilberto Stan Getz & Joao Gilberto")],
+        calls: ladder("Getz/Gilberto", "Stan Getz & Joao Gilberto"),
       },
     ];
     it.each(cases)("$name", async ({ row: [title, artist, year], accepted, calls: expected }) => {
@@ -340,11 +395,11 @@ describe("matchRow", () => {
 describe("searchForReview", () => {
   const key = { title: "Portraits in Jazz", artist: "Bill Evans Trio", year: 1960 };
 
-  it("runs the ladder for the default text", async () => {
+  it("runs the whole ladder for the default text when no result is exact", async () => {
     const calls: CatalogQuery[] = [];
     const results = await searchForReview(key, defaultSearchText(key), true, fakeCatalogSearch(RECORDING_CATALOG, calls));
 
-    expect(calls.map((call) => call.kind)).toEqual(["text", "fields"]);
+    expect(calls.map((call) => call.kind)).toEqual(["text", "fields", "fields", "fields"]);
     expect(results.map((album) => album.catalogId)).toEqual(["evans-portrait"]);
   });
 
@@ -365,11 +420,5 @@ describe("searchForReview", () => {
       { kind: "fields", title: "Portrats in Jazz" },
     ]);
     expect(results.map((album) => album.catalogId)).toEqual(["evans-portrait"]);
-  });
-
-  it("makes one request when typed text finds something", async () => {
-    const search = vi.fn(fakeCatalogSearch(RECORDING_CATALOG));
-    await searchForReview(key, "jazz", false, search);
-    expect(search).toHaveBeenCalledTimes(1);
   });
 });

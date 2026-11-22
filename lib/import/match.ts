@@ -89,8 +89,9 @@ export function defaultSearchText(key: SourceRowKey): string {
 }
 
 /**
- * Searches for a row until a step finds a result whose title and artist are both exact or close, and returns every
- * result gathered so far, deduped by catalog id. Each step is one catalog request:
+ * Searches for a row until a step finds a result whose title and artist are both exact, and returns every result
+ * gathered so far, deduped by catalog id. A result that is only close doesn't stop the search: it may be a reissue
+ * ("X: Deluxe") with the exact album still to be found. Each step is one catalog request, so a row costs at most 4:
  * 1. text "<album> <artist>";
  * 2. fields, title and artist (a typo, or extra artist words such as "Trio");
  * 3. fields, title only, keeping results whose artist is exact or close;
@@ -104,8 +105,8 @@ async function runLadder(key: SourceRowKey, search: CatalogSearch): Promise<Cata
     for (const album of kept) {
       if (!gathered.has(album.catalogId)) gathered.set(album.catalogId, album);
     }
-    const usable = gradeAndRank(key, kept, readAlbum).some((graded) => isClose(graded.title) && isClose(graded.artist));
-    if (usable) break;
+    const found = gradeAndRank(key, kept, readAlbum).some((graded) => graded.title === "exact" && graded.artist === "exact");
+    if (found) break;
   }
   return [...gathered.values()];
 }

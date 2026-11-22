@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { CoverQuery } from "../catalog/cover-art.ts";
 import { CatalogError } from "../catalog/musicbrainz.ts";
+import type { CatalogAlbum } from "../catalog/types.ts";
 import { findAlbumByCatalogId } from "../db/albums.ts";
 import { findImportReviewItem, listImportReviewItems } from "../db/import-review.ts";
 import { findLibraryEntryBySource } from "../db/library.ts";
@@ -44,10 +45,23 @@ export type ImportSummary = {
   aborted: boolean;
 };
 
+/**
+ * Searches for a row, retrying when the catalog fails. Answers already received are kept across the retries, so a
+ * retry asks the catalog again only for the step that failed, not for the steps before it.
+ */
 async function searchWithRetries(row: ImportRow, deps: RunDeps) {
+  const answers = new Map<string, CatalogAlbum[]>();
+  const search: CatalogSearch = async (query) => {
+    const key = JSON.stringify(query);
+    const known = answers.get(key);
+    if (known) return known;
+    const albums = await deps.search(query);
+    answers.set(key, albums);
+    return albums;
+  };
   for (let attempt = 0; ; attempt++) {
     try {
-      return { ok: true as const, outcome: await matchRow(row, deps.search) };
+      return { ok: true as const, outcome: await matchRow(row, search) };
     } catch (error) {
       // Only catalog failures are worth retrying; a bug or a database error must surface, not read as "not reached".
       if (!(error instanceof CatalogError)) throw error;

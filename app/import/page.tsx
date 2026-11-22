@@ -12,10 +12,7 @@ import type { CatalogSearch } from "@/lib/import/types";
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
 type Param = string | string[] | undefined;
-type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; done?: Param; already?: Param }>;
-
-/** An album the choice moved was in the library long before the item was resolved; an added one went in within the same transaction. */
-const MOVED_AFTER_MS = 1000;
+type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; done?: Param; already?: Param; moved?: Param }>;
 
 function first(param: Param): string {
   return (Array.isArray(param) ? param[0] : param) ?? "";
@@ -33,19 +30,21 @@ const catalogSearch: CatalogSearch = async (query) => {
   return result.albums;
 };
 
-/** What the last action did, read from the item's stored status so a reload shows the same text. */
-function describeDone(db: DatabaseSync, itemId: number, alreadyHandled: boolean): DoneMessage | null {
+/**
+ * What the last action did. The item's stored status says whether it was skipped or resolved; the URL says whether the
+ * album was moved (`moved=1`) or the click was a repeat (`already=1`), so a reload shows the same text.
+ */
+function describeDone(db: DatabaseSync, itemId: number, flags: { already: boolean; moved: boolean }): DoneMessage | null {
   const item = getImportReviewItem(db, itemId);
   if (!item || item.status === "open") return null;
   const title = item.source.title;
-  if (alreadyHandled) return { text: `${title} was already handled.`, tone: "info" };
+  if (flags.already) return { text: `${title} was already handled.`, tone: "info" };
   if (item.status === "skipped") return { text: `Skipped ${title}.`, tone: "success" };
 
   const album = item.resolvedAlbumId === null ? undefined : getAlbum(db, item.resolvedAlbumId);
   const entry = album && getLibraryEntry(db, album.id);
   if (!album || !entry) return { text: `Added ${title} to your library.`, tone: "success" };
-  const moved = Date.parse(item.updatedAt) - Date.parse(entry.addedAt) > MOVED_AFTER_MS;
-  return moved
+  return flags.moved
     ? { text: `Moved ${album.title} to ${entry.year}.`, tone: "success" }
     : { text: `Added ${album.title} (${entry.year}) to your library.`, tone: "success" };
 }
@@ -62,7 +61,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
   };
 
   const doneId = Number(first(params.done));
-  const done = first(params.done) !== "" && Number.isInteger(doneId) ? describeDone(db, doneId, first(params.already) === "1") : null;
+  const done = first(params.done) !== "" && Number.isInteger(doneId) ? describeDone(db, doneId, { already: first(params.already) === "1", moved: first(params.moved) === "1" }) : null;
 
   const searchedId = Number(first(params.search));
   const searchedQuery = first(params.q).trim();

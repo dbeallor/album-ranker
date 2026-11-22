@@ -209,7 +209,6 @@ describe("import review page", () => {
       const db = state.db as DatabaseSync;
       const album = createAlbum(db, { title: "Fake Album Dup", artist: { name: "Fake Artist C" }, catalogId: "c-dup" });
       addToLibrary(db, { albumId: album.id, year: 1999 });
-      db.prepare("UPDATE library_albums SET added_at = '2020-01-01T00:00:00.000Z'").run();
       const item = createImportReviewItem(db, {
         source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
         sourcePlacement: "listed",
@@ -218,7 +217,7 @@ describe("import review page", () => {
         candidates: [candidate("c-dup", "Fake Album Dup", "Fake Artist C", 1999)],
       });
       expect(resolveReviewItem(db, item.id, { kind: "catalog", album: item.candidates[0], moveHere: true }).ok).toBe(true);
-      await renderPage({ done: String(item.id) });
+      await renderPage({ done: String(item.id), moved: "1" });
 
       expect(screen.getByRole("status").textContent).toBe("Moved Fake Album Dup to 2001. 0 left.");
     });

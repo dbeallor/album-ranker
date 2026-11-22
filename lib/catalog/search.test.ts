@@ -309,7 +309,17 @@ describe("buildFieldsQuery", () => {
       name: "allows a typo only in words of 5 or more letters",
       query: { title: "Meet the Tempations", artist: "The Temptations" },
       expected:
-        "(releasegroup:meet AND releasegroup:the AND releasegroup:tempations~1) AND (artist:the OR artist:temptations~1)",
+        "(releasegroup:meet AND releasegroup:the AND releasegroup:tempations~1) AND (artist:temptations~1)",
+    },
+    {
+      name: "leaves the and the out of the artist words, but not out of the title",
+      query: { title: "The Band", artist: "The Band and The Horses" },
+      expected: "(releasegroup:the AND releasegroup:band) AND (artist:band OR artist:horses~1)",
+    },
+    {
+      name: "keeps the and the when the artist has no other word",
+      query: { artist: "The And" },
+      expected: "(artist:the OR artist:and)",
     },
     {
       name: "can ask for the title alone",
