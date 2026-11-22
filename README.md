@@ -95,11 +95,11 @@ A "Ranking progress" panel sits above the Show tabs on every view. It is library
 
 ## Import the spreadsheet
 
-`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then adds the albums to the library with the year from the sheet. Rows it can't match with confidence go to the review page.
+`npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then adds the albums to the library with the year from the sheet. It imports an exact title and artist match, and also a single close match (a typo, a subtitle, an extra artist word) when its year is within 1 of the sheet's. Everything else goes to the review page, with candidates ranked by how well title, artist and year fit.
 
-- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), plus a Cover Art Archive check (and a Deezer search when that has no cover) for each new album, so allow longer, and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
+- It takes about 15 minutes for 750 rows if every row matches exactly on the first search. A row that doesn't takes up to 3 more searches with simpler queries (title and artist fields, title only, artist only), so allow longer. It makes at most one MusicBrainz request per second (1.1 s apart), plus a Cover Art Archive check (and a Deezer search when that has no cover) for each new album, so allow longer, and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
 - It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
-- Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog, keep it as a manual album, or skip it.
+- Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog (the search box runs the same fallback searches as the import), keep it as a manual album, or skip it. After each click the page says what happened, shows how many items are left and scrolls to the next one.
 - The spreadsheet is never committed; keep it outside the repo.
 
 Reading the summary the script prints at the end:
