@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   // A self-contained server in .next/standalone, which `npm run build:lambda` packages for AWS Lambda.
   output: "standalone",
   poweredByHeader: false,
-  // Also set by proxy.ts on the responses it answers itself.
+  // Also set by proxy.ts, which covers the responses it answers itself.
   async headers() {
     return [
       {

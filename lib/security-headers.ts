@@ -10,7 +10,7 @@ const COVER_HOSTS = [
 
 /**
  * The hardening headers every response carries. Plain data, so next.config.ts can import it; proxy.ts sets the same list
- * on the responses it answers itself. HSTS is left to CloudFront, and a local run is plain HTTP.
+ * on every response it handles, including the ones it answers itself (next.config.ts headers() does not reach those). HSTS is left to CloudFront, and a local run is plain HTTP.
  */
 export function securityHeaders({ development }: { development: boolean }): SecurityHeader[] {
   const csp = [

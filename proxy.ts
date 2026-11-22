@@ -6,10 +6,11 @@ import { gatePasswordProblem, readGateConfig } from "@/lib/config";
 import { securityHeaders } from "@/lib/security-headers";
 
 const ROBOTS = "noindex, nofollow";
+const SECURITY_HEADERS = securityHeaders({ development: process.env.NODE_ENV === "development" });
 
 function respond(response: NextResponse, options: { noStore?: boolean } = {}): NextResponse {
   response.headers.set("X-Robots-Tag", ROBOTS);
-  for (const { key, value } of securityHeaders({ development: process.env.NODE_ENV === "development" })) {
+  for (const { key, value } of SECURITY_HEADERS) {
     response.headers.set(key, value);
   }
   // The proxy's own answers (redirects and refusals) must never be kept by a cache; the app sets its own headers on a pass.
