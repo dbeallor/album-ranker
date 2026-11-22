@@ -178,6 +178,43 @@ describe("the Deezer fallback", () => {
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("asks for no redirects", async () => {
+    const { resolveCover, deezerCalls } = setup(noCover);
+    await resolveCover(ALBUM);
+
+    expect(deezerCalls()[0][1]).toMatchObject({ redirect: "error" });
+  });
+
+  it.each([
+    { name: "a Content-Length over 1 MB", reply: () => new Response("{}", { headers: { "Content-Length": String(1_048_577) } }) },
+    { name: "a body over 1 MB with no Content-Length", reply: () => new Response(new Blob([" ".repeat(1_048_577)]).stream()) },
+  ])("fails the search, logged, on $name", async ({ reply }) => {
+    const { resolveCover, lookupCover, log } = setup(noCover, reply);
+
+    expect(await lookupCover(ALBUM)).toEqual({ kind: "failed" });
+    expect(await resolveCover(ALBUM)).toBeNull();
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips an entry with a name over 300 characters without normalising it, and matches the next", async () => {
+    const huge = " ".repeat(80_000);
+    const { resolveCover } = setup(
+      noCover,
+      json({ data: [deezerAlbum(huge, "Miles Davis"), deezerAlbum("Kind of Blue", huge), deezerAlbum("Kind of Blue", "Miles Davis")] }),
+    );
+
+    const started = performance.now();
+    expect(await resolveCover(ALBUM)).toBe(DEEZER_COVER);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("reads only the first 10 entries", async () => {
+    const filler = Array.from({ length: 10 }, () => deezerAlbum("Other", "Someone"));
+    const { resolveCover } = setup(noCover, json({ data: [...filler, deezerAlbum("Kind of Blue", "Miles Davis")] }));
+
+    expect(await resolveCover(ALBUM)).toBeNull();
+  });
+
   it("takes the first result that matches, skipping the ones that don't", async () => {
     const other = "https://e-cdns-images.dzcdn.net/images/cover/other/250x250.jpg";
     const { resolveCover } = setup(

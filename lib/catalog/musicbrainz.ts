@@ -1,4 +1,6 @@
 import "server-only";
+import { CATALOG_ID } from "./cover-art.ts";
+import { isResponseTooLarge, MAX_BODY_BYTES, readJsonCapped } from "./read-json.ts";
 import type { CatalogAlbum, CatalogQuery } from "./types";
 
 const SEARCH_PATH = "/ws/2/release-group";
@@ -8,6 +10,7 @@ const RESULT_LIMIT = 25;
 const REQUEST_SPACING_MS = 1100;
 const MAX_QUEUE_WAIT_MS = 5000;
 const REQUEST_TIMEOUT_MS = 8000;
+const MAX_NAME_LENGTH = 300;
 
 export type CatalogErrorKind = "busy" | "unreachable";
 
@@ -93,11 +96,16 @@ export function buildCatalogQuery(query: CatalogQuery): string {
 
 type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { id?: unknown; name?: unknown } };
 
+function isCreditEntry(part: unknown): part is ArtistCredit {
+  return typeof part === "object" && part !== null && !Array.isArray(part);
+}
+
 function joinArtistCredit(credit: unknown): string {
   if (!Array.isArray(credit)) {
     return "";
   }
-  return (credit as ArtistCredit[])
+  return credit
+    .filter(isCreditEntry)
     .map((part) => {
       const name =
         typeof part.name === "string" ? part.name : typeof part.artist?.name === "string" ? part.artist.name : "";
@@ -112,9 +120,9 @@ function joinArtistIds(credit: unknown): string | null {
   if (!Array.isArray(credit)) {
     return null;
   }
-  const ids = (credit as ArtistCredit[]).flatMap((part) =>
-    typeof part.artist?.id === "string" && part.artist.id !== "" ? [part.artist.id] : [],
-  );
+  const ids = credit
+    .filter(isCreditEntry)
+    .flatMap((part) => (typeof part.artist?.id === "string" && CATALOG_ID.test(part.artist.id) ? [part.artist.id] : []));
   return ids.length > 0 ? ids.join("+") : null;
 }
 
@@ -139,7 +147,11 @@ export function mapReleaseGroups(body: unknown): CatalogAlbum[] {
       continue;
     }
     const { id, title } = group as { id?: unknown; title?: unknown };
-    if (typeof id !== "string" || typeof title !== "string" || seen.has(id)) {
+    if (typeof id !== "string" || !CATALOG_ID.test(id) || typeof title !== "string" || seen.has(id)) {
+      continue;
+    }
+    const artist = joinArtistCredit((group as { "artist-credit"?: unknown })["artist-credit"]);
+    if (title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) {
       continue;
     }
     if ((group as { "primary-type"?: unknown })["primary-type"] === "Single") {
@@ -149,7 +161,7 @@ export function mapReleaseGroups(body: unknown): CatalogAlbum[] {
     albums.push({
       catalogId: id,
       title,
-      artist: joinArtistCredit((group as { "artist-credit"?: unknown })["artist-credit"]),
+      artist,
       artistId: joinArtistIds((group as { "artist-credit"?: unknown })["artist-credit"]),
       year: parseYear((group as { "first-release-date"?: unknown })["first-release-date"]),
       coverUrl: `${COVER_URL}/${id}/front-250`,
@@ -205,6 +217,7 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
     try {
       response = await deps.fetch(`${deps.baseUrl()}${SEARCH_PATH}?${params}`, {
         headers: { "User-Agent": deps.userAgent(), Accept: "application/json" },
+        redirect: "error",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
@@ -223,8 +236,11 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
 
     let body: unknown;
     try {
-      body = await response.json();
+      body = await readJsonCapped(response, MAX_BODY_BYTES);
     } catch (error) {
+      if (isResponseTooLarge(error)) {
+        throw new CatalogError("unreachable", "response is over 1 MB", { cause: error });
+      }
       if (isTimeout(error)) {
         throw new CatalogError("busy", `no body within ${REQUEST_TIMEOUT_MS} ms`, { cause: error });
       }
