@@ -13,7 +13,6 @@ const cases = [
 
 describe("package.json scripts bind to loopback", () => {
   it.each(cases)("$script passes --hostname 127.0.0.1 to $command", ({ script, command }) => {
-    expect(pkg.scripts[script]).toContain(command);
-    expect(pkg.scripts[script]).toContain("--hostname 127.0.0.1");
+    expect(pkg.scripts[script]).toBe(`${command} --hostname 127.0.0.1`);
   });
 });

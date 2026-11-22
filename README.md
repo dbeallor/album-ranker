@@ -10,7 +10,7 @@ Personal Favorite Album Ranker
 5. `npm run dev`
 6. Open <http://localhost:3000>.
 
-The app listens on this machine only (127.0.0.1), so other devices on your network can't reach it. If you want to open it from another device on purpose, run Next directly with a different host, for example `npx next dev --hostname 0.0.0.0`. Set `APP_PASSWORD` first, because anyone on your network can then reach the app.
+The app listens on this machine only (127.0.0.1), so other devices on your network can't reach it. If you want to open it from another device on purpose, run the production server directly with a different host: `npm run build && npx next start --hostname 0.0.0.0`. Set a long `APP_PASSWORD` first, because anyone on your network can then reach the app, and the password travels over plain HTTP.
 
 ## Deploy to AWS
 

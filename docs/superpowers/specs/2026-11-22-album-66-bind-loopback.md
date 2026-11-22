@@ -25,7 +25,7 @@ One table-driven test in `scripts/` (vitest) reads `package.json` and checks tha
 
 ### README
 
-In § Run the app, after the `npm run dev` step: the app listens on this machine only (127.0.0.1), so other devices on your network can't reach it. To open it from another device on purpose, run Next directly with another host, for example `npx next dev --hostname 0.0.0.0`, and set `APP_PASSWORD` first, since anyone on the network can then reach it.
+In § Run the app, after the `npm run dev` step: the app listens on this machine only (127.0.0.1), so other devices on your network can't reach it. To open it from another device on purpose, run Next directly with another host, for example `npm run build && npx next start --hostname 0.0.0.0` (the production server, because the dev server blocks cross-origin requests from a LAN address), and set a long `APP_PASSWORD` first, since anyone on the network can then reach it over plain HTTP.
 
 The `http://localhost:3000` links stay. Browsers and `npm run record -- 3000` reach a 127.0.0.1 server through `localhost`; the build checks this.
 
@@ -48,7 +48,7 @@ No change. The issue's comment asks to check the standalone server on AWS. It is
 
 ## Calls I made
 
-- To reach the app from another device, the README points at `npx next dev --hostname 0.0.0.0` rather than adding a script, an env var or `npm run dev -- --hostname ...`. Passing a second `--hostname` through npm relies on which one Next's argument parser keeps; running Next directly has one flag and no doubt.
+- To reach the app from another device, the README points at `npx next dev --hostname 0.0.0.0` rather than adding a script, an env var or `npm run dev -- --hostname ...`. It names `next start`, not `next dev`, because the dev server shows stack traces and blocks LAN origins. Passing a second `--hostname` through npm relies on which one Next's argument parser keeps; running Next directly has one flag and no doubt.
 - The README tells you to set `APP_PASSWORD` before opening the app to the network.
 - A small test guards the two script lines, so a later edit can't silently drop the flag. It reads `package.json`; it doesn't start Next.
 - The `localhost:3000` links in the README stay, instead of changing every one to `127.0.0.1:3000`. The build checks that `localhost` still reaches the app.
