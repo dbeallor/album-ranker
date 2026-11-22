@@ -36,7 +36,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
   const searchedId = Number(first(params.search));
   const searchedQuery = first(params.q).trim();
   const searched = open.find((item) => item.id === searchedId);
-  const searchResult = searched && searchedQuery !== "" ? await searchAlbums(searchedQuery) : null;
+  const searchResult = searched && searchedQuery !== "" ? await searchAlbums({ kind: "text", text: searchedQuery }) : null;
 
   const errorItemId = Number(first(params.item));
   const errorMessage = first(params.error) || null;

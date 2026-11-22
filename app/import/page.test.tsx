@@ -160,7 +160,7 @@ describe("import review page", () => {
     });
     await renderPage({ search: "2", q: "fake found" });
 
-    expect(searchAlbumsMock).toHaveBeenCalledWith("fake found");
+    expect(searchAlbumsMock).toHaveBeenCalledWith({ kind: "text", text: "fake found" });
     expect(screen.getByText("Fake Album Found")).toBeDefined();
     const box = screen.getAllByRole("searchbox")[0] as HTMLInputElement;
     expect(box.value).toBe("fake found");

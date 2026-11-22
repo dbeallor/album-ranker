@@ -1,7 +1,7 @@
 import "server-only";
 import { getConfig } from "../config";
 import { CatalogError, MAX_QUERY_LENGTH, createMusicBrainzClient } from "./musicbrainz";
-import type { CatalogAlbum, SearchResult } from "./types";
+import type { CatalogAlbum, CatalogQuery, SearchResult } from "./types";
 
 const MIN_QUERY_LENGTH = 2;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -23,6 +23,19 @@ function normalizeQuery(text: string): string {
   return text.trim().slice(0, MAX_QUERY_LENGTH).toLowerCase().replace(/\s+/g, " ");
 }
 
+/** The cache key: the query's kind and its normalized text, so a text and a fields query never share an entry. */
+function cacheKey(query: CatalogQuery): string {
+  if (query.kind === "text") {
+    return `text:${normalizeQuery(query.text)}`;
+  }
+  return `fields:${JSON.stringify([normalizeQuery(query.title ?? ""), normalizeQuery(query.artist ?? "")])}`;
+}
+
+function isTooShort(query: CatalogQuery): boolean {
+  const texts = query.kind === "text" ? [query.text] : [query.title ?? "", query.artist ?? ""];
+  return Math.max(...texts.map((text) => normalizeQuery(text).length)) < MIN_QUERY_LENGTH;
+}
+
 export function createSearchAlbums(deps: SearchDeps = {}) {
   const now = deps.now ?? Date.now;
   const log = deps.log ?? ((message, detail) => console.error(message, detail));
@@ -37,9 +50,9 @@ export function createSearchAlbums(deps: SearchDeps = {}) {
   // A Map keeps insertion order, so the first key is the oldest entry.
   const cache = new Map<string, { albums: CatalogAlbum[]; expiresAt: number }>();
 
-  return async function searchAlbums(query: string): Promise<SearchResult> {
-    const key = normalizeQuery(query);
-    if (key.length < MIN_QUERY_LENGTH) {
+  return async function searchAlbums(query: CatalogQuery): Promise<SearchResult> {
+    const key = cacheKey(query);
+    if (isTooShort(query)) {
       return { ok: true, albums: [] };
     }
 

@@ -1,5 +1,5 @@
 import "server-only";
-import type { CatalogAlbum } from "./types";
+import type { CatalogAlbum, CatalogQuery } from "./types";
 
 const SEARCH_PATH = "/ws/2/release-group";
 const COVER_URL = "https://coverartarchive.org/release-group";
@@ -33,16 +33,49 @@ function escapeWord(word: string): string {
   return word.replace(LUCENE_SPECIALS, "\\$&");
 }
 
-/** Matches each word against the album title or the artist name. */
-export function buildQuery(text: string): string {
+/**
+ * The words of a search text: a "/" inside a word splits it ("Getz/Gilberto" is two words), and words that are only
+ * punctuation ("&", "-", "+") are dropped, since no album or artist contains them.
+ */
+function queryWords(text: string): string[] {
   return text
     .trim()
     .slice(0, MAX_QUERY_LENGTH)
+    .replace(/\//g, " ")
     .split(/\s+/)
-    .filter((word) => word !== "")
+    .filter((word) => /[\p{L}\p{N}]/u.test(word));
+}
+
+/** Matches each word against the album title or the artist name. */
+export function buildQuery(text: string): string {
+  return queryWords(text)
     .map(escapeWord)
     .map((word) => `(releasegroup:${word} OR artist:${word})`)
     .join(" AND ");
+}
+
+const FUZZY_MIN_LETTERS = 5;
+
+/** A word of 5 or more letters matches with one typo allowed ("~1"). */
+function fieldTerm(field: string, word: string): string {
+  const lower = word.toLowerCase();
+  const fuzzy = (lower.match(/[\p{L}\p{N}]/gu) ?? []).length >= FUZZY_MIN_LETTERS ? "~1" : "";
+  return `${field}:${escapeWord(lower)}${fuzzy}`;
+}
+
+/** Every title word must be in the release group's title, and at least one artist word in its artist. */
+export function buildFieldsQuery({ title = "", artist = "" }: { title?: string; artist?: string }): string {
+  const titleWords = queryWords(title).map((word) => fieldTerm("releasegroup", word));
+  const artistWords = queryWords(artist).map((word) => fieldTerm("artist", word));
+  const parts: string[] = [];
+  if (titleWords.length > 0) parts.push(`(${titleWords.join(" AND ")})`);
+  if (artistWords.length > 0) parts.push(`(${artistWords.join(" OR ")})`);
+  return parts.join(" AND ");
+}
+
+/** The Lucene query for a catalog query; empty when it has no usable words. */
+export function buildCatalogQuery(query: CatalogQuery): string {
+  return query.kind === "text" ? buildQuery(query.text) : buildFieldsQuery(query);
 }
 
 type ArtistCredit = { name?: unknown; joinphrase?: unknown; artist?: { id?: unknown; name?: unknown } };
@@ -142,9 +175,13 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
     }
   }
 
-  async function searchReleaseGroups(text: string): Promise<CatalogAlbum[]> {
+  async function searchReleaseGroups(catalogQuery: CatalogQuery): Promise<CatalogAlbum[]> {
+    const query = buildCatalogQuery(catalogQuery);
+    if (query === "") {
+      return [];
+    }
     const params = new URLSearchParams({
-      query: buildQuery(text),
+      query,
       fmt: "json",
       limit: String(RESULT_LIMIT),
     });

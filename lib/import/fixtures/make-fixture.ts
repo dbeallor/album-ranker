@@ -30,7 +30,7 @@ const ROWS: Row[] = [
   ["Fake Album Four", "Fake Artist C", 2001, null, null, null], // exact duplicate of Four
   ["Fake Album Six", "Fake Artist E", 2002, null, null, null], // listed
   ["fake album six", "FAKE ARTIST E", 2002, null, 1, null], // case-only duplicate with another placement
-  ["Fake Albm Seven", "Fake Artist F", 2002, 4, null, null], // typo in the title
+  ["Fake Alb Seven", "Fake Artist F", 2002, 4, null, null], // title two edits off, too far for a close match
   ["Fake Album Nine", "Fake Artist H", 2002, 2, null, null], // ranked 2
   ["Fake Album Ten", "Fake Artist I", 2002, 2, null, null], // repeats rank 2 in 2002
   ["Fake Album Eleven", "Fake Artist J", 2003, null, null, 5], // decade rank on a listed row

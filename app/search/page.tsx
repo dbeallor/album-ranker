@@ -26,7 +26,7 @@ function first(param: Param): string {
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = first(params.q);
-  const result = query.trim() === "" ? null : await searchAlbums(query);
+  const result = query.trim() === "" ? null : await searchAlbums({ kind: "text", text: query });
   const albums = result?.ok ? result.albums : [];
   const libraryYears = libraryYearsByCatalogId(
     getDb(),
