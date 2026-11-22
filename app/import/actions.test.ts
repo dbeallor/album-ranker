@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAlbum, findAlbumByCatalogId } from "@/lib/db/albums";
-import { createImportReviewItem } from "@/lib/db/import-review";
+import { createAlbum, findAlbumByCatalogId, listAlbums } from "@/lib/db/albums";
+import { createImportReviewItem, getImportReviewItem } from "@/lib/db/import-review";
 import { addToLibrary, listLibrary } from "@/lib/db/library";
 import { memoryDb } from "@/lib/db/test-db";
 
@@ -81,7 +81,7 @@ describe("import review actions", () => {
     const first = seed();
     const second = seedMore(2002, "Fake Album Two");
     const data = form(first.id);
-    data.set("catalogId", "c-1");
+    data.set("catalogId", "11111111-2222-3333-4444-555555555555");
     data.set("title", "Fake Album One");
     data.set("artist", "Fake Artist A");
     data.set("releaseYear", "2001");
@@ -156,8 +156,41 @@ describe("import review actions", () => {
       expect(listLibrary(db).map((entry) => entry.year)).toEqual([2001]);
 
       const adding = seedMore(2002, "Fake Album Two");
-      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "another", title: "Fake Album Two" })));
+      const add = await redirectOf(chooseAlbumAction(choice(adding.id, { catalogId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", title: "Fake Album Two" })));
       expect(Object.fromEntries(add.searchParams)).toEqual({ done: String(adding.id) });
+    });
+
+    it.each<{ name: string; over: Record<string, string>; message: string }>([
+      { name: "a catalog id that is not a UUID", over: { catalogId: "x" }, message: "That album's catalog id isn't valid." },
+      { name: "an artist id that is not UUIDs", over: { artistId: "artist-1" }, message: "That album's artist id isn't valid." },
+      { name: "a title of 301 characters", over: { title: "t".repeat(301) }, message: "That album's title isn't valid." },
+      { name: "an artist of 301 characters", over: { artist: "a".repeat(301) }, message: "That album's artist isn't valid." },
+      { name: "a release year of 99999", over: { releaseYear: "99999" }, message: "That album's release year isn't valid." },
+      { name: "a release year of 0", over: { releaseYear: "0" }, message: "That album's release year isn't valid." },
+      { name: "a release year of abc", over: { releaseYear: "abc" }, message: "That album's release year isn't valid." },
+    ])("rejects $name before any lookup, stores nothing and keeps the item open", async ({ over, message }) => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const review = seed();
+      const url = await redirectOf(chooseAlbumAction(choice(review.id, over)));
+
+      expect(Object.fromEntries(url.searchParams)).toEqual({ error: message, item: String(review.id) });
+      expect(state.resolveCover).not.toHaveBeenCalled();
+      expect(listAlbums(db)).toEqual([]);
+      expect(listLibrary(db)).toEqual([]);
+      expect(getImportReviewItem(db, review.id)?.status).toBe("open");
+    });
+
+    it("reuses the album stored in lower case when the id comes in upper case", async () => {
+      const db = state.db as ReturnType<typeof memoryDb>;
+      const lower = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const review = seed();
+      createAlbum(db, { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: lower, coverUrl: DEEZER_COVER });
+      const url = await redirectOf(chooseAlbumAction(choice(review.id, { catalogId: lower.toUpperCase() })));
+
+      expect(Object.fromEntries(url.searchParams)).toEqual({ done: String(review.id) });
+      expect(state.resolveCover).not.toHaveBeenCalled();
+      expect(listAlbums(db)).toHaveLength(1);
+      expect(listLibrary(db)).toHaveLength(1);
     });
 
     it("skips the lookup and keeps the stored cover when the album already exists", async () => {

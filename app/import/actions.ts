@@ -8,6 +8,7 @@ import { getImportReviewItem, listImportReviewItems } from "@/lib/db/import-revi
 import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
+import { validateCatalogAlbum } from "@/lib/library-service";
 import { nextOpenItemId } from "@/lib/import/review-order";
 import { resolveReviewItem, skipReviewItem, type ResolveChoice } from "@/lib/import/resolve";
 
@@ -48,25 +49,23 @@ function fail(itemId: number | null, message: string): never {
   return back(itemId === null ? { error: message } : { error: message, item: String(itemId) });
 }
 
-function candidateFrom(formData: FormData): CatalogCandidate | null {
-  const catalogId = field(formData, "catalogId");
-  const title = field(formData, "title");
-  const artist = field(formData, "artist");
-  if (catalogId === "" || title === "" || artist === "") return null;
-  return {
-    catalogId,
-    title,
-    artist,
-    artistId: field(formData, "artistId") || null,
-    releaseYear: whole(field(formData, "releaseYear")),
-    // Not read from the form: the server picks the cover (see `withCover`).
-    coverUrl: null,
-  };
+/** The chosen album's fields, checked and cleaned by the same validator the search add uses; or the message to show. */
+function candidateFrom(formData: FormData): { ok: true; album: CatalogCandidate } | { ok: false; message: string } {
+  const checked = validateCatalogAlbum({
+    catalogId: field(formData, "catalogId"),
+    title: field(formData, "title"),
+    artist: field(formData, "artist"),
+    artistId: field(formData, "artistId"),
+    releaseYear: field(formData, "releaseYear"),
+  });
+  if (!checked.ok) return checked;
+  // Not read from the form: the server picks the cover (see `withCover`).
+  return { ok: true, album: { ...checked.album, coverUrl: null } };
 }
 
 /** Fills in the album's cover, unless the album is stored already (it keeps its own). */
 async function withCover(album: CatalogCandidate): Promise<CatalogCandidate> {
-  if (findAlbumByCatalogId(getDb(), album.catalogId.toLowerCase())) return album;
+  if (findAlbumByCatalogId(getDb(), album.catalogId)) return album;
   return { ...album, coverUrl: await resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist }) };
 }
 
@@ -83,9 +82,9 @@ export async function chooseAlbumAction(formData: FormData): Promise<void> {
   await requireSession();
   const itemId = whole(field(formData, "itemId"));
   if (itemId === null) return fail(null, "That review item could not be found.");
-  const album = candidateFrom(formData);
-  if (!album) return fail(itemId, "That album is missing its catalog details.");
-  return resolve(itemId, { kind: "catalog", album: await withCover(album), moveHere: field(formData, "moveHere") === "1" });
+  const candidate = candidateFrom(formData);
+  if (!candidate.ok) return fail(itemId, candidate.message);
+  return resolve(itemId, { kind: "catalog", album: await withCover(candidate.album), moveHere: field(formData, "moveHere") === "1" });
 }
 
 export async function keepManualAction(formData: FormData): Promise<void> {

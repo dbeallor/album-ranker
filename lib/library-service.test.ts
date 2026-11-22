@@ -4,7 +4,7 @@ import { createAlbum, findAlbumByCatalogId, getAlbum, listAlbums } from "./db/al
 import { getLibraryEntry, listLibrary } from "./db/library";
 import { countMatchups, listMatchups, recordMatchup } from "./db/matchups";
 import { memoryDb } from "./db/test-db";
-import { addCatalogAlbumToLibrary, removeFromLibrary, type AddCatalogAlbumInput } from "./library-service";
+import { addCatalogAlbumToLibrary, removeFromLibrary, validateCatalogAlbum, validateLibraryYear, type AddCatalogAlbumInput } from "./library-service";
 import { computeRatings } from "./elo/replay";
 import { loadRatings } from "./ratings";
 
@@ -156,6 +156,83 @@ describe("addCatalogAlbumToLibrary", () => {
     expect(result.ok).toBe(false);
     expect(listAlbums(db)).toEqual([]);
     expect(listLibrary(db)).toEqual([]);
+  });
+});
+
+describe("validateCatalogAlbum", () => {
+  const fields = (overrides: Partial<AddCatalogAlbumInput> = {}) => {
+    const { catalogId, title, artist, artistId, releaseYear } = input(overrides);
+    return { catalogId, title, artist, artistId, releaseYear };
+  };
+  const CATALOG = "That album's catalog id isn't valid.";
+  const ARTIST_ID_MESSAGE = "That album's artist id isn't valid.";
+  const TITLE = "That album's title isn't valid.";
+  const ARTIST = "That album's artist isn't valid.";
+  const RELEASE_YEAR = "That album's release year isn't valid.";
+
+  it.each([
+    { name: "a catalog id that is not a UUID", overrides: { catalogId: "x" }, message: CATALOG },
+    { name: "a missing catalog id", overrides: { catalogId: null }, message: CATALOG },
+    { name: "an artist id that is not UUIDs", overrides: { artistId: "artist-1" }, message: ARTIST_ID_MESSAGE },
+    { name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") }, message: ARTIST_ID_MESSAGE },
+    { name: "an empty title", overrides: { title: "  " }, message: TITLE },
+    { name: "a title of 301 characters", overrides: { title: "t".repeat(301) }, message: TITLE },
+    { name: "an empty artist", overrides: { artist: "" }, message: ARTIST },
+    { name: "an artist of 301 characters", overrides: { artist: "a".repeat(301) }, message: ARTIST },
+    { name: "a release year of 0", overrides: { releaseYear: "0" }, message: RELEASE_YEAR },
+    { name: "a release year of 99999", overrides: { releaseYear: "99999" }, message: RELEASE_YEAR },
+    { name: "a release year that is text", overrides: { releaseYear: "abc" }, message: RELEASE_YEAR },
+    { name: "a release year with a fraction", overrides: { releaseYear: "1959.5" }, message: RELEASE_YEAR },
+    { name: "a bad catalog id and a bad title (the catalog id is reported)", overrides: { catalogId: "x", title: "" }, message: CATALOG },
+    { name: "a bad title and a bad release year (the title is reported)", overrides: { title: "", releaseYear: "abc" }, message: TITLE },
+  ])("refuses $name", ({ overrides, message }) => {
+    expect(validateCatalogAlbum(fields(overrides))).toEqual({ ok: false, message });
+  });
+
+  it.each([
+    {
+      name: "lower-cases the ids, trims the text and reads the release year as a number",
+      overrides: { catalogId: ` ${CATALOG_ID.toUpperCase()} `, artistId: ARTIST_ID.toUpperCase(), title: " Kind of Blue ", artist: " Miles Davis ", releaseYear: " 1959 " },
+      album: { catalogId: CATALOG_ID, artistId: ARTIST_ID, title: "Kind of Blue", artist: "Miles Davis", releaseYear: 1959 },
+    },
+    {
+      name: "turns an empty artist id and release year into null",
+      overrides: { artistId: "  ", releaseYear: "" },
+      album: { catalogId: CATALOG_ID, artistId: null, title: "Kind of Blue", artist: "Miles Davis", releaseYear: null },
+    },
+    {
+      name: "takes a collaboration artist id",
+      overrides: { artistId: `${ARTIST_ID}+${OTHER_ARTIST_ID}` },
+      album: { catalogId: CATALOG_ID, artistId: `${ARTIST_ID}+${OTHER_ARTIST_ID}`, title: "Kind of Blue", artist: "Miles Davis", releaseYear: 1959 },
+    },
+    {
+      name: "takes the release years 1 and 2100",
+      overrides: { releaseYear: 1 },
+      album: { catalogId: CATALOG_ID, artistId: ARTIST_ID, title: "Kind of Blue", artist: "Miles Davis", releaseYear: 1 },
+    },
+    {
+      name: "takes a title of 300 characters",
+      overrides: { title: "t".repeat(300) },
+      album: { catalogId: CATALOG_ID, artistId: ARTIST_ID, title: "t".repeat(300), artist: "Miles Davis", releaseYear: 1959 },
+    },
+  ])("$name", ({ overrides, album }) => {
+    expect(validateCatalogAlbum(fields(overrides))).toEqual({ ok: true, album });
+  });
+});
+
+describe("validateLibraryYear", () => {
+  it.each([
+    { name: "1900", value: "1900", ok: true },
+    { name: "2100 with spaces", value: " 2100 ", ok: true },
+    { name: "1899", value: 1899, ok: false },
+    { name: "2101", value: "2101", ok: false },
+    { name: "a fraction", value: "1964.5", ok: false },
+    { name: "empty", value: "", ok: false },
+    { name: "missing", value: null, ok: false },
+  ])("$name", ({ value, ok }) => {
+    const result = validateLibraryYear(value);
+    expect(result.ok).toBe(ok);
+    if (!result.ok) expect(result.message).toBe("Enter a year from 1900 to 2100.");
   });
 });
 
