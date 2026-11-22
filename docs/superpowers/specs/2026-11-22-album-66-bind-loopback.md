@@ -1,6 +1,7 @@
 # Bind dev and start to 127.0.0.1 only
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #72, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-66](https://github.com/dbeallor/album-ranker/issues/66)
 **Follows:** [ALBUM-64 security sweep report](2026-11-22-album-64-security-sweep-report.md) (finding S2)
