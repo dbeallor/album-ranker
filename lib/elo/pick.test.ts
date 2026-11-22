@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EloResult } from "./elo";
-import { PLACEMENT_MATCHUPS, pairKey, pickMatchup, placementSlot, type PickAlbum, type PickMatchup } from "./pick";
+import { MIN_ESTABLISHED_FOR_PLACEMENT, PLACEMENT_MATCHUPS, pairKey, pickMatchup, placementSlot, type PickAlbum, type PickMatchup } from "./pick";
 
 const album = (id: number, rating = 1500): PickAlbum => ({ id, rating });
 const played = (a: number, b: number, result: EloResult = "tie"): PickMatchup => ({ albumAId: a, albumBId: b, result });
@@ -120,8 +120,8 @@ describe("pickMatchup", () => {
 
 describe("pickMatchup placement of a new album", () => {
   it.each([
-    { name: "an odd number of established albums", count: 5, expected: 3 },
-    { name: "an even number of established albums", count: 6, expected: 4 },
+    { name: "an odd number of established albums", count: 9, expected: 5 },
+    { name: "an even number of established albums", count: 10, expected: 6 },
   ])("opens with the middle of the rating order, not the lowest id: $name", ({ count, expected }) => {
     // Ratings fall as id rises, so the middle by rating is the middle id, and the closest to 1500 is the highest id.
     const established = Array.from({ length: count }, (_, i) => album(i + 1, 1600 + (count - i) * 20));
@@ -208,6 +208,81 @@ describe("pickMatchup placement of a new album", () => {
       random: fixed(0),
     });
     expect(pair).toEqual({ a: NEW, b: expected });
+  });
+
+  it.each([
+    { established: MIN_ESTABLISHED_FOR_PLACEMENT - 1, expected: 1, name: "the closest-rated album below the minimum" },
+    { established: MIN_ESTABLISHED_FOR_PLACEMENT, expected: 4, name: "the placement midpoint at the minimum" },
+  ])("opens with $name: $established established albums", ({ established: count, expected }) => {
+    const established = ascending(count);
+    const pair = pickMatchup({
+      albums: [...established, album(NEW)],
+      matchups: establishedMatchups(idsOf(established)),
+      avoid: new Set(),
+      random: fixed(0),
+    });
+    expect(pair).toEqual({ a: NEW, b: expected });
+  });
+
+  it("spreads matchups over the library when only one album is established", () => {
+    const albums = [album(1, 1500), ...Array.from({ length: 30 }, (_, i) => album(i + 2, 1350 + i * 10))];
+    // Album 1 is established through matchups against albums outside the library.
+    const matchups = Array.from({ length: PLACEMENT_MATCHUPS }, (_, i) => played(1, 900 + i));
+    const answer = seeded(11);
+    const random = seeded(5);
+    const results: EloResult[] = ["a", "b", "tie"];
+    const uses = new Map<number, number>();
+    for (let step = 0; step < 20; step++) {
+      const pair = pickMatchup({ albums, matchups, avoid: new Set(), random })!;
+      const unplayed = albums.filter((o) => o.id !== pair.a && !matchups.some((m) => pairKey(m.albumAId, m.albumBId) === pairKey(pair.a, o.id)));
+      const rating = (id: number) => albums.find((o) => o.id === id)!.rating;
+      const gap = (o: PickAlbum) => Math.abs(o.rating - rating(pair.a));
+      const expected = unplayed.reduce((best, o) => (gap(o) < gap(best) || (gap(o) === gap(best) && o.id < best.id) ? o : best));
+      expect(pair.b).toBe(expected.id);
+      for (const id of [pair.a, pair.b]) uses.set(id, (uses.get(id) ?? 0) + 1);
+      matchups.push(played(pair.a, pair.b, results[Math.floor(answer() * 3)]));
+    }
+    expect(Math.max(...uses.values())).toBeLessThanOrEqual(5);
+  });
+
+  it("passes over recent opponents: 10 new albums against 20 established ones", () => {
+    const established = ascending(20);
+    const newIds = Array.from({ length: 10 }, (_, i) => NEW + i);
+    const albums = [...established, ...newIds.map((id) => album(id))];
+    const matchups = establishedMatchups(idsOf(established));
+    const base = matchups.length;
+    const random = seeded(3);
+    const firstOpponent = new Map<number, number>();
+    for (let step = 0; step < 10; step++) {
+      const pair = pickMatchup({ albums, matchups, avoid: new Set(), random })!;
+      if (!firstOpponent.has(pair.a)) firstOpponent.set(pair.a, pair.b);
+      matchups.push(played(pair.a, pair.b, "a"));
+    }
+    const placed = matchups.slice(base);
+    for (let i = 1; i < placed.length; i++) {
+      expect(placed[i].albumBId).not.toBe(placed[i - 1].albumBId);
+    }
+    // The middle of 20 albums is place 9 (0-based), id 10; "within 2 places" is ids 8 to 12.
+    expect(firstOpponent.size).toBe(10);
+    for (const opponent of firstOpponent.values()) expect(Math.abs(opponent - 10)).toBeLessThanOrEqual(2);
+  });
+
+  it.each([
+    {
+      name: "a window of only recent albums still beats albums outside it",
+      extra: [played(101, 2), played(101, 3), played(NEW, 5, "a"), played(NEW, 7, "b"), played(101, 6)],
+      expected: 6,
+    },
+    {
+      name: "a non-recent album in the window beats recent ones in it",
+      extra: [played(101, 2), played(101, 3), played(NEW, 5, "a"), played(101, 7), played(101, 6), played(101, 8)],
+      expected: 9,
+    },
+  ])("prefers the window, then recency: $name", ({ extra, expected }) => {
+    const established = ascending(9);
+    const matchups = [...establishedMatchups(idsOf(established)), ...extra];
+    const albums = [...established, album(NEW), album(101)];
+    expect(pickMatchup({ albums, matchups, avoid: new Set(), random: fixed(0) })).toEqual({ a: NEW, b: expected });
   });
 
   it("places a new album within 2 slots of its true slot in at most 8 matchups", () => {

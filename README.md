@@ -83,7 +83,7 @@ Open <http://localhost:3000/matchups> (Play) to answer "which of these two do yo
 
 Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 
-A new album (fewer than 8 matchups) is first matched against established albums, halving the rating order from the middle, before ordinary closest-rating pairing takes over; see [the ALBUM-43 spec](docs/superpowers/specs/2026-11-22-album-43-favour-new-albums.md).
+Once at least 8 albums are established (8 or more matchups), a new album (fewer than 8 matchups) is first matched against established albums, halving the rating order from the middle and passing over any established album from the last 3 matchups with a new album, before ordinary closest-rating pairing takes over; with fewer than 8 established albums, ordinary closest-rating pairing is used throughout; see [the ALBUM-43 spec](docs/superpowers/specs/2026-11-22-album-43-favour-new-albums.md).
 
 Beside the matchup count, the page shows how far you are toward an approximately right overall order, as "N% there · about R more to go" ("Target reached" at 100%). It is hidden with fewer than two library albums. How it is measured is in [the ALBUM-42 spec](docs/superpowers/specs/2026-11-22-album-42-ranking-progress.md).
 
