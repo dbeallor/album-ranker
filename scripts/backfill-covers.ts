@@ -1,6 +1,6 @@
-// Fills the cover of albums saved without one: `npm run backfill-covers`.
+// Fills the cover of albums saved without one and replaces dead Cover Art Archive links: `npm run backfill-covers`.
 // Run through `node --conditions=react-server`, like the import. See the README.
-import { backfillCovers, formatBackfillSummary } from "../lib/catalog/backfill-covers.ts";
+import { backfillCovers, formatBackfillSummary, LOOKUP_GAP_MS } from "../lib/catalog/backfill-covers.ts";
 import { createLookupCover } from "../lib/catalog/cover-art.ts";
 import { getConfig } from "../lib/config.ts";
 import { openDatabase } from "../lib/db/connection.ts";
@@ -22,13 +22,18 @@ const lookupCover = createLookupCover({
 
 const db = openDatabase(databasePath);
 try {
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM albums WHERE cover_url IS NULL").get() as { n: number };
-  console.log(`Checking ${n} albums with no cover in ${databasePath}`);
-  const summary = await backfillCovers(db, {
+  const { missing } = db.prepare("SELECT COUNT(*) AS missing FROM albums WHERE cover_url IS NULL").get() as { missing: number };
+  const { links } = db.prepare("SELECT COUNT(*) AS links FROM albums WHERE cover_url LIKE 'https://coverartarchive.org/%'").get() as { links: number };
+  console.log(`Checking ${missing} albums with no cover and ${links} Cover Art Archive links in ${databasePath}`);
+  // An estimate: albums with no catalog id or another kind of link are not looked up, so it can finish sooner.
+  console.log(`This makes about one request a second, so allow about ${Math.max(1, Math.ceil(((missing + links) * LOOKUP_GAP_MS) / 60_000))} minutes.`);
+  const result = await backfillCovers(db, {
     lookupCover,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
     onProgress: (done, total) => console.log(`Checked ${done} of ${total} albums`),
   });
-  console.log(`\n${formatBackfillSummary(summary)}`);
+  console.log(`\n${formatBackfillSummary(result)}`);
 } finally {
   db.close();
 }
