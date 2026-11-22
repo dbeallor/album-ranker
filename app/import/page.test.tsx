@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAlbum } from "@/lib/db/albums";
 import { createImportReviewItem, skipImportReviewItem } from "@/lib/db/import-review";
 import { memoryDb } from "@/lib/db/test-db";
-import { addYearEntry } from "@/lib/db/year-entries";
+import { addToLibrary } from "@/lib/db/library";
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }));
 
@@ -91,7 +91,7 @@ describe("import review page", () => {
     expect(boxes.map((box) => box.value)).toEqual(["Fake Album Early Fake Artist A", "Fake Album Later Fake Artist B"]);
   });
 
-  it("names the year of a duplicate album match and the album holding a taken rank", async () => {
+  it("names the year of a duplicate album match and explains a rank taken in an old item", async () => {
     const db = state.db as DatabaseSync;
     createImportReviewItem(db, {
       source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
@@ -110,18 +110,18 @@ describe("import review page", () => {
     });
     await renderPage();
 
-    expect(screen.getByText("The matched album is already on the 1999 year page.")).toBeDefined();
-    expect(screen.getByText("Rank 1 in 2002 is already held by Fake Album Holder - Fake Artist E.")).toBeDefined();
+    expect(screen.getByText("The matched album is already in your library (1999).")).toBeDefined();
+    expect(screen.getByText("Sent to review for a rank clash. Ranks are no longer used, so any choice adds the album to your library.")).toBeDefined();
   });
 
-  it("offers Move it here for a candidate that is already on a year page", async () => {
+  it("offers Move it here for a candidate that is already in the library", async () => {
     const db = state.db as DatabaseSync;
     const album = createAlbum(db, {
       title: "Fake Album Dup",
       artist: { name: "Fake Artist C", catalogId: "artist-Fake Artist C" },
       catalogId: "c-dup",
     });
-    addYearEntry(db, { albumId: album.id, year: 1999, placement: "listed" });
+    addToLibrary(db, { albumId: album.id, year: 1999 });
     createImportReviewItem(db, {
       source: { title: "Fake Album Dup", artist: "Fake Artist C", year: 2001 },
       sourcePlacement: "listed",
@@ -131,7 +131,7 @@ describe("import review page", () => {
     });
     await renderPage();
 
-    expect(screen.getByText("Already on the 1999 year page.")).toBeDefined();
+    expect(screen.getByText("In your library (1999).")).toBeDefined();
     expect(screen.getByRole("button", { name: "Move it here" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Use this album" })).toBeNull();
   });
@@ -172,30 +172,5 @@ describe("import review page", () => {
 
     const item = screen.getByRole("heading", { name: /Fake Album Early/ }).closest("li") as HTMLElement;
     expect(within(item).getByRole("alert").textContent).toBe("Rank 3 in 1990 is held by Fake Album Holder - Fake Artist E.");
-  });
-
-  it("tells the user when a move removed decade list entries", async () => {
-    await renderPage({ removed: "1", album: "Fake Album One" });
-
-    expect(screen.getByRole("status").textContent).toBe(
-      "Fake Album One no longer qualifies for a decade list, so 1 decade list entry was removed.",
-    );
-    expect(screen.getByText("Nothing to check.")).toBeDefined();
-  });
-
-  it("tells the user when the decade list was full", async () => {
-    await renderPage({ full: "Fake Album One" });
-
-    expect(screen.getByRole("status").textContent).toBe(
-      "Fake Album One was added to its year page but not to the decade list, because that list already has 25 albums.",
-    );
-  });
-
-  it("shows the full-list title as text, not markup", async () => {
-    await renderPage({ full: "<b>Bold</b>" });
-
-    const status = screen.getByRole("status");
-    expect(status.querySelector("b")).toBeNull();
-    expect(status.textContent).toContain("<b>Bold</b>");
   });
 });

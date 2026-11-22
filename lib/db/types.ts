@@ -4,10 +4,7 @@ export type ReviewStatus = "open" | "resolved" | "skipped";
 export type ReviewReason = "no_match" | "ambiguous" | "duplicate_album" | "rank_taken";
 
 export type DataErrorCode =
-  | "album_has_year_entry"
-  | "rank_taken"
-  | "invalid_rank"
-  | "not_eligible_for_decade"
+  | "album_in_library"
   | "catalog_id_taken"
   | "not_found"
   | "invalid_input";
@@ -44,17 +41,13 @@ export type SourceRowKey = {
   year: number;
 };
 
-export type YearEntry = {
-  id: number;
+/** An album the user has listened to, with the year it is grouped, sorted and ranked under. */
+export type LibraryEntry = {
   albumId: number;
   year: number;
-  placement: Placement;
-  rank: number | null;
+  addedAt: string;
+  /** The sheet row the import made the album from; null for an album added another way. */
   source: SourceRowKey | null;
-  /** Rank on the decade list in the imported sheet, so later insertions find their place. */
-  sourceDecadeRank: number | null;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type Matchup = {
@@ -63,13 +56,6 @@ export type Matchup = {
   albumBId: number;
   result: MatchupResult;
   createdAt: string;
-};
-
-export type DecadeListEntry = {
-  id: number;
-  decade: number;
-  albumId: number;
-  position: number;
 };
 
 export type CatalogCandidate = {

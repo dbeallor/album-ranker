@@ -3,21 +3,21 @@ import { ImportReview, type CandidateView, type ReviewItemView } from "@/compone
 import { searchAlbums } from "@/lib/catalog/search";
 import { findAlbumByCatalogId } from "@/lib/db/albums";
 import { listImportReviewItems } from "@/lib/db/import-review";
+import { getLibraryEntry } from "@/lib/db/library";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
-import { getYearEntryByAlbum } from "@/lib/db/year-entries";
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
 type Param = string | string[] | undefined;
-type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; removed?: Param; album?: Param; full?: Param }>;
+type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param }>;
 
 function first(param: Param): string {
   return (Array.isArray(param) ? param[0] : param) ?? "";
 }
 
-function withYearPage(db: DatabaseSync, candidate: CatalogCandidate): CandidateView {
+function withLibraryYear(db: DatabaseSync, candidate: CatalogCandidate): CandidateView {
   const album = findAlbumByCatalogId(db, candidate.catalogId);
-  return { ...candidate, onYearPage: (album && getYearEntryByAlbum(db, album.id)?.year) || null };
+  return { ...candidate, inLibraryYear: (album && getLibraryEntry(db, album.id)?.year) || null };
 }
 
 export default async function ImportPage({ searchParams }: { searchParams: SearchParams }) {
@@ -45,13 +45,13 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
     const isSearched = item === searched;
     return {
       item,
-      candidates: item.candidates.map((candidate) => withYearPage(db, candidate)),
+      candidates: item.candidates.map((candidate) => withLibraryYear(db, candidate)),
       search: {
         query: isSearched ? first(params.q) : `${item.source.title} ${item.source.artist}`,
         results:
           isSearched && searchResult?.ok
             ? searchResult.albums.map((album) =>
-                withYearPage(db, {
+                withLibraryYear(db, {
                   catalogId: album.catalogId,
                   title: album.title,
                   artist: album.artist,
@@ -67,25 +67,11 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
     };
   });
 
-  const removed = Number(first(params.removed));
-  const removedNotice =
-    removed > 0
-      ? `${first(params.album) || "The album"} no longer qualifies for a decade list, so ${removed} decade list ${removed === 1 ? "entry was" : "entries were"} removed.`
-      : null;
-
-  const fullTitle = first(params.full).trim();
-  const fullNotice =
-    fullTitle === ""
-      ? null
-      : `${fullTitle} was added to its year page but not to the decade list, because that list already has 25 albums.`;
-
   return (
     <ImportReview
       items={items}
       counts={counts}
       error={errorMessage && !open.some((item) => item.id === errorItemId) ? errorMessage : null}
-      removedNotice={removedNotice}
-      fullNotice={fullNotice}
       actions={{ chooseAlbum: chooseAlbumAction, keepManual: keepManualAction, skip: skipAction }}
     />
   );

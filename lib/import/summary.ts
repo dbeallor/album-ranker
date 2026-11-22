@@ -27,7 +27,7 @@ export function formatSummary(summary: ImportSummary): string {
     line(
       "Sent to review",
       reviewTotal,
-      `(no match ${review.no_match}, ambiguous ${review.ambiguous}, duplicate album match ${review.duplicate_album}, rank taken ${review.rank_taken})`,
+      `(no match ${review.no_match}, ambiguous ${review.ambiguous}, duplicate album match ${review.duplicate_album})`,
     ),
     ...listed(
       "Merged duplicates",
@@ -40,17 +40,6 @@ export function formatSummary(summary: ImportSummary): string {
         note: `rank ${row.conflictingPlacement?.droppedRank} and honorable mention, imported as honorable mention`,
       })),
     ),
-    ...listed(
-      "Decade rank dropped",
-      summary.droppedDecadeRank.map((row) => ({
-        name: describeKey(row.key),
-        note: row.droppedDecadeRank ?? "",
-      })),
-    ),
-    ...listed(
-      "Decade list full",
-      summary.decadeListFull.map((row) => ({ name: describeKey(row.key), note: "not added to the decade list" })),
-    ),
     line("Already imported", summary.alreadyImported),
     ...listed(
       "Invalid, skipped",
@@ -60,13 +49,6 @@ export function formatSummary(summary: ImportSummary): string {
       })),
     ),
     line("Not reached", summary.notReached, "re-run to retry"),
-    line(
-      "Decade lists",
-      "",
-      summary.decadeLists.length === 0
-        ? "none yet"
-        : `${summary.decadeLists.map(({ decade, entries }) => `${decade}s ${entries}`).join(", ")} (entries now on each list)`,
-    ),
     line("Open review items", summary.openReviewItems, summary.openReviewItems > 0 ? "see /import" : ""),
   ];
   if (summary.aborted) {

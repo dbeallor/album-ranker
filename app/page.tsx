@@ -12,13 +12,12 @@ export default async function Home() {
 
   return (
     <>
-      <PageHeader title="Album ranker" description="Rank the albums you love, year by year." />
+      <PageHeader title="Album ranker" description="Rank the albums you love, one matchup at a time." />
       <CardGrid>
         <LinkCard href="/search" title="Search albums" description="Look up an album or artist in the catalog." />
-        <LinkCard href="/years" title="Year rankings" description="Rank each year's albums, and keep honorable mentions." />
+        <LinkCard href="/library" title="Library" description="Browse and sort every album you have listened to." />
         <LinkCard href="/matchups" title="Matchups" description="Pick the better of two albums to refine your ratings." />
-        <LinkCard href="/artists" title="Artists" description="See artists ranked by how their albums rate." />
-        <LinkCard href="/decades" title="Decade lists" description="Build a top 25 for each decade." />
+        <LinkCard href="/analytics" title="Analytics" description="See album and artist rankings by year, decade, era and lifetime." />
         {openItems > 0 && (
           <LinkCard
             href="/import"

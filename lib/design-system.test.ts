@@ -15,8 +15,6 @@ const TOKENS_FILE = "app/globals.css";
 
 /** Inline `style` props that must stay inline because their values change every frame or per instance. */
 const INLINE_STYLE_ALLOWLIST: Record<string, string[]> = {
-  "components/decade-list.tsx": ["transform", "transition", "zIndex", "opacity"],
-  "components/year-screen.tsx": ["transform", "zIndex", "opacity"],
   "components/cover.tsx": ["--cover-size"],
 };
 
@@ -195,7 +193,7 @@ describe("design system", () => {
   it("scans the app and component sources", () => {
     const paths = sources().map((source) => source.path);
     expect(paths).toContain("components/ui/button.module.css");
-    expect(paths).toContain("components/decade-list.tsx");
+    expect(paths).toContain("components/cover.tsx");
     expect(paths).not.toContain(TOKENS_FILE);
     expect(paths.some((path) => path.endsWith(".test.tsx"))).toBe(false);
     for (const path of Object.keys(INLINE_STYLE_ALLOWLIST)) expect(paths).toContain(path);
@@ -222,9 +220,8 @@ describe("design system", () => {
     { name: "custom property values are checked", rule: findColors, path: "components/a.module.css", text: ".a { --x: #123; }", expected: 1 },
     { name: "inline style outside the allowlist", rule: findInlineStyles, path: "components/a.tsx", text: "<div style={{ display: 'flex', gap: 8 }} />", expected: 2 },
     { name: "style object in a variable", rule: findInlineStyles, path: "components/a.tsx", text: "<div style={style} />", expected: 1 },
-    { name: "spread in an inline style", rule: findInlineStyles, path: "components/year-screen.tsx", text: "<div style={{ ...rowStyle, transform }} />", expected: 1 },
-    { name: "allowlisted drag style", rule: findInlineStyles, path: "components/year-screen.tsx", text: "<div style={{ transform: t ? `translate3d(${t.x}px, ${t.y}px, 0)` : undefined, zIndex: d ? 10 : undefined, opacity: d ? 0.85 : undefined }} />", expected: 0 },
-    { name: "extra key next to an allowlisted one", rule: findInlineStyles, path: "components/year-screen.tsx", text: "<div style={{ transform, color: 'red' }} />", expected: 1 },
+    { name: "spread in an inline style", rule: findInlineStyles, path: "components/cover.tsx", text: '<div style={{ ...rowStyle, "--cover-size": size }} />', expected: 1 },
+    { name: "extra key next to an allowlisted one", rule: findInlineStyles, path: "components/cover.tsx", text: '<div style={{ "--cover-size": size, color: "red" }} />', expected: 1 },
     { name: "allowlisted cover size", rule: findInlineStyles, path: "components/cover.tsx", text: 'const a = <div style={{ "--cover-size": `${size}px` } as CSSProperties} />;', expected: 0 },
     { name: "allowlist is per file", rule: findInlineStyles, path: "components/cover.tsx", text: "<div style={{ transform }} />", expected: 1 },
     { name: "style in a comment is fine", rule: findInlineStyles, path: "components/a.tsx", text: "/* style={{ gap: 8 }} */\n// style={{ gap: 8 }}\n<div />", expected: 0 },

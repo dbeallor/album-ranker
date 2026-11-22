@@ -19,8 +19,8 @@ function list(): void {
   for (const backup of backups) {
     let counts: string;
     try {
-      const { albums, yearEntries, matchups } = countRowsAt(backup.path);
-      counts = `${albums} albums, ${yearEntries} year entries, ${matchups} matchups`;
+      const { albums, libraryAlbums, matchups } = countRowsAt(backup.path);
+      counts = `${albums} albums, ${libraryAlbums} library albums, ${matchups} matchups`;
     } catch {
       counts = "unreadable";
     }

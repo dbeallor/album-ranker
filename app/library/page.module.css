@@ -1,0 +1,10 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Fields in the filter row: grow to share the row, wrap on a phone. */
+.field {
+  flex: 1 1 11rem;
+}

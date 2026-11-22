@@ -1,0 +1,4 @@
+/* Each picker takes its own share of the row and wraps on a phone. */
+.picker {
+  flex: 1 1 14rem;
+}

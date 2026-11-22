@@ -4,10 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { CatalogError } from "../catalog/musicbrainz.ts";
 import type { CatalogAlbum } from "../catalog/types.ts";
 import { listAlbums } from "../db/albums.ts";
-import { MAX_DECADE_LIST, getDecadeList, listDecadeLists } from "../db/decade-lists.ts";
 import { listImportReviewItems, skipImportReviewItem } from "../db/import-review.ts";
+import { listLibrary } from "../db/library.ts";
 import { memoryDb } from "../db/test-db.ts";
-import { listAllYearEntries } from "../db/year-entries.ts";
 import { readAlbumsSheet } from "./read-sheet.ts";
 import { prepareRows } from "./rows.ts";
 import { MAX_CONSECUTIVE_FAILURES, PROGRESS_EVERY, RETRY_DELAYS_MS, runImport, type RunDeps } from "./run.ts";
@@ -36,8 +35,7 @@ function snapshot(db: DatabaseSync) {
   const strip = <T extends Record<string, unknown>>(item: T) => ({ ...item, createdAt: 0, updatedAt: 0 });
   return JSON.stringify({
     albums: listAlbums(db),
-    years: listAllYearEntries(db).map(strip),
-    decades: listDecadeLists(db),
+    library: listLibrary(db).map(strip),
     review: listImportReviewItems(db).map(strip),
   });
 }
@@ -56,14 +54,12 @@ describe("importing the fixture spreadsheet", () => {
 
     expect(summary).toMatchObject({
       rowsRead: 18,
-      imported: 10,
-      review: { no_match: 1, ambiguous: 1, duplicate_album: 1, rank_taken: 1 },
+      imported: 11,
+      review: { no_match: 1, ambiguous: 1, duplicate_album: 1, rank_taken: 0 },
       alreadyImported: 0,
       notReached: 0,
       aborted: false,
-      openReviewItems: 4,
-      decadeLists: [{ decade: 2000, entries: 3 }],
-      decadeListFull: [],
+      openReviewItems: 3,
     });
     expect(summary.invalid.map((row) => [row.rowNumber, row.reason])).toEqual([
       [15, "year 1850 is outside 1900 to 2100"],
@@ -74,49 +70,40 @@ describe("importing the fixture spreadsheet", () => {
       [10, 9, "rows differ, kept the first (listed), ignored (honorable mention)"],
     ]);
     expect(summary.conflictingPlacement.map((row) => row.key.title)).toEqual(["Fake Album Five"]);
-    expect(summary.droppedDecadeRank.map((row) => [row.key.title, row.droppedDecadeRank])).toEqual([["Fake Album Eleven", "decade rank 5 on a listed album"]]);
     expect(search).toHaveBeenCalledTimes(14);
   });
 
-  it("writes year entries, shared artists and the decade list in sheet order", async () => {
+  it("adds every matched row to the library under the sheet's year, whatever its rank, and shares artists", async () => {
     const db = memoryDb();
     await importFixture(db);
 
-    const byTitle = new Map(listAlbums(db).map((album) => [album.title, album]));
-    const placements = listAllYearEntries(db).map((entry) => {
-      const album = [...byTitle.values()].find((a) => a.id === entry.albumId)!;
-      return `${entry.year} ${album.title} ${entry.placement}${entry.rank === null ? "" : ` ${entry.rank}`}`;
-    });
-    expect(placements).toEqual([
-      "2001 Fake Album One ranked 1",
-      "2001 Fake Album Two ranked 2",
-      "2001 Fake Album Three honorable_mention",
-      "2001 Fake Album Five honorable_mention",
-      "2001 Fake Album Four listed",
-      "2002 Fake Album Nine ranked 2",
-      "2002 Fake Album Six listed",
-      "2003 Fake Album Eleven listed",
-      "2004 Fake Album Seventeen ranked 1",
-      "2004 Fake Album Fourteen listed",
+    const albums = new Map(listAlbums(db).map((album) => [album.id, album]));
+    const entries = listLibrary(db).map((entry) => `${entry.year} ${albums.get(entry.albumId)!.title}`);
+    expect(entries.sort()).toEqual([
+      "2001 Fake Album Five",
+      "2001 Fake Album Four",
+      "2001 Fake Album One",
+      "2001 Fake Album Three",
+      "2001 Fake Album Two",
+      "2002 Fake Album Nine",
+      "2002 Fake Album Six",
+      "2002 Fake Album Ten",
+      "2003 Fake Album Eleven",
+      "2004 Fake Album Fourteen",
+      "2004 Fake Album Seventeen",
     ]);
+    const byTitle = new Map([...albums.values()].map((a) => [a.title, a]));
     // One and Two share their artist; the collaboration is one artist.
     expect(byTitle.get("Fake Album One")!.artist.id).toBe(byTitle.get("Fake Album Two")!.artist.id);
-    expect(new Set(listAlbums(db).map((a) => a.artist.id)).size).toBe(9);
-    // Decade ranks in the sheet: Two 1, Five 2, One 3.
-    expect(getDecadeList(db, 2000).map((entry) => [...byTitle.values()].find((a) => a.id === entry.albumId)!.title)).toEqual([
-      "Fake Album Two",
-      "Fake Album Five",
-      "Fake Album One",
-    ]);
-    expect(listAllYearEntries(db).every((entry) => entry.source !== null)).toBe(true);
+    expect(new Set(albums.values().map((a) => a.artist.id)).size).toBe(10);
+    expect(listLibrary(db).every((entry) => entry.source !== null)).toBe(true);
   });
 
-  it("sends the typo, ambiguous, duplicate and repeated-rank rows to review with reasons", async () => {
+  it("sends the typo, ambiguous and duplicate rows to review with reasons", async () => {
     const db = memoryDb();
     await importFixture(db);
     expect(listImportReviewItems(db).map((item) => [item.source.title, item.source.year, item.reason, item.reasonDetail])).toEqual([
       ["Fake Albm Seven", 2002, "no_match", null],
-      ["Fake Album Ten", 2002, "rank_taken", "Fake Album Nine - Fake Artist H"],
       ["Fake Album Thirteen", 2003, "ambiguous", null],
       ["Fake Album Fourteen", 2005, "duplicate_album", "2004"],
     ]);
@@ -131,7 +118,7 @@ describe("importing the fixture spreadsheet", () => {
 
     expect(search).not.toHaveBeenCalled();
     expect(snapshot(db)).toBe(before);
-    expect(summary).toMatchObject({ imported: 0, alreadyImported: 14, review: { no_match: 0, ambiguous: 0, duplicate_album: 0, rank_taken: 0 }, openReviewItems: 4 });
+    expect(summary).toMatchObject({ imported: 0, alreadyImported: 14, review: { no_match: 0, ambiguous: 0, duplicate_album: 0, rank_taken: 0 }, openReviewItems: 3 });
     expect(summary.conflictingPlacement).toEqual([]);
   });
 
@@ -145,7 +132,7 @@ describe("importing the fixture spreadsheet", () => {
 
     expect(search).not.toHaveBeenCalled();
     expect(listImportReviewItems(db, "skipped").map((item) => item.id)).toEqual([typo.id]);
-    expect(listImportReviewItems(db, "open")).toHaveLength(3);
+    expect(listImportReviewItems(db, "open")).toHaveLength(2);
   });
 
   it("processes a row whose key is new when the sheet changed", async () => {
@@ -164,57 +151,18 @@ describe("importing the fixture spreadsheet", () => {
     expect(formatSummary(summary)).toBe(
       [
         "Rows read              18",
-        "Imported               10   (matched automatically)",
-        "Sent to review         4    (no match 1, ambiguous 1, duplicate album match 1, rank taken 1)",
+        "Imported               11   (matched automatically)",
+        "Sent to review         3    (no match 1, ambiguous 1, duplicate album match 1)",
         "Merged duplicates      2    Fake Album Four - Fake Artist C (2001)",
         "                            fake album six - FAKE ARTIST E (2002): rows differ, kept the first (listed), ignored (honorable mention)",
         "Conflicting placement  1    Fake Album Five - Fake Artist D (2001): rank 3 and honorable mention, imported as honorable mention",
-        "Decade rank dropped    1    Fake Album Eleven - Fake Artist J (2003): decade rank 5 on a listed album",
-        "Decade list full       0",
         "Already imported       0",
         "Invalid, skipped       2    row 15 Fake Album Twelve: year 1850 is outside 1900 to 2100",
         "                            row 20 Fake Album Eighteen: missing artist",
         "Not reached            0    re-run to retry",
-        "Decade lists                2000s 3 (entries now on each list)",
-        "Open review items      4    see /import",
+        "Open review items      3    see /import",
       ].join("\n"),
     );
-  });
-});
-
-describe("decade lists", () => {
-  it("matches the sheet's decade ranks whatever order the rows import in", async () => {
-    const ranks = [4, 1, 5, 3, 2];
-    const rows = simpleRows(5, (i) => ({ honorableMention: 1, decadeRank: ranks[i], year: 2001 + i }));
-    const db = memoryDb();
-    const { deps } = fakeDeps(catalogFor(rows));
-    await runImport(db, prepareRows(rows), deps);
-
-    const titles = new Map(listAlbums(db).map((album) => [album.id, album.title]));
-    expect(getDecadeList(db, 2000).map((entry) => titles.get(entry.albumId))).toEqual([
-      "Fake Album 2", // rank 1
-      "Fake Album 5", // rank 2
-      "Fake Album 4", // rank 3
-      "Fake Album 1", // rank 4
-      "Fake Album 3", // rank 5
-    ]);
-  });
-
-  it("leaves a full list alone and names the album that did not fit", async () => {
-    const rows = simpleRows(MAX_DECADE_LIST + 1, (i) => ({
-      honorableMention: 1,
-      decadeRank: Math.min(i + 1, MAX_DECADE_LIST),
-      year: 2000 + (i % 10),
-    }));
-    const db = memoryDb();
-    const { deps } = fakeDeps(catalogFor(rows));
-    const summary = await runImport(db, prepareRows(rows), deps);
-
-    expect(summary.imported).toBe(MAX_DECADE_LIST + 1);
-    expect(getDecadeList(db, 2000)).toHaveLength(MAX_DECADE_LIST);
-    expect(summary.decadeListFull.map((row) => row.key.title)).toEqual([`Fake Album ${MAX_DECADE_LIST + 1}`]);
-    expect(summary.decadeLists).toEqual([{ decade: 2000, entries: MAX_DECADE_LIST }]);
-    expect(formatSummary(summary)).toContain(`Decade list full       1    Fake Album 26 - Fake Artist 26 (2005): not added to the decade list`);
   });
 });
 
@@ -235,7 +183,7 @@ describe("catalog errors", () => {
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([5000, 15000]);
     expect(search.mock.calls.filter(([q]) => q.startsWith("Fake Album 1 "))).toHaveLength(3);
     expect(summary).toMatchObject({ imported: 1, notReached: 1, aborted: false });
-    expect(listAllYearEntries(db).map((entry) => entry.source?.title)).toEqual(["Fake Album 2"]);
+    expect(listLibrary(db).map((entry) => entry.source?.title)).toEqual(["Fake Album 2"]);
     expect(listImportReviewItems(db)).toEqual([]);
 
     // The next run, with the catalog back, picks the row up and skips the one already imported.
@@ -296,7 +244,7 @@ describe("catalog errors", () => {
     expect(search).toHaveBeenCalledTimes(30); // 10 rows, 3 tries each
     expect(sleep).toHaveBeenCalledTimes(20);
     expect(formatSummary(summary)).toContain("Stopped early");
-    expect(listAllYearEntries(db)).toEqual([]);
+    expect(listLibrary(db)).toEqual([]);
   });
 
   it("does not stop when successes break up the failures", async () => {

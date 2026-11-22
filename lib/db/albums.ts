@@ -101,7 +101,7 @@ export function createAlbum(db: DatabaseSync, input: AlbumInput): Album {
   });
 }
 
-/** Deletes the album (its year entry, matchups and decade list entry cascade) and its artist if no albums remain. */
+/** Deletes the album (its library entry and matchups cascade) and its artist if no albums remain. */
 export function deleteAlbum(db: DatabaseSync, id: number): boolean {
   return transaction(db, () => {
     const album = getAlbum(db, id);

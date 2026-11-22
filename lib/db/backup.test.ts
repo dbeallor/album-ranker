@@ -14,6 +14,7 @@ import {
   restoreDatabase,
 } from "./backup";
 import { openDatabase } from "./connection.ts";
+import { memoryDbAt } from "./test-db";
 
 let root: string;
 let backupDir: string;
@@ -27,15 +28,13 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Opens a new database file in the temp folder and adds `albums` albums (one year entry and one matchup when there are two or more). */
+/** Opens a new database file in the temp folder and adds `albums` albums (one library album and one matchup when there are two or more). */
 function seededDb(name: string, albums: number): { db: DatabaseSync; path: string } {
   const path = join(root, name);
   const db = openDatabase(path);
   const ids = Array.from({ length: albums }, (_, i) => createAlbum(db, { title: `Album ${i}`, artist: { name: `Artist ${i}` } }).id);
   if (ids.length >= 2) {
-    db.prepare(
-      "INSERT INTO year_entries (album_id, year, placement, rank, created_at, updated_at) VALUES (?, 2020, 'ranked', 1, 'now', 'now')",
-    ).run(ids[0]);
+    db.prepare("INSERT INTO library_albums (album_id, year, added_at) VALUES (?, 2020, 'now')").run(ids[0]);
     db.prepare("INSERT INTO matchups (album_a_id, album_b_id, result, created_at) VALUES (?, ?, 'a', 'now')").run(ids[0], ids[1]);
   }
   return { db, path };
@@ -43,6 +42,27 @@ function seededDb(name: string, albums: number): { db: DatabaseSync; path: strin
 
 const yes = () => true;
 const no = () => false;
+
+describe("countRows", () => {
+  it("counts library albums on a new database, and year entries on one from before migration 003", () => {
+    const old = memoryDbAt(2);
+    old.exec(`
+      INSERT INTO artists (id, name) VALUES (1, 'A');
+      INSERT INTO albums (id, title, artist_id, created_at) VALUES (1, 'One', 1, 'c'), (2, 'Two', 1, 'c'), (3, 'Three', 1, 'c');
+      INSERT INTO year_entries (album_id, year, placement, created_at, updated_at) VALUES (1, 2020, 'listed', 'c', 'u'), (2, 2021, 'listed', 'c', 'u');
+      INSERT INTO matchups (album_a_id, album_b_id, result, created_at) VALUES (1, 2, 'a', 'c');
+    `);
+    expect(countRows(old)).toEqual({ albums: 3, libraryAlbums: 2, matchups: 1 });
+
+    const fresh = openDatabase(":memory:");
+    fresh.exec(`
+      INSERT INTO artists (id, name) VALUES (1, 'A');
+      INSERT INTO albums (id, title, artist_id, created_at) VALUES (1, 'One', 1, 'c'), (2, 'Two', 1, 'c'), (3, 'Three', 1, 'c');
+      INSERT INTO library_albums (album_id, year, added_at) VALUES (1, 2020, 'c'), (2, 2021, 'c'), (3, 2022, 'c');
+    `);
+    expect(countRows(fresh)).toEqual({ albums: 3, libraryAlbums: 3, matchups: 0 });
+  });
+});
 
 describe("backupDatabase", () => {
   it("copies rows that are still only in the -wal file, and the copy passes integrity_check", () => {
@@ -53,7 +73,7 @@ describe("backupDatabase", () => {
 
     const copy = new DatabaseSync(backupPath, { readOnly: true });
     expect(copy.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
-    expect(countRows(copy)).toEqual({ albums: 3, yearEntries: 1, matchups: 1 });
+    expect(countRows(copy)).toEqual({ albums: 3, libraryAlbums: 1, matchups: 1 });
     copy.close();
     db.close();
   });
@@ -131,7 +151,7 @@ describe("restoreDatabase", () => {
     expect(result.restored).toBe(true);
     expect(result.preRestorePath).toBeUndefined();
     const restored = new DatabaseSync(target, { readOnly: true });
-    expect(countRows(restored)).toEqual({ albums: 3, yearEntries: 1, matchups: 1 });
+    expect(countRows(restored)).toEqual({ albums: 3, libraryAlbums: 1, matchups: 1 });
     restored.close();
   });
 

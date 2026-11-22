@@ -1,55 +1,31 @@
 import type { DatabaseSync } from "node:sqlite";
-import { createAlbum, findAlbumByCatalogId, getAlbum } from "../db/albums.ts";
-import {
-  decadeOf,
-  getDecadeList,
-  insertIntoDecadeBySourceRank,
-  setDecadeList,
-  type DecadeInsertResult,
-} from "../db/decade-lists.ts";
+import { createAlbum, findAlbumByCatalogId } from "../db/albums.ts";
 import { getImportReviewItem, resolveImportReviewItem, skipImportReviewItem } from "../db/import-review.ts";
+import { addToLibrary, getLibraryEntry, setLibraryYear } from "../db/library.ts";
 import { transaction } from "../db/transaction.ts";
-import {
-  DataError,
-  type CatalogCandidate,
-  type DecadeListEntry,
-  type ImportReviewItem,
-} from "../db/types.ts";
-import {
-  addYearEntry,
-  findRankHolder,
-  getYearEntryByAlbum,
-  moveYearEntry,
-  setSourceDecadeRank,
-} from "../db/year-entries.ts";
+import { DataError, type CatalogCandidate, type ImportReviewItem } from "../db/types.ts";
 
 /** What the user picked for a review item. */
 export type ResolveChoice =
   | {
       kind: "catalog";
       album: CatalogCandidate;
-      /** The album is already on another year page: move its year entry to this row's year and placement. */
+      /** The album is already in the library: set its library year and source to this row's. */
       moveHere?: boolean;
     }
   | { kind: "manual" };
 
 export type ResolveFailure =
   | { ok: false; code: "not_found" | "not_open"; message: string }
-  /** The row's rank is used in its year; `holder` names the album that has it. The item stays open. */
-  | { ok: false; code: "rank_taken"; message: string; holder: { albumId: number; title: string; artist: string } }
-  /** The chosen album is on a year page already; offer "Move it here" (`moveHere: true`). */
-  | { ok: false; code: "album_on_year_page"; message: string; albumId: number; year: number }
+  /** The chosen album is in the library already; offer "Move it here" (`moveHere: true`). */
+  | { ok: false; code: "album_in_library"; message: string; albumId: number; year: number }
   | { ok: false; code: "invalid"; message: string };
 
 export type ResolveSuccess = {
   ok: true;
   albumId: number;
-  /** The year the album was on before "Move it here". */
+  /** The library year the album had before "Move it here". */
   movedFromYear: number | null;
-  /** Null when the row has no decade rank. */
-  decade: DecadeInsertResult | null;
-  /** Decade list entries the move removed because the album stopped being eligible. */
-  removedDecadeEntries: DecadeListEntry[];
   item: ImportReviewItem;
 };
 
@@ -74,51 +50,33 @@ function openItem(db: DatabaseSync, itemId: number): ImportReviewItem {
   return item;
 }
 
-function rankTaken(db: DatabaseSync, item: ImportReviewItem, albumId: number): Rollback {
-  const held = getAlbum(db, albumId)!;
-  return new Rollback({
-    ok: false,
-    code: "rank_taken",
-    message: `Rank ${item.sourceRank} in ${item.source.year} is held by ${held.title} - ${held.artist.name}.`,
-    holder: { albumId, title: held.title, artist: held.artist.name },
-  });
-}
-
 /**
- * Applies the user's choice to an open review item in one transaction: creates or reuses the album, adds the
- * row's year entry and decade list entry, and marks the item resolved. On any failure nothing changes and
- * the item stays open.
+ * Applies the user's choice to an open review item in one transaction: creates or reuses the album, puts it
+ * in the library with the row's year and source, and marks the item resolved. On any failure nothing
+ * changes and the item stays open.
  */
 export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: ResolveChoice): ResolveResult {
   try {
     return transaction(db, (): ResolveSuccess => {
       const item = openItem(db, itemId);
       const existing = choice.kind === "catalog" ? findAlbumByCatalogId(db, choice.album.catalogId) : undefined;
-      const entry = existing ? getYearEntryByAlbum(db, existing.id) : undefined;
+      const entry = existing ? getLibraryEntry(db, existing.id) : undefined;
       if (existing && entry && choice.kind === "catalog" && !choice.moveHere) {
         throw new Rollback({
           ok: false,
-          code: "album_on_year_page",
-          message: `${existing.title} is already on the ${entry.year} year page.`,
+          code: "album_in_library",
+          message: `${existing.title} is already in your library (${entry.year}).`,
           albumId: existing.id,
           year: entry.year,
         });
       }
-      const holder = item.sourceRank === null ? undefined : findRankHolder(db, item.source.year, item.sourceRank);
-      if (holder !== undefined && holder !== existing?.id) throw rankTaken(db, item, holder);
 
       let albumId: number;
       let movedFromYear: number | null = null;
-      let removedDecadeEntries: DecadeListEntry[] = [];
       if (existing && entry) {
         albumId = existing.id;
         movedFromYear = entry.year;
-        removedDecadeEntries = moveYearEntry(db, albumId, item.source.year, {
-          placement: item.sourcePlacement,
-          rank: item.sourceRank,
-        }).removedDecadeEntries;
-        // Always overwrite, including with null, so the album keeps no decade rank from its old row.
-        setSourceDecadeRank(db, albumId, item.sourceDecadeRank);
+        setLibraryYear(db, albumId, item.source.year, item.source);
       } else {
         albumId =
           existing?.id ??
@@ -136,38 +94,10 @@ export function resolveReviewItem(db: DatabaseSync, itemId: number, choice: Reso
                 releaseYear: item.source.year,
               })
           ).id;
-        addYearEntry(db, {
-          albumId,
-          year: item.source.year,
-          placement: item.sourcePlacement,
-          rank: item.sourceRank,
-          source: item.source,
-          sourceDecadeRank: item.sourceDecadeRank,
-        });
+        addToLibrary(db, { albumId, year: item.source.year, source: item.source });
       }
 
-      let decade: DecadeInsertResult | null = null;
-      if (item.sourceDecadeRank !== null && item.sourcePlacement !== "listed") {
-        const decadeStart = decadeOf(item.source.year);
-        decade = insertIntoDecadeBySourceRank(db, albumId, decadeStart);
-        if (decade.status === "already_listed" && movedFromYear !== null) {
-          // A same-decade move can change the decade rank: take the album off the list and put it back
-          // where the new rank belongs. Removing it first leaves room, so the list is never full here.
-          const others = getDecadeList(db, decadeStart)
-            .map((listed) => listed.albumId)
-            .filter((listedId) => listedId !== albumId);
-          setDecadeList(db, decadeStart, others);
-          decade = insertIntoDecadeBySourceRank(db, albumId, decadeStart);
-        }
-      }
-      return {
-        ok: true,
-        albumId,
-        movedFromYear,
-        decade,
-        removedDecadeEntries,
-        item: resolveImportReviewItem(db, itemId, albumId),
-      };
+      return { ok: true, albumId, movedFromYear, item: resolveImportReviewItem(db, itemId, albumId) };
     });
   } catch (error) {
     if (error instanceof Rollback) return error.failure;

@@ -1,18 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
-import { createAlbum, findAlbumByCatalogId, getAlbum } from "../db/albums.ts";
-import { decadeOf, insertIntoDecadeBySourceRank } from "../db/decade-lists.ts";
+import { createAlbum, findAlbumByCatalogId } from "../db/albums.ts";
 import { createImportReviewItem } from "../db/import-review.ts";
+import { addToLibrary, getLibraryEntry } from "../db/library.ts";
 import { transaction } from "../db/transaction.ts";
 import type { CatalogCandidate, ReviewReason } from "../db/types.ts";
-import { addYearEntry, findRankHolder, getYearEntryByAlbum } from "../db/year-entries.ts";
 import { toCandidate, type MatchOutcome } from "./match.ts";
 import type { ImportRow } from "./types.ts";
 
-export type DecadeOutcome = "none" | "inserted" | "already_listed" | "full";
-
-export type RowResult =
-  | { kind: "imported"; albumId: number; decade: DecadeOutcome }
-  | { kind: "review"; reason: ReviewReason };
+export type RowResult = { kind: "imported"; albumId: number } | { kind: "review"; reason: ReviewReason };
 
 function review(
   db: DatabaseSync,
@@ -34,26 +29,18 @@ function review(
 }
 
 /**
- * Writes one matched row in its own transaction: the album and artist (shared by catalog artist id), the
- * year entry with the sheet row as its source and its decade list entry; or a review item saying why not.
+ * Writes one matched row in its own transaction: the album and artist (shared by catalog artist id) and its
+ * library entry with the sheet row as its source; or a review item saying why not. The sheet's rank,
+ * honorable mention flag and decade rank are not used.
  */
 export function writeRow(db: DatabaseSync, row: ImportRow, outcome: MatchOutcome): RowResult {
   return transaction(db, () => {
     if (outcome.kind !== "accepted") return review(db, row, outcome.kind, outcome.candidates);
 
     const catalog = outcome.album;
-    const candidate = toCandidate(catalog);
     const existing = findAlbumByCatalogId(db, catalog.catalogId);
-    const onYear = existing ? getYearEntryByAlbum(db, existing.id) : undefined;
-    if (onYear) return review(db, row, "duplicate_album", [candidate], String(onYear.year));
-
-    if (row.rank !== null) {
-      const holder = findRankHolder(db, row.key.year, row.rank);
-      if (holder !== undefined) {
-        const held = getAlbum(db, holder)!;
-        return review(db, row, "rank_taken", [candidate], `${held.title} - ${held.artist.name}`);
-      }
-    }
+    const inLibrary = existing ? getLibraryEntry(db, existing.id) : undefined;
+    if (inLibrary) return review(db, row, "duplicate_album", [toCandidate(catalog)], String(inLibrary.year));
 
     const album =
       existing ??
@@ -64,17 +51,7 @@ export function writeRow(db: DatabaseSync, row: ImportRow, outcome: MatchOutcome
         releaseYear: catalog.year,
         coverUrl: catalog.coverUrl,
       });
-    addYearEntry(db, {
-      albumId: album.id,
-      year: row.key.year,
-      placement: row.placement,
-      rank: row.rank,
-      source: row.key,
-      sourceDecadeRank: row.decadeRank,
-    });
-
-    if (row.decadeRank === null) return { kind: "imported", albumId: album.id, decade: "none" };
-    const inserted = insertIntoDecadeBySourceRank(db, album.id, decadeOf(row.key.year));
-    return { kind: "imported", albumId: album.id, decade: inserted.status };
+    addToLibrary(db, { albumId: album.id, year: row.key.year, source: row.key });
+    return { kind: "imported", albumId: album.id };
   });
 }

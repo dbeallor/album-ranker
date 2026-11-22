@@ -1,9 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { CatalogError } from "../catalog/musicbrainz.ts";
-import { listDecadeLists } from "../db/decade-lists.ts";
 import { findImportReviewItem, listImportReviewItems } from "../db/import-review.ts";
+import { findLibraryEntryBySource } from "../db/library.ts";
 import type { ReviewReason } from "../db/types.ts";
-import { findYearEntryBySource } from "../db/year-entries.ts";
 import { matchRow } from "./match.ts";
 import type { InvalidRow, MergedRow, PreparedRows } from "./rows.ts";
 import type { CatalogSearch, ImportRow } from "./types.ts";
@@ -29,14 +28,9 @@ export type ImportSummary = {
   review: Record<ReviewReason, number>;
   merged: MergedRow[];
   conflictingPlacement: ImportRow[];
-  droppedDecadeRank: ImportRow[];
   alreadyImported: number;
   invalid: InvalidRow[];
   notReached: number;
-  /** Rows imported but left off a decade list because it already had 25 albums. */
-  decadeListFull: ImportRow[];
-  /** Entries now on each decade list in the database, oldest decade first. */
-  decadeLists: { decade: number; entries: number }[];
   /** Open review items in the database, from this run or an earlier one. */
   openReviewItems: number;
   /** The run stopped after too many catalog failures in a row. */
@@ -57,12 +51,6 @@ async function searchWithRetries(row: ImportRow, deps: RunDeps) {
   }
 }
 
-function countDecadeLists(db: DatabaseSync): ImportSummary["decadeLists"] {
-  const counts = new Map<number, number>();
-  for (const entry of listDecadeLists(db)) counts.set(entry.decade, (counts.get(entry.decade) ?? 0) + 1);
-  return [...counts].map(([decade, entries]) => ({ decade, entries })).sort((a, b) => a.decade - b.decade);
-}
-
 /** Imports the prepared rows one at a time, each in its own transaction, and returns what happened. */
 export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: RunDeps): Promise<ImportSummary> {
   const summary: ImportSummary = {
@@ -71,12 +59,9 @@ export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: 
     review: { no_match: 0, ambiguous: 0, duplicate_album: 0, rank_taken: 0 },
     merged: prepared.merged,
     conflictingPlacement: [],
-    droppedDecadeRank: [],
     alreadyImported: 0,
     invalid: prepared.invalid,
     notReached: 0,
-    decadeListFull: [],
-    decadeLists: [],
     openReviewItems: 0,
     aborted: false,
   };
@@ -90,7 +75,7 @@ export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: 
       break;
     }
 
-    if (findYearEntryBySource(db, row.key) || findImportReviewItem(db, row.key)) {
+    if (findLibraryEntryBySource(db, row.key) || findImportReviewItem(db, row.key)) {
       summary.alreadyImported++;
     } else {
       const searched = await searchWithRetries(row, deps);
@@ -106,18 +91,15 @@ export async function runImport(db: DatabaseSync, prepared: PreparedRows, deps: 
     if ((index + 1) % PROGRESS_EVERY === 0) deps.onProgress?.(index + 1, rows.length);
   }
 
-  summary.decadeLists = countDecadeLists(db);
   summary.openReviewItems = listImportReviewItems(db, "open").length;
   return summary;
 }
 
 function record(summary: ImportSummary, row: ImportRow, result: RowResult): void {
   if (row.conflictingPlacement) summary.conflictingPlacement.push(row);
-  if (row.droppedDecadeRank !== null) summary.droppedDecadeRank.push(row);
   if (result.kind === "review") {
     summary.review[result.reason]++;
   } else {
     summary.imported++;
-    if (result.decade === "full") summary.decadeListFull.push(row);
   }
 }
