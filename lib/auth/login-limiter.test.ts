@@ -32,6 +32,20 @@ describe("login limiter", () => {
   });
 });
 
+describe("recordFailure", () => {
+  it.each([
+    { name: "the 1st failure does not start a lock", times: 1, expected: false },
+    { name: "the 9th failure does not start a lock", times: MAX_FAILURES - 1, expected: false },
+    { name: "the 10th failure starts the lock", times: MAX_FAILURES, expected: true },
+    { name: "the 11th failure, during the lock, does not start another", times: MAX_FAILURES + 1, expected: false },
+  ])("$name", ({ times, expected }) => {
+    const limiter = createLoginLimiter();
+    let last = false;
+    for (let i = 0; i < times; i++) last = limiter.recordFailure("1.1.1.1", START + i);
+    expect(last).toBe(expected);
+  });
+});
+
 describe("clientIp", () => {
   it.each([
     { name: "an IPv4 address", header: "203.0.113.7", expected: "203.0.113.7" },

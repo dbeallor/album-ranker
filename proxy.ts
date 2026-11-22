@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { gateDecision, ORIGIN_HEADER } from "@/lib/auth/gate";
+import { logGate } from "@/lib/auth/gate-log";
 import { SESSION_COOKIE } from "@/lib/auth/session";
-import { readGateConfig } from "@/lib/config";
+import { gatePasswordProblem, readGateConfig } from "@/lib/config";
 
 const ROBOTS = "noindex, nofollow";
 
@@ -24,8 +25,9 @@ function publicOrigin(request: NextRequest): string {
 }
 
 export function proxy(request: NextRequest): NextResponse {
+  const gate = readGateConfig();
   const decision = gateDecision({
-    gate: readGateConfig(),
+    gate,
     pathname: request.nextUrl.pathname,
     search: request.nextUrl.search,
     method: request.method,
@@ -37,6 +39,11 @@ export function proxy(request: NextRequest): NextResponse {
   if (decision.action === "pass") return respond(NextResponse.next());
   if (decision.action === "redirect") {
     return respond(NextResponse.redirect(new URL(decision.location, publicOrigin(request))), { noStore: true });
+  }
+  // A 401 is an ordinary visit with no session, so only the 403 and 503 are logged.
+  if (decision.status === 403) logGate({ event: "origin-denied", path: request.nextUrl.pathname });
+  if (decision.status === 503) {
+    logGate({ event: "gate-misconfigured", reason: gatePasswordProblem(gate) ?? "APP_PASSWORD is not set." }, "error");
   }
   return respond(new NextResponse(null, { status: decision.status }), { noStore: true });
 }
