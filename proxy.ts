@@ -3,11 +3,15 @@ import { gateDecision, ORIGIN_HEADER } from "@/lib/auth/gate";
 import { logGate } from "@/lib/auth/gate-log";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { gatePasswordProblem, readGateConfig } from "@/lib/config";
+import { securityHeaders } from "@/lib/security-headers";
 
 const ROBOTS = "noindex, nofollow";
 
 function respond(response: NextResponse, options: { noStore?: boolean } = {}): NextResponse {
   response.headers.set("X-Robots-Tag", ROBOTS);
+  for (const { key, value } of securityHeaders({ development: process.env.NODE_ENV === "development" })) {
+    response.headers.set(key, value);
+  }
   // The proxy's own answers (redirects and refusals) must never be kept by a cache; the app sets its own headers on a pass.
   if (options.noStore) response.headers.set("Cache-Control", "no-store");
   return response;
