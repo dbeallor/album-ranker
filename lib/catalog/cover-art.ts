@@ -1,7 +1,7 @@
 // No `server-only` and only relative imports, so the import script can load this under Node's type stripping.
 
-const CAA_URL = "https://coverartarchive.org/release-group";
-const DEEZER_SEARCH_URL = "https://api.deezer.com/search/album";
+const DEFAULT_CAA_URL = "https://coverartarchive.org";
+const DEFAULT_DEEZER_URL = "https://api.deezer.com";
 const DEEZER_RESULT_LIMIT = 10;
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_COVER_URL_LENGTH = 300;
@@ -51,6 +51,10 @@ export type CoverArtDeps = {
   fetch: typeof fetch;
   /** Sent to the Cover Art Archive, as MusicBrainz asks. */
   userAgent?: () => string;
+  /** Base URL of the Cover Art Archive. Defaults to the real one; browser tests point it at a stub. */
+  caaUrl?: () => string;
+  /** Base URL of the Deezer API. Defaults to the real one; browser tests point it at a stub. */
+  deezerUrl?: () => string;
   log?: (message: string, detail?: unknown) => void;
 };
 
@@ -75,7 +79,7 @@ export function createResolveCover(deps: CoverArtDeps) {
 
     const params = new URLSearchParams({ q: deezerQuery(title, artist), limit: String(DEEZER_RESULT_LIMIT) });
     try {
-      const response = await deps.fetch(`${DEEZER_SEARCH_URL}?${params}`, {
+      const response = await deps.fetch(`${(deps.deezerUrl ?? (() => DEFAULT_DEEZER_URL))()}/search/album?${params}`, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -108,7 +112,7 @@ export function createResolveCover(deps: CoverArtDeps) {
 
   return async function resolveCover({ catalogId, title, artist }: CoverQuery): Promise<string | null> {
     if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return null;
-    const caaUrl = `${CAA_URL}/${catalogId.toLowerCase()}/front-250`;
+    const caaUrl = `${(deps.caaUrl ?? (() => DEFAULT_CAA_URL))()}/release-group/${catalogId.toLowerCase()}/front-250`;
     try {
       const response = await deps.fetch(caaUrl, {
         method: "HEAD",

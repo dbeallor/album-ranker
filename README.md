@@ -109,7 +109,7 @@ Reading the summary the script prints at the end:
 
 ## Browser tests
 
-Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.
+Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz, the Cover Art Archive and Deezer (`MUSICBRAINZ_URL`, `COVER_ART_ARCHIVE_URL`, `DEEZER_URL`), so no test calls a live service.
 
 1. One time: `npx playwright install chromium`
 2. `npm run test:e2e`
