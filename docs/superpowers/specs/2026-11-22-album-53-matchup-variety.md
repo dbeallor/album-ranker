@@ -1,6 +1,7 @@
 # Stop one album appearing in every matchup when only one album is established
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #58, with differences: [as-built](../as-built/2026-11-22-album-53-matchup-variety.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-53](https://github.com/dbeallor/album-ranker/issues/53)
 **Follows:** [ALBUM-43 favour new albums](2026-11-22-album-43-favour-new-albums.md)
