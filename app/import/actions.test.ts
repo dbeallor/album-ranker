@@ -115,7 +115,47 @@ describe("import review actions", () => {
 
   it("an item that does not exist is still an error", async () => {
     const url = await redirectOf(skipAction(form(999)));
-    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "Import review item 999 does not exist.", item: "999" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ error: "not_found", item: "999" });
+  });
+
+  describe("failures redirect with a code, never message text", () => {
+    const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
+    const db = () => state.db as ReturnType<typeof memoryDb>;
+
+    function choice(itemId: number | string, over: Record<string, string> = {}): FormData {
+      const data = form(itemId);
+      const fields = { catalogId: CATALOG_ID, title: "Fake Album One", artist: "Fake Artist A", ...over };
+      for (const [name, value] of Object.entries(fields)) data.set(name, value);
+      return data;
+    }
+
+    it.each([
+      { name: "a bad item id", run: () => skipAction(form("abc")), params: () => ({ error: "not_found" }) },
+      { name: "an unknown item", run: () => keepManualAction(form(999)), params: () => ({ error: "not_found", item: "999" }) },
+      { name: "a form without the catalog details", run: () => chooseAlbumAction(choice(seed().id, { title: "" })), params: () => ({ error: "missing_details", item: "1" }) },
+      {
+        name: "an album already in the library",
+        run: () => {
+          const album = createAlbum(db(), { title: "Fake Album One", artist: { name: "Fake Artist A" }, catalogId: CATALOG_ID });
+          addToLibrary(db(), { albumId: album.id, year: 1999 });
+          return chooseAlbumAction(choice(seed().id));
+        },
+        params: () => ({ error: "in_library", item: "1", album: "1" }),
+      },
+      {
+        name: "an album the database refuses",
+        run: () => {
+          addToLibrary(db(), { albumId: createAlbum(db(), { title: "Held", artist: { name: "Other" } }).id, year: 2001, source: { title: "Fake Album <One>", artist: "Fake Artist A", year: 2001 } });
+          return chooseAlbumAction(choice(seed().id));
+        },
+        params: () => ({ error: "invalid", item: "1" }),
+      },
+    ])("$name", async ({ run, params }) => {
+      const url = await redirectOf(run());
+
+      expect(url.pathname).toBe("/import");
+      expect(Object.fromEntries(url.searchParams)).toEqual(params());
+    });
   });
 
   describe("choosing a catalog album", () => {

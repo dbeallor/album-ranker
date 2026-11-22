@@ -288,11 +288,39 @@ describe("import review page", () => {
     expect(screen.getByText("Unknown year")).toBeDefined();
   });
 
-  it("shows a failed action's message with the item still listed", async () => {
-    seed(state.db as DatabaseSync);
-    await renderPage({ item: "2", error: "Rank 3 in 1990 is held by Fake Album Holder - Fake Artist E." });
+  describe("a failed action's code", () => {
+    function inLibrary() {
+      const album = createAlbum(state.db as DatabaseSync, { title: "Fake Album Held", artist: { name: "Fake Artist E" } });
+      addToLibrary(state.db as DatabaseSync, { albumId: album.id, year: 1988 });
+      return String(album.id);
+    }
 
-    const item = screen.getByRole("heading", { name: /Fake Album Early/ }).closest("li") as HTMLElement;
-    expect(within(item).getByRole("alert").textContent).toBe("Rank 3 in 1990 is held by Fake Album Holder - Fake Artist E.");
+    const cases: { name: string; error: string; album?: () => string; text: string | null }[] = [
+      { name: "not_found", error: "not_found", text: "That review item could not be found." },
+      { name: "missing_details", error: "missing_details", text: "That album is missing its catalog details." },
+      { name: "invalid", error: "invalid", text: "That album couldn't be saved. Check its details and try again." },
+      { name: "in_library names the album and its year", error: "in_library", album: inLibrary, text: "Fake Album Held is already in your library (1988)." },
+      { name: "in_library with an album that is gone", error: "in_library", album: () => "999", text: "That album is already in your library." },
+      { name: "in_library with a bad album id", error: "in_library", album: () => "abc", text: "That album is already in your library." },
+      { name: "made-up text", error: "Rank 3 in 1990 is held by Fake Album Holder.", text: null },
+      { name: "an inherited property name", error: "constructor", text: null },
+      { name: "empty", error: "", text: null },
+    ];
+
+    it.each(cases)("under the item: $name", async ({ error, album, text }) => {
+      seed(state.db as DatabaseSync);
+      await renderPage({ item: "2", error, ...(album ? { album: album() } : {}) });
+
+      const item = screen.getByRole("heading", { name: /Fake Album Early/ }).closest("li") as HTMLElement;
+      expect(within(item).queryByRole("alert")?.textContent ?? null).toBe(text);
+      expect(screen.queryAllByRole("alert")).toHaveLength(text === null ? 0 : 1);
+    });
+
+    it.each(cases)("at the top of the page when the item is not open: $name", async ({ error, album, text }) => {
+      seed(state.db as DatabaseSync);
+      await renderPage({ item: "99", error, ...(album ? { album: album() } : {}) });
+
+      expect(screen.queryAllByRole("alert").map((alert) => alert.textContent)).toEqual(text === null ? [] : [text]);
+    });
   });
 });
