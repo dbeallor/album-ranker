@@ -1,12 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { artistScore } from "./elo/artist-score";
 import type { ReplayMatchup } from "./elo/replay";
-import type { LibraryAlbum } from "./library-view";
+import { bestFirst, type LibraryAlbum } from "./library-view";
 import { loadLibrary } from "./library-albums";
 import { ERAS, decadeOf, inScope, scopeLabel, type Scope } from "./scopes";
 
 export type AlbumRankRow = {
-  /** 1 to n within the scope; a rating tie goes to the lower album id. */
+  /** 1 to n within the scope, in `bestFirst` order. */
   rank: number;
   album: LibraryAlbum;
 };
@@ -35,8 +35,6 @@ export type PeriodRow = {
   topAlbum: { albumId: number; title: string; rating: number };
   topArtist: { artistId: number; name: string };
 };
-
-const bestFirst = (a: LibraryAlbum, b: LibraryAlbum) => b.rating - a.rating || a.albumId - b.albumId;
 
 /** Every album in the scope by rating, highest first. */
 export function buildAlbumRanking(albums: LibraryAlbum[], scope: Scope): AlbumRankRow[] {

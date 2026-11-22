@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { listAlbums } from "./db/albums";
 import { listLibrary } from "./db/library";
 import { computeRecords } from "./elo/record";
-import type { LibraryAlbum } from "./library-view";
+import { bestFirst, type LibraryAlbum } from "./library-view";
 import type { ReplayMatchup } from "./elo/replay";
 import { loadRatings } from "./ratings";
 
@@ -37,12 +37,13 @@ export function loadLibrary(db: DatabaseSync): { albums: LibraryAlbum[]; used: R
         wins: record.wins,
         losses: record.losses,
         ties: record.ties,
+        lastMatchupAt: record.lastAt,
       },
     ];
   });
 
   [...albums]
-    .sort((a, b) => b.rating - a.rating || a.albumId - b.albumId)
+    .sort(bestFirst)
     .forEach((album, index) => {
       album.rank = index + 1;
     });

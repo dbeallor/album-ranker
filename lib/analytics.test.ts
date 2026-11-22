@@ -23,8 +23,11 @@ function album(artistId: number, artistName: string, year: number, rating: numbe
     wins: 0,
     losses: 0,
     ties: 0,
+    lastMatchupAt: null,
   };
 }
+
+const scoreFor = (excess: number) => 1500 + 100 * Math.log(1 + excess / 100);
 
 const era = (key: "pre-60s" | "60s-70s" | "80s-90s" | "00s-on"): Scope => ({ kind: "era", era: key });
 
@@ -46,12 +49,12 @@ describe("analytics rankings and summaries", () => {
   ];
 
   it.each<{ name: string; scope: Scope; titles: string[] }>([
-    { name: "lifetime", scope: LIFETIME, titles: ["Jack Johnson", "Kind of Blue", "Blue", "Dog Eat Dog", "Midnite Vultures", "Tie"] },
+    { name: "lifetime", scope: LIFETIME, titles: ["Jack Johnson", "Kind of Blue", "Blue", "Tie", "Midnite Vultures", "Dog Eat Dog"] },
     { name: "an era", scope: era("60s-70s"), titles: ["Jack Johnson", "Blue"] },
     { name: "a decade", scope: { kind: "decade", decade: 1980 }, titles: ["Dog Eat Dog"] },
     { name: "a year", scope: { kind: "year", year: 1971 }, titles: ["Jack Johnson", "Blue"] },
     { name: "a scope with no albums", scope: { kind: "year", year: 1990 }, titles: [] },
-  ])("ranks albums in $name, a rating tie to the lower album id", ({ scope, titles }) => {
+  ])("ranks albums in $name, a rating tie to the artist then the title", ({ scope, titles }) => {
     const rows = buildAlbumRanking(albums, scope);
     expect(rows.map((row) => row.album.title)).toEqual(titles);
     expect(rows.map((row) => row.rank)).toEqual(titles.map((_, index) => index + 1));
@@ -61,10 +64,10 @@ describe("analytics rankings and summaries", () => {
     {
       name: "lifetime",
       scope: LIFETIME,
-      // Miles (1600 + 1700 + 1500) / 3 = 1600; Joni (1550 + 1500 + 1500) / 3 = 1516.67; Beck and alpha 1500 tie, so name order.
+      // Miles has 300 points above 1500 and Joni 50; Beck and alpha have none and tie, so name order.
       rows: [
-        ["Miles", 1600, 2, "Jack Johnson"],
-        ["Joni", 4550 / 3, 2, "Blue"],
+        ["Miles", scoreFor(300), 2, "Jack Johnson"],
+        ["Joni", scoreFor(50), 2, "Blue"],
         ["alpha", 1500, 1, "Tie"],
         ["Beck", 1500, 1, "Midnite Vultures"],
       ],
@@ -73,17 +76,74 @@ describe("analytics rankings and summaries", () => {
       name: "an era counts only the albums in it",
       scope: era("60s-70s"),
       rows: [
-        ["Miles", 1600, 1, "Jack Johnson"],
-        ["Joni", 1525, 1, "Blue"],
+        ["Miles", scoreFor(200), 1, "Jack Johnson"],
+        ["Joni", scoreFor(50), 1, "Blue"],
       ],
     },
     { name: "a decade", scope: { kind: "decade", decade: 1990 }, rows: [["Beck", 1500, 1, "Midnite Vultures"]] },
-    { name: "a year", scope: { kind: "year", year: 1959 }, rows: [["Miles", 1550, 1, "Kind of Blue"]] },
+    { name: "a year", scope: { kind: "year", year: 1959 }, rows: [["Miles", scoreFor(100), 1, "Kind of Blue"]] },
     { name: "a scope with no albums", scope: { kind: "year", year: 1990 }, rows: [] },
   ])("ranks artists in $name by artistScore, ties by name then id", ({ scope, rows }) => {
     const ranking = buildArtistRanking(albums, scope);
     expect(ranking.map((row) => [row.artistName, row.score, row.albumCount, row.bestAlbum.title])).toEqual(rows);
     expect(ranking.map((row) => row.rank)).toEqual(rows.map((_, index) => index + 1));
+  });
+
+  it("breaks a rating tie by artist, then title ignoring case, then album id", () => {
+    const tied = [
+      album(2, "Zed", 2000, 1500, "b"),
+      album(1, "Abe", 2000, 1500, "z"),
+      album(2, "Zed", 2000, 1500, "A"),
+      album(2, "Zed", 2000, 1500, "a"),
+      album(3, "Top", 2000, 1600, "Q"),
+    ];
+    expect(buildAlbumRanking(tied, LIFETIME).map((row) => row.album.albumId)).toEqual([tied[4], tied[1], tied[2], tied[3], tied[0]].map((a) => a.albumId));
+  });
+
+  it.each<{ name: string; scope: Scope }>([
+    { name: "an era", scope: era("80s-90s") },
+    { name: "a decade", scope: { kind: "decade", decade: 1980 } },
+    { name: "a year", scope: { kind: "year", year: 1985 } },
+  ])("ranks albums in $name in their lifetime order, so a rank agrees with its lifetime place", ({ scope }) => {
+    const tied = [
+      album(5, "Echo", 1985, 1500, "Same"),
+      album(4, "Delta", 1985, 1500, "Same"),
+      album(4, "Delta", 1985, 1500, "Also"),
+      album(6, "Foxtrot", 1991, 1500, "Other"),
+      album(4, "Delta", 1972, 1500, "Early"),
+      album(7, "Golf", 1985, 1520, "Best"),
+    ];
+    const lifetime = buildAlbumRanking(tied, LIFETIME).map((row) => row.album.albumId);
+    const inScoped = buildAlbumRanking(tied, scope).map((row) => row.album.albumId);
+    expect(inScoped).toEqual(lifetime.filter((id) => inScoped.includes(id)));
+    expect(inScoped.length).toBeGreaterThan(1);
+  });
+
+  it.each<{ name: string; artists: [string, number[]][]; order: string[] }>([
+    {
+      name: "six albums at 1700 above three",
+      artists: [
+        ["Three", [1700, 1700, 1700]],
+        ["Six", Array(6).fill(1700)],
+      ],
+      order: ["Six", "Three"],
+    },
+    {
+      name: "an all-unplayed artist below one with an album above 1500",
+      artists: [
+        ["Aardvark", [1500, 1500, 1500, 1500]],
+        ["Zebra", [1510]],
+      ],
+      order: ["Zebra", "Aardvark"],
+    },
+  ])("ranks $name", ({ artists, order }) => {
+    const built = artists.flatMap(([name, ratings], index) => ratings.map((rating, n) => album(100 + index, name, 2000 + n, rating)));
+    expect(buildArtistRanking(built, LIFETIME).map((row) => row.artistName)).toEqual(order);
+  });
+
+  it("scores an all-unplayed artist at the base rating", () => {
+    const unplayed = [album(1, "Aardvark", 2000, 1500), album(1, "Aardvark", 2001, 1500)];
+    expect(buildArtistRanking(unplayed, LIFETIME)[0].score).toBe(1500);
   });
 
   it("breaks an artist tie on the same name by artist id", () => {
@@ -120,7 +180,7 @@ describe("analytics rankings and summaries", () => {
       rows: [
         ["Pre-60s", 1, 1, 1600, "Kind of Blue", "Miles"],
         ["60s and 70s", 2, 2, 1625, "Jack Johnson", "Miles"],
-        ["80s and 90s", 2, 1, 1500, "Dog Eat Dog", "Beck"],
+        ["80s and 90s", 2, 1, 1500, "Midnite Vultures", "Beck"],
         ["00s and after", 1, 0, 1500, "Tie", "alpha"],
       ],
     },

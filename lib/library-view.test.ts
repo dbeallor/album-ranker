@@ -19,6 +19,7 @@ function album(
   rating: number,
   [wins, losses, ties]: [number, number, number],
   addedAt: string,
+  lastMatchupAt: string | null = null,
 ): LibraryAlbum {
   return {
     albumId,
@@ -34,18 +35,19 @@ function album(
     wins,
     losses,
     ties,
+    lastMatchupAt,
   };
 }
 
 const LIBRARY: LibraryAlbum[] = [
-  album(1, "Beta", 2, 1975, 1520, [2, 0, 0], "2025-03-01"),
-  album(2, "alpha", 1, 1975, 1480, [0, 2, 0], "2025-01-01"),
+  album(1, "Beta", 2, 1975, 1520, [2, 0, 0], "2025-03-01", "2025-03-10"),
+  album(2, "alpha", 1, 1975, 1480, [0, 2, 0], "2025-01-01", "2025-03-05"),
   album(3, "Gamma", 1, 1972, 1500, [0, 0, 0], "2025-02-01"),
-  album(4, "Delta", 3, 1985, 1510, [1, 1, 0], "2025-04-01"),
-  album(5, "Epsilon", 3, 1985, 1510, [0, 0, 2], "2025-04-01"),
-  album(6, "Zeta", 2, 2003, 1530, [3, 1, 0], "2025-05-01"),
+  album(4, "Delta", 3, 1985, 1510, [1, 1, 0], "2025-04-01", "2025-03-10"),
+  album(5, "Epsilon", 3, 1985, 1510, [0, 0, 2], "2025-04-01", "2025-03-20"),
+  album(6, "Zeta", 2, 2003, 1530, [3, 1, 0], "2025-05-01", "2025-03-01"),
   album(7, "Eta", 4, 1955, 1500, [0, 0, 0], "2025-06-01"),
-  album(8, "Theta", 4, 2021, 1490, [1, 2, 1], "2025-02-01"),
+  album(8, "Theta", 4, 2021, 1490, [1, 2, 1], "2025-02-01", "2025-02-01"),
 ];
 
 const ids = (groups: LibraryGroup[]) => groups.map((group) => group.albums.map((a) => a.albumId));
@@ -118,9 +120,15 @@ const SORT_CASES: Case[] = [
   { sort: "wins", dir: "asc", ids: [[5, 3, 7, 2, 4, 8, 1, 6]], headings: [null] },
   { sort: "losses", dir: "desc", ids: [[8, 2, 6, 4, 1, 5, 3, 7]], headings: [null] },
   { sort: "losses", dir: "asc", ids: [[1, 5, 3, 7, 6, 4, 8, 2]], headings: [null] },
+  // Ties: only Epsilon (2) and Theta (1) have any; the rest tie on 0 and fall to rating, then artist, title and id.
+  { sort: "ties", dir: "desc", ids: [[5, 8, 6, 1, 4, 3, 7, 2]], headings: [null] },
+  { sort: "ties", dir: "asc", ids: [[6, 1, 4, 3, 7, 2, 8, 5]], headings: [null] },
   // Win rate, a tie as half a win: Beta 1, Zeta .75, Delta .5, Epsilon .5, Theta .375, alpha 0. Unplayed 3 and 7 go last either way.
   { sort: "winrate", dir: "desc", ids: [[1, 6, 4, 5, 8, 2, 3, 7]], headings: [null] },
   { sort: "winrate", dir: "asc", ids: [[2, 8, 4, 5, 6, 1, 3, 7]], headings: [null] },
+  // Last matchup: Delta and Beta share a date, so rating decides. Unplayed 3 and 7 go last either way.
+  { sort: "lastmatchup", dir: "desc", ids: [[5, 1, 4, 2, 6, 8, 3, 7]], headings: [null] },
+  { sort: "lastmatchup", dir: "asc", ids: [[8, 6, 2, 1, 4, 5, 3, 7]], headings: [null] },
   { sort: "added", dir: "desc", ids: [[7, 6, 4, 5, 1, 3, 8, 2]], headings: [null] },
   { sort: "added", dir: "asc", ids: [[2, 3, 8, 1, 4, 5, 6, 7]], headings: [null] },
 ];
@@ -140,6 +148,20 @@ describe("buildLibraryView sorting", () => {
 
   it.each(SORT_KEYS)("%s uses its default direction when none is given", (sort) => {
     expect(ids(buildLibraryView(LIBRARY, { sort }))).toEqual(ids(buildLibraryView(LIBRARY, { sort, dir: DEFAULT_DIRS[sort] })));
+  });
+});
+
+describe("buildLibraryView tie-break", () => {
+  const tied = [
+    album(1, "b", 2, 2000, 1500, [0, 0, 0], "2025-01-01"),
+    album(2, "A", 2, 2000, 1500, [0, 0, 0], "2025-01-01"),
+    album(3, "c", 1, 2000, 1500, [0, 0, 0], "2025-01-01"),
+    album(4, "a", 2, 2000, 1500, [0, 0, 0], "2025-01-01"),
+    album(5, "z", 3, 2000, 1510, [0, 0, 0], "2025-01-01"),
+  ];
+
+  it.each(["played", "added", "ties", "lastmatchup"] as const)("%s ties go by rating, artist, title ignoring case, then id", (sort) => {
+    expect(flat(buildLibraryView(tied, { sort, dir: "asc" }))).toEqual([5, 3, 2, 4, 1]);
   });
 });
 

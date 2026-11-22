@@ -80,6 +80,7 @@ describe("library page", () => {
       order: ["Alpha", "Beta", "Gamma"],
     },
     { name: "title sort has no dividers", params: { sort: "title", dir: "desc" }, headings: [], order: ["Gamma", "Beta", "Alpha"] },
+    { name: "last matchup puts an album with no matchup last, newest first", params: { sort: "lastmatchup" }, headings: [], order: ["Alpha", "Beta", "Gamma"] },
     { name: "a bad sort and direction fall back", params: { sort: "nope", dir: "sideways" }, headings: [], order: ["Alpha", "Gamma", "Beta"] },
     { name: "a bad played value falls back to all", params: { played: "maybe" }, headings: [], order: ["Alpha", "Gamma", "Beta"] },
     { name: "a repeated sort falls back", params: { sort: ["year", "title"] }, headings: [], order: ["Alpha", "Gamma", "Beta"] },
