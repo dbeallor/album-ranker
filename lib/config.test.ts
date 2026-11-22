@@ -104,3 +104,31 @@ describe("getConfig gate settings", () => {
     }
   });
 });
+
+type S3Case = { name: string; bucket: string | undefined; key: string | undefined; expected: { bucket: string; key: string } | null | Error };
+
+const s3Cases: S3Case[] = [
+  { name: "neither set means a local file", bucket: undefined, key: undefined, expected: null },
+  { name: "both empty means a local file", bucket: "", key: "", expected: null },
+  { name: "both set gives S3 storage", bucket: "my-bucket", key: "album-ranker.db", expected: { bucket: "my-bucket", key: "album-ranker.db" } },
+  { name: "only the bucket throws naming both", bucket: "my-bucket", key: undefined, expected: new Error("DATABASE_S3_BUCKET and DATABASE_S3_KEY") },
+  { name: "only the key throws naming both", bucket: undefined, key: "album-ranker.db", expected: new Error("DATABASE_S3_BUCKET and DATABASE_S3_KEY") },
+  { name: "a bucket with an empty key throws", bucket: "my-bucket", key: "", expected: new Error("DATABASE_S3_KEY") },
+];
+
+describe("getConfig S3 storage settings", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(s3Cases)("$name", ({ bucket, key, expected }) => {
+    vi.stubEnv("DATABASE_S3_BUCKET", bucket);
+    vi.stubEnv("DATABASE_S3_KEY", key);
+
+    if (expected instanceof Error) {
+      expect(() => getConfig()).toThrow(expected.message);
+    } else {
+      expect(getConfig().databaseS3).toEqual(expected);
+    }
+  });
+});

@@ -14,6 +14,8 @@ export type GateConfig = {
 
 export type Config = GateConfig & {
   databasePath: string;
+  /** Set when the database lives in S3 (`DATABASE_S3_BUCKET` and `DATABASE_S3_KEY`); `databasePath` is then the working copy in `/tmp`. */
+  databaseS3: { bucket: string; key: string } | null;
   backupDir: string;
   musicbrainzUserAgent: string;
   musicbrainzUrl: string;
@@ -73,6 +75,17 @@ export function gatePasswordProblem(gate: GateConfig): string | null {
   return null;
 }
 
+/** The S3 object the database syncs with: both settings, or neither. */
+export function readDatabaseS3(): { bucket: string; key: string } | null {
+  const bucket = readOptional("DATABASE_S3_BUCKET");
+  const key = readOptional("DATABASE_S3_KEY");
+  if (bucket === null && key === null) return null;
+  if (bucket === null || key === null) {
+    throw new Error("DATABASE_S3_BUCKET and DATABASE_S3_KEY must be set together. Set both for S3 storage, or neither for a local file.");
+  }
+  return { bucket, key };
+}
+
 export function getConfig(): Config {
   const gate = readGateConfig();
   const problem = gatePasswordProblem(gate);
@@ -84,6 +97,7 @@ export function getConfig(): Config {
       DEFAULT_DATABASE_PATH,
       "Set it to a file path, or unset it to use the default.",
     ),
+    databaseS3: readDatabaseS3(),
     backupDir: expandHome(
       readSetting("BACKUP_DIR", DEFAULT_BACKUP_DIR, "Set it to a folder path, or unset it to use the default."),
     ),
