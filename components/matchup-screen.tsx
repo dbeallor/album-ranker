@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Cover } from "@/components/cover";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Message } from "@/components/ui/message";
@@ -23,12 +22,14 @@ type Props = {
   undoAction: (avoid: string[]) => Promise<MatchupActionResult>;
 };
 
-const COVER = 200;
+const COVER = 480;
 
 function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () => void; disabled: boolean }) {
   return (
-    <Card className={styles.pick}>
-      <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={COVER} />
+    <div className={styles.pick}>
+      <div className={styles.cover}>
+        <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={COVER} fill />
+      </div>
       <div className={styles.text}>
         <strong className={styles.title}>{album.title}</strong>
         <span>{album.artist}</span>
@@ -37,7 +38,7 @@ function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () =
       <Button type="button" variant="primary" className={styles.choose} onClick={onPick} disabled={disabled}>
         I like this more
       </Button>
-    </Card>
+    </div>
   );
 }
 

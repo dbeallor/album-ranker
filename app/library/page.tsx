@@ -3,13 +3,11 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Cover } from "@/components/cover";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { CardGrid } from "@/components/ui/card-grid";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListRow } from "@/components/ui/list-row";
 import { Message } from "@/components/ui/message";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionLabel } from "@/components/ui/section-label";
 import { Select } from "@/components/ui/select";
 import { Stack } from "@/components/ui/stack";
 import { TextField } from "@/components/ui/text-field";
@@ -74,6 +72,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
   return (
     <>
       <PageHeader
+        label="02 / Library"
         title="Library"
         description={`${shown} of ${albums.length} ${albums.length === 1 ? "album" : "albums"}`}
         actions={
@@ -81,7 +80,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
             <ButtonLink href="/search" variant="primary">
               Add albums
             </ButtonLink>
-            <ButtonLink href="/matchups">Matchups</ButtonLink>
+            <ButtonLink href="/matchups">Play</ButtonLink>
           </>
         }
       />
@@ -159,24 +158,24 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
         ) : (
           groups.map((group, index) => (
             <section key={index} className={styles.group}>
-              {group.heading ? <h2>{group.heading}</h2> : null}
-              <CardGrid>
+              {group.heading ? <SectionLabel as="h2">{group.heading}</SectionLabel> : null}
+              <ul className={styles.tiles}>
                 {group.albums.map((album) => (
-                  <Card as="li" key={album.albumId}>
-                    <ListRow
-                      cover={<Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={80} />}
-                      title={album.title}
-                      subtitle={<Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>}
-                      meta={`${album.year} · Rating ${Math.round(album.rating)} · Rank ${album.rank} · W-L-T ${formatRecord(album)}`}
-                      actions={
-                        <ButtonLink href={`/library/remove/${album.albumId}`} variant="ghost">
-                          Remove
-                        </ButtonLink>
-                      }
-                    />
-                  </Card>
+                  <li key={album.albumId} className={styles.tile}>
+                    <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={240} fill />
+                    <div className={styles.tileText}>
+                      <strong>{album.title}</strong>
+                      <Link href={`/artists/${album.artistId}`}>{album.artistName}</Link>
+                      <span className={styles.meta}>
+                        {`${album.year} · Rating ${Math.round(album.rating)} · Rank ${album.rank} · W-L-T ${formatRecord(album)}`}
+                      </span>
+                    </div>
+                    <ButtonLink href={`/library/remove/${album.albumId}`} variant="ghost" className={styles.remove}>
+                      Remove
+                    </ButtonLink>
+                  </li>
                 ))}
-              </CardGrid>
+              </ul>
             </section>
           ))
         )}

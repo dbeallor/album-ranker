@@ -11,7 +11,7 @@ export default async function MatchupsPage() {
 
   return (
     <>
-      <PageHeader title="Matchups" />
+      <PageHeader label="03 / Play" title="Play" />
       <MatchupScreen
         initial={{ pair, count, lastAnswer: null, canUndo: count > 0, progress }}
         answerAction={answerMatchup}
