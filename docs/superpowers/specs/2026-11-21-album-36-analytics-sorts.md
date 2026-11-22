@@ -1,6 +1,7 @@
 # Artist rating that rewards more good albums, and the rest of the library sorts
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #40, as specified
 **Date:** 2026-11-21
 **Ticket:** [ALBUM-36](https://github.com/dbeallor/album-ranker/issues/36)
 **Follows:** [matchup-only ratings, one library and an analytics page](2026-11-21-album-34-elo-library-table.md). Where the ticket text and ALBUM-34 as shipped differ, ALBUM-34 wins, as the ticket says.
