@@ -21,7 +21,20 @@ export type AddCatalogAlbumInput = {
   year: Raw;
 };
 
-export type AddCatalogAlbumResult = { ok: true; added: boolean } | { ok: false; message: string };
+/** Why adding a catalog album failed, one code per check. The pages show `ADD_ALBUM_ERRORS[code]`, never text from a URL. */
+export const ADD_ALBUM_ERRORS = {
+  year: "Enter a year from 1900 to 2100.",
+  catalog_id: "That album's catalog id isn't valid.",
+  artist_id: "That album's artist id isn't valid.",
+  title: "That album's title isn't valid.",
+  artist: "That album's artist isn't valid.",
+  cover: "That album's cover isn't valid.",
+  release_year: "That album's release year isn't valid.",
+} as const;
+
+export type AddAlbumErrorCode = keyof typeof ADD_ALBUM_ERRORS;
+
+export type AddCatalogAlbumResult = { ok: true; added: boolean } | { ok: false; code: AddAlbumErrorCode; message: string };
 
 export type RemoveFromLibraryResult =
   | { ok: true; title: string; matchups: number }
@@ -33,7 +46,10 @@ const ARTIST_ID = new RegExp(`^${UUID}(\\+${UUID})*$`, "i");
 const WHOLE_NUMBER = /^\d+$/;
 const MAX_TEXT = 300;
 const MAX_ARTIST_ID = 400;
-const YEAR_MESSAGE = "Enter a year from 1900 to 2100.";
+
+function failure(code: AddAlbumErrorCode): AddCatalogAlbumResult {
+  return { ok: false, code, message: ADD_ALBUM_ERRORS[code] };
+}
 
 function wholeNumber(value: Raw): number | undefined {
   if (typeof value === "number") return Number.isSafeInteger(value) ? value : undefined;
@@ -59,28 +75,28 @@ function blank(value: Raw): boolean {
  */
 export function addCatalogAlbumToLibrary(db: DatabaseSync, input: AddCatalogAlbumInput): AddCatalogAlbumResult {
   const year = wholeNumber(input.year);
-  if (year === undefined || year < 1900 || year > 2100) return { ok: false, message: YEAR_MESSAGE };
+  if (year === undefined || year < 1900 || year > 2100) return failure("year");
 
   const rawCatalogId = text(input.catalogId);
-  if (!CATALOG_ID.test(rawCatalogId)) return { ok: false, message: "That album's catalog id isn't valid." };
+  if (!CATALOG_ID.test(rawCatalogId)) return failure("catalog_id");
   const catalogId = rawCatalogId.toLowerCase();
 
   const rawArtistId = text(input.artistId);
   if (rawArtistId.length > MAX_ARTIST_ID || (rawArtistId !== "" && !ARTIST_ID.test(rawArtistId))) {
-    return { ok: false, message: "That album's artist id isn't valid." };
+    return failure("artist_id");
   }
   const artistId = rawArtistId.toLowerCase();
 
   const title = text(input.title);
   const artist = text(input.artist);
-  if (title === "" || title.length > MAX_TEXT) return { ok: false, message: "That album's title isn't valid." };
-  if (artist === "" || artist.length > MAX_TEXT) return { ok: false, message: "That album's artist isn't valid." };
+  if (title === "" || title.length > MAX_TEXT) return failure("title");
+  if (artist === "" || artist.length > MAX_TEXT) return failure("artist");
 
   const coverUrl = text(input.coverUrl);
-  if (coverUrl !== "" && !isAllowedCoverUrl(coverUrl)) return { ok: false, message: "That album's cover isn't valid." };
+  if (coverUrl !== "" && !isAllowedCoverUrl(coverUrl)) return failure("cover");
 
   const releaseYear = blank(input.releaseYear) ? null : wholeNumber(input.releaseYear);
-  if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) return { ok: false, message: "That album's release year isn't valid." };
+  if (releaseYear === undefined || (releaseYear !== null && (releaseYear < 1 || releaseYear > 2100))) return failure("release_year");
 
   return transaction(db, () => {
     const existing = findAlbumByCatalogId(db, catalogId);

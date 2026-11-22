@@ -30,6 +30,6 @@ export async function addToLibraryAction(formData: FormData): Promise<void> {
     coverUrl,
     year: field(formData, "year"),
   });
-  const params: Record<string, string> = result.ok ? { q, added: catalogId } : { q, error: result.message, item: catalogId };
+  const params: Record<string, string> = result.ok ? { q, added: catalogId } : { q, error: result.code, item: catalogId };
   redirect(`/search?${new URLSearchParams(params)}`);
 }
