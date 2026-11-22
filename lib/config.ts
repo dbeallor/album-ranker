@@ -6,12 +6,16 @@ export type Config = {
   backupDir: string;
   musicbrainzUserAgent: string;
   musicbrainzUrl: string;
+  coverArtArchiveUrl: string;
+  deezerUrl: string;
 };
 
 const DEFAULT_DATABASE_PATH = "./data/album-ranker.db";
 const DEFAULT_BACKUP_DIR = join("~", ".album-ranker", "backups");
 const DEFAULT_MUSICBRAINZ_USER_AGENT = "album-ranker/0.1";
 const DEFAULT_MUSICBRAINZ_URL = "https://musicbrainz.org";
+const DEFAULT_COVER_ART_ARCHIVE_URL = "https://coverartarchive.org";
+const DEFAULT_DEEZER_URL = "https://api.deezer.com";
 
 /** Expands a leading `~` to the home directory. */
 function expandHome(path: string): string {
@@ -48,6 +52,16 @@ export function getConfig(): Config {
     musicbrainzUrl: readSetting(
       "MUSICBRAINZ_URL",
       DEFAULT_MUSICBRAINZ_URL,
+      "Set it to a base URL, or unset it to use the default.",
+    ).trim().replace(/\/+$/, ""),
+    coverArtArchiveUrl: readSetting(
+      "COVER_ART_ARCHIVE_URL",
+      DEFAULT_COVER_ART_ARCHIVE_URL,
+      "Set it to a base URL, or unset it to use the default.",
+    ).trim().replace(/\/+$/, ""),
+    deezerUrl: readSetting(
+      "DEEZER_URL",
+      DEFAULT_DEEZER_URL,
       "Set it to a base URL, or unset it to use the default.",
     ).trim().replace(/\/+$/, ""),
   };

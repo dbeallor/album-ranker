@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { findAlbumByCatalogId } from "@/lib/db/albums";
+import { createAlbum, findAlbumByCatalogId } from "@/lib/db/albums";
 import { memoryDb } from "@/lib/db/test-db";
 
-const state = vi.hoisted(() => ({ db: undefined as unknown }));
+const state = vi.hoisted(() => ({ db: undefined as unknown, resolveCover: vi.fn() }));
 
 vi.mock("@/lib/db/server", () => ({ getDb: () => state.db }));
+vi.mock("@/lib/catalog/server-cover", () => ({ resolveCover: state.resolveCover }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`redirect:${url}`);
@@ -14,6 +15,9 @@ vi.mock("next/navigation", () => ({
 import { addToLibraryAction } from "./actions";
 
 const CATALOG_ID = "11111111-2222-3333-4444-555555555555";
+const DEEZER_COVER = "https://cdn-images.dzcdn.net/images/cover/abc/250x250-000000-80-0-0.jpg";
+
+const db = () => state.db as ReturnType<typeof memoryDb>;
 
 async function redirectOf(action: Promise<void>): Promise<URL> {
   const message = await action.then(
@@ -44,6 +48,8 @@ function form(overrides: Record<string, string> = {}): FormData {
 describe("addToLibraryAction", () => {
   beforeEach(() => {
     state.db = memoryDb();
+    state.resolveCover.mockReset();
+    state.resolveCover.mockResolvedValue(null);
   });
 
   it.each([
@@ -65,5 +71,31 @@ describe("addToLibraryAction", () => {
     expect(url.pathname).toBe("/search");
     expect(Object.fromEntries(url.searchParams)).toEqual(params);
     expect(findAlbumByCatalogId(state.db as ReturnType<typeof memoryDb>, CATALOG_ID) !== undefined).toBe(stored);
+  });
+
+  it.each([
+    { name: "stores the cover the server resolved", resolved: DEEZER_COVER, expected: DEEZER_COVER },
+    { name: "stores no cover when none was found", resolved: null, expected: null },
+  ])("$name", async ({ resolved, expected }) => {
+    state.resolveCover.mockResolvedValue(resolved);
+    await redirectOf(addToLibraryAction(form()));
+
+    expect(state.resolveCover).toHaveBeenCalledWith({ catalogId: CATALOG_ID, title: "Kind of Blue", artist: "Miles Davis" });
+    expect(findAlbumByCatalogId(db(), CATALOG_ID)?.coverUrl).toBe(expected);
+  });
+
+  it("ignores the cover the browser sent", async () => {
+    await redirectOf(addToLibraryAction(form({ coverUrl: DEEZER_COVER })));
+
+    expect(findAlbumByCatalogId(db(), CATALOG_ID)?.coverUrl).toBeNull();
+  });
+
+  it("skips the lookup and keeps the stored cover when the album already exists", async () => {
+    createAlbum(db(), { title: "Kind of Blue", artist: { name: "Miles Davis" }, catalogId: CATALOG_ID, coverUrl: DEEZER_COVER });
+    state.resolveCover.mockResolvedValue("https://coverartarchive.org/other");
+    await redirectOf(addToLibraryAction(form()));
+
+    expect(state.resolveCover).not.toHaveBeenCalled();
+    expect(findAlbumByCatalogId(db(), CATALOG_ID)?.coverUrl).toBe(DEEZER_COVER);
   });
 });

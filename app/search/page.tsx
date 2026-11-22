@@ -85,7 +85,6 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
                         <input type="hidden" name="artist" value={album.artist} />
                         <input type="hidden" name="artistId" value={album.artistId ?? ""} />
                         <input type="hidden" name="releaseYear" value={album.year ?? ""} />
-                        <input type="hidden" name="coverUrl" value={album.coverUrl} />
                         <Cluster align="end" gap={3}>
                           <TextField
                             label="Year in your library"

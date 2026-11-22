@@ -1,5 +1,6 @@
-// Stand-in for the MusicBrainz API, run by playwright.config.ts so browser tests never
-// call the live service. Answers the release-group search with the checked-in fixture.
+// Stand-in for MusicBrainz, the Cover Art Archive and Deezer, run by playwright.config.ts so the app's server
+// never calls a live service. Answers the release-group search with the checked-in fixture, has no cover
+// art, and finds no Deezer album, so the placeholder shows.
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -12,6 +13,16 @@ const server = createServer((request, response) => {
   if (pathname === "/ws/2/release-group") {
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(fixture);
+    return;
+  }
+  if (pathname.startsWith("/release-group/")) {
+    response.writeHead(404);
+    response.end();
+    return;
+  }
+  if (pathname === "/search/album") {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ data: [], total: 0 }));
     return;
   }
   if (pathname === "/") {

@@ -22,7 +22,7 @@ export function Cover({ src, alt, size = DEFAULT_SIZE, fill = false }: { src: st
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- remote cover from Cover Art Archive; needs a plain img for onError
+    // eslint-disable-next-line @next/next/no-img-element -- remote cover (Cover Art Archive or Deezer); needs a plain img for onError
     <img
       src={src}
       alt={alt}

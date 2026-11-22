@@ -29,6 +29,12 @@ const cases: Case[] = [
   { name: "MUSICBRAINZ_URL set is used without a trailing slash", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "http://127.0.0.1:3101/", expected: "http://127.0.0.1:3101" },
   { name: "MUSICBRAINZ_URL empty throws", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "", expected: new Error("MUSICBRAINZ_URL") },
   { name: "MUSICBRAINZ_URL whitespace throws", variable: "MUSICBRAINZ_URL", field: "musicbrainzUrl", env: "   ", expected: new Error("MUSICBRAINZ_URL") },
+  { name: "COVER_ART_ARCHIVE_URL unset gives the default", variable: "COVER_ART_ARCHIVE_URL", field: "coverArtArchiveUrl", env: undefined, expected: "https://coverartarchive.org" },
+  { name: "COVER_ART_ARCHIVE_URL set is used without a trailing slash", variable: "COVER_ART_ARCHIVE_URL", field: "coverArtArchiveUrl", env: "http://127.0.0.1:3101/", expected: "http://127.0.0.1:3101" },
+  { name: "COVER_ART_ARCHIVE_URL empty throws", variable: "COVER_ART_ARCHIVE_URL", field: "coverArtArchiveUrl", env: "", expected: new Error("COVER_ART_ARCHIVE_URL") },
+  { name: "DEEZER_URL unset gives the default", variable: "DEEZER_URL", field: "deezerUrl", env: undefined, expected: "https://api.deezer.com" },
+  { name: "DEEZER_URL set is used without a trailing slash", variable: "DEEZER_URL", field: "deezerUrl", env: "http://127.0.0.1:3101/", expected: "http://127.0.0.1:3101" },
+  { name: "DEEZER_URL empty throws", variable: "DEEZER_URL", field: "deezerUrl", env: "", expected: new Error("DEEZER_URL") },
 ];
 
 describe("getConfig", () => {
@@ -41,6 +47,8 @@ describe("getConfig", () => {
     vi.stubEnv("BACKUP_DIR", undefined);
     vi.stubEnv("MUSICBRAINZ_USER_AGENT", undefined);
     vi.stubEnv("MUSICBRAINZ_URL", undefined);
+    vi.stubEnv("COVER_ART_ARCHIVE_URL", undefined);
+    vi.stubEnv("DEEZER_URL", undefined);
     if (env !== undefined) {
       vi.stubEnv(variable, env);
     }
