@@ -109,8 +109,10 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
 ## Environments and deploy
 
 - Deploy ([ALBUM-14](https://github.com/dbeallor/album-ranker/issues/14)): two AWS environments, staging and production, each its own Terraform root (`infra/envs/staging`, `infra/envs/production`) with its own password and S3 database. Nothing deploys on merge; a human runs it. Full steps are in the README (Deploy to AWS).
+  - URLs: production <https://album-ranker.com>, staging <https://staging.album-ranker.com>. The `*.cloudfront.net` address (output `cloudfront_url`) also works, behind the same login. The domain is registered at GoDaddy; `infra/dns` holds its Route 53 zone.
+  - Once: bootstrap, then `terraform -chdir=infra/dns init -backend-config=backend.hcl` and `apply`, then set the zone's `name_servers` at GoDaddy (README has the clicks) and wait for them to take effect. Each environment's `terraform.tfvars` needs `zone_id` (`terraform -chdir=infra/dns output -raw zone_id`).
   - Build once: `npm ci && npm run build:lambda` (writes `dist/`).
-  - Staging: `terraform -chdir=infra/envs/staging init -backend-config=backend.hcl`, then `terraform -chdir=infra/envs/staging apply`. Outputs: `url`, `password` (`output -raw password`), `data_bucket`.
+  - Staging: `terraform -chdir=infra/envs/staging init -backend-config=backend.hcl`, then `terraform -chdir=infra/envs/staging apply`. Outputs: `url`, `cloudfront_url`, `password` (`output -raw password`), `data_bucket`. The first apply waits for the certificate to validate (rerun `apply` after a timeout).
   - Production: the same two commands in `infra/envs/production`, with the same `dist/`.
   - Agents don't run `terraform apply` or `destroy` without the user's say-so (billable, and it touches their AWS account). `terraform fmt -check` and `terraform validate` are fine.
 - Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)).

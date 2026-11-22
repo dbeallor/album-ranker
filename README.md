@@ -12,7 +12,7 @@ Personal Favorite Album Ranker
 
 ## Deploy to AWS
 
-Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront (HTTPS on a `*.cloudfront.net` address), with the database as one file in a versioned S3 bucket. Idle, both together cost about $0.10 a month.
+Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
 
 Two trade-offs of that choice. After a quiet spell the first request takes 1 to 3 seconds (a cold start). Only one request runs at a time, so a second one that lands mid-request gets a 429 and works on a reload.
 
@@ -20,6 +20,7 @@ Two trade-offs of that choice. After a quiet spell the first request takes 1 to 
 
 - An AWS account, and the AWS CLI with a profile that can create these resources (`aws configure sso` or an access key). The credentials stay on your machine; nothing here stores them.
 - Terraform 1.10 or newer.
+- The domain `album-ranker.com`, registered at GoDaddy. The registration stays there (and so does its renewal); AWS only answers DNS for it.
 - Node 24 and `npm ci`, as for the local app.
 
 Use the profile for every command below (`export AWS_PROFILE=<name>`, and `aws sso login` first if you use SSO).
@@ -28,7 +29,17 @@ Use the profile for every command below (`export AWS_PROFILE=<name>`, and `aws s
 
 1. Create the bucket that holds Terraform's state:
    `terraform -chdir=infra/bootstrap init && terraform -chdir=infra/bootstrap apply`
-2. `terraform -chdir=infra/bootstrap output` prints `state_bucket` and `region`. In `infra/envs/staging` and `infra/envs/production`, copy `backend.hcl.example` to `backend.hcl` and put those two values in it. Then copy `terraform.tfvars.example` to `terraform.tfvars` and edit it: your MusicBrainz User-Agent, and optionally `budget_email` for an alert when the monthly bill passes $5. Keep `region` in `terraform.tfvars` equal to `region` in `backend.hcl`. Both files are gitignored, as is Terraform's state.
+2. `terraform -chdir=infra/bootstrap output` prints `state_bucket` and `region`. In `infra/dns`, `infra/envs/staging` and `infra/envs/production`, copy `backend.hcl.example` to `backend.hcl` and put those two values in it.
+3. Create the DNS zone for the domain:
+   ```
+   terraform -chdir=infra/dns init -backend-config=backend.hcl
+   terraform -chdir=infra/dns apply
+   terraform -chdir=infra/dns output
+   ```
+   This makes a Route 53 hosted zone for `album-ranker.com` and prints its `zone_id` and four `name_servers`. (`infra/dns/terraform.tfvars.example` is optional: its values are the defaults.)
+4. Point the domain at AWS. Both environments need this before their first apply can finish. At GoDaddy: **My Products**, the domain `album-ranker.com`, **DNS**, **Nameservers**, **Change**, **I'll use my own nameservers**, then enter the four name servers from the output (without a trailing dot) and save. Then wait for it to take effect, usually minutes and sometimes a few hours. Check with `dig NS album-ranker.com +short`: it should list the four `awsdns` servers.
+   - Moving the name servers moves *all* DNS for the domain to Route 53. GoDaddy's own DNS records for the domain (email, a website) stop answering, so copy any you still need into the zone first.
+5. In `infra/envs/staging` and `infra/envs/production`, copy `terraform.tfvars.example` to `terraform.tfvars` and edit it: `zone_id` (from `terraform -chdir=infra/dns output -raw zone_id`), your MusicBrainz User-Agent, and optionally `budget_email` for an alert when the monthly bill passes $5. Keep `region` in `terraform.tfvars` equal to `region` in `backend.hcl`. These files are gitignored, as is Terraform's state.
 
 The state holds the generated passwords, so keep the state bucket private (the bootstrap makes it so).
 
@@ -40,7 +51,7 @@ terraform -chdir=infra/envs/staging init -backend-config=backend.hcl
 terraform -chdir=infra/envs/staging apply
 ```
 
-`build:lambda` writes `dist/` (the function and the build files). The first apply takes a few minutes while CloudFront comes up. Then:
+`build:lambda` writes `dist/` (the function and the build files). The first apply of an environment takes a few minutes while CloudFront comes up, and it **waits for the HTTPS certificate to validate**, which only happens once the name servers at GoDaddy have taken effect. If that is still pending, the apply sits on `aws_acm_certificate_validation` for up to 75 minutes and then fails with a timeout. Nothing is lost: check the name servers with `dig NS album-ranker.com +short` and run `terraform apply` again, which picks up where it stopped. Then:
 
 ```
 terraform -chdir=infra/envs/staging output url
@@ -48,7 +59,9 @@ terraform -chdir=infra/envs/staging output -raw password
 terraform -chdir=infra/envs/staging output data_bucket
 ```
 
-Open the `url` and log in with the `password` (24 random characters). The cookie lasts 90 days. Ten wrong tries from one address lock it out for 15 minutes.
+Open the `url` (<https://staging.album-ranker.com>) and log in with the `password` (24 random characters). The cookie lasts 90 days and belongs to that host alone, so staging and production sign in separately. Ten wrong tries from one address lock it out for 15 minutes.
+
+The `*.cloudfront.net` address (`output cloudfront_url`) still works and shows the same login page, behind the same password. It is just the unfriendly name for the same copy, with its own cookie.
 
 - **If the first apply fails on concurrency:** a new AWS account can have a Lambda quota too low to reserve any. Set `reserved_concurrency = -1` in `terraform.tfvars` and apply again. The function can then run more than one copy, and the conditional write (`If-Match`) on the database file is the only thing that stops two copies saving over each other: the loser's request fails and nothing is overwritten.
 - **Each apply replaces the build files** in the assets bucket and removes the old ones. A page left open across a deploy may need a reload.
@@ -62,7 +75,7 @@ terraform -chdir=infra/envs/production init -backend-config=backend.hcl
 terraform -chdir=infra/envs/production apply
 ```
 
-Production has its own `url`, `password` and `data_bucket`. Staging data never reaches it.
+Production is <https://album-ranker.com>, with its own `url`, `password` and `data_bucket`. Staging data never reaches it. Both send HSTS (one year) for their own host only, so once a browser has seen an address over HTTPS it refuses plain HTTP for it.
 
 ### New password
 
@@ -98,6 +111,8 @@ The data bucket refuses to be destroyed, so a stray `terraform destroy` can't de
 4. `terraform -chdir=infra/envs/<env> destroy`
 
 Put the lifecycle block back afterwards (`git checkout infra/modules/app/main.tf`). The state bucket from the bootstrap has the same protection; remove it the same way, after both environments are gone.
+
+The DNS zone is protected too (`prevent_destroy` in `infra/dns/main.tf`), and destroying an environment leaves it alone. Remove it last, after both environments are destroyed, and only for good: a new zone gets new name servers, so the domain stays dead until they are changed at GoDaddy again. Delete the `lifecycle` block in `infra/dns/main.tf`, run `terraform -chdir=infra/dns destroy`, and in GoDaddy choose **Nameservers**, **Change**, **GoDaddy Nameservers** to get its own DNS back. The registration itself is never touched by any of this.
 
 ## Back up and restore your data
 

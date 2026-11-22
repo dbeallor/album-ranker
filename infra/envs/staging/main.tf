@@ -35,10 +35,30 @@ provider "aws" {
   }
 }
 
+# CloudFront only takes a certificate from us-east-1, whatever `region` is.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      project     = "album-ranker"
+      environment = "staging"
+    }
+  }
+}
+
 module "app" {
   source = "../../modules/app"
 
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
   environment            = "staging"
+  domain_name            = var.domain_name
+  zone_id                = var.zone_id
   dist_dir               = "${path.root}/../../../dist"
   musicbrainz_user_agent = var.musicbrainz_user_agent
   budget_email           = var.budget_email

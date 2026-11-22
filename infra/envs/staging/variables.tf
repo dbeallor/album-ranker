@@ -20,3 +20,14 @@ variable "reserved_concurrency" {
   type        = number
   default     = 1
 }
+
+variable "domain_name" {
+  description = "The address of this environment. Must be the zone's domain or a name under it."
+  type        = string
+  default     = "staging.album-ranker.com"
+}
+
+variable "zone_id" {
+  description = "The Route 53 hosted zone of the domain. Copy it from `terraform -chdir=infra/dns output -raw zone_id`."
+  type        = string
+}

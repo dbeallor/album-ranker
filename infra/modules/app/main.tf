@@ -37,6 +37,9 @@ locals {
     ttf   = "font/ttf"
     otf   = "font/otf"
   }
+
+  # The fixed hosted zone ID every CloudFront alias record points at.
+  cloudfront_zone_id = "Z2FDTNDATAQYW2"
 }
 
 # Generated here so no secret is typed into a file. They live in the encrypted state and the function's configuration.
@@ -333,6 +336,74 @@ resource "aws_lambda_function_url" "app" {
   authorization_type = "NONE"
 }
 
+# ---------------------------------------------------------------- domain name and certificate
+
+# CloudFront only takes a certificate from us-east-1, so this one uses the aliased provider the environment passes in.
+resource "aws_acm_certificate" "app" {
+  provider = aws.us_east_1
+
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  # A replaced certificate has to exist before the distribution lets go of the old one.
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Proves to ACM that this account owns the name, with records in the zone. allow_overwrite lets a rerun take over a
+# record left by an earlier attempt.
+resource "aws_route53_record" "certificate_validation" {
+  for_each = {
+    for option in aws_acm_certificate.app.domain_validation_options : option.domain_name => {
+      name   = option.resource_record_name
+      record = option.resource_record_value
+      type   = option.resource_record_type
+    }
+  }
+
+  zone_id         = var.zone_id
+  name            = each.value.name
+  type            = each.value.type
+  records         = [each.value.record]
+  ttl             = 60
+  allow_overwrite = true
+}
+
+# Waits until ACM has seen the records. The first apply of an environment blocks here (up to 75 minutes), and only
+# succeeds once the name servers at the registrar point at the zone.
+resource "aws_acm_certificate_validation" "app" {
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.app.arn
+  validation_record_fqdns = [for record in aws_route53_record.certificate_validation : record.fqdn]
+}
+
+# The address points at CloudFront, for IPv4 and IPv6.
+resource "aws_route53_record" "app_a" {
+  zone_id = var.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = local.cloudfront_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "app_aaaa" {
+  zone_id = var.zone_id
+  name    = var.domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = local.cloudfront_zone_id
+    evaluate_target_health = false
+  }
+}
+
 # ---------------------------------------------------------------- CloudFront
 
 data "aws_cloudfront_cache_policy" "disabled" {
@@ -374,12 +445,43 @@ resource "aws_cloudfront_function" "forward_host" {
   JS
 }
 
+# Security headers on every response, the app's pages and the build files alike. HSTS covers this host only (no
+# includeSubdomains, no preload), so staging and production stay independent of each other.
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name    = "${local.name}-security"
+  comment = "HSTS, nosniff, referrer policy and frame denial"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = false
+      preload                    = false
+      override                   = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
   is_ipv6_enabled = true
   http_version    = "http2and3"
   price_class     = "PriceClass_100"
   comment         = local.name
+  aliases         = [var.domain_name]
 
   origin {
     origin_id                = "assets"
@@ -408,13 +510,14 @@ resource "aws_cloudfront_distribution" "app" {
 
   # Everything that isn't a build file goes to the function, uncached.
   default_cache_behavior {
-    target_origin_id         = "app"
-    viewer_protocol_policy   = "redirect-to-https"
-    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods           = ["GET", "HEAD"]
-    compress                 = true
-    cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    target_origin_id           = "app"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
 
     function_association {
       event_type   = "viewer-request"
@@ -430,6 +533,8 @@ resource "aws_cloudfront_distribution" "app" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
   restrictions {
@@ -439,7 +544,9 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.app.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 

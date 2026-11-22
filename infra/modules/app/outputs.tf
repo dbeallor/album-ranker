@@ -1,5 +1,10 @@
 output "url" {
-  description = "The address of this environment."
+  description = "The address of this environment, on its own domain."
+  value       = "https://${var.domain_name}"
+}
+
+output "cloudfront_url" {
+  description = "CloudFront's own address for this environment. It still works, behind the same login."
   value       = "https://${aws_cloudfront_distribution.app.domain_name}"
 }
 

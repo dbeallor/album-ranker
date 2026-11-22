@@ -1,6 +1,11 @@
 output "url" {
-  description = "The address of this environment."
+  description = "The address of this environment, on its own domain."
   value       = module.app.url
+}
+
+output "cloudfront_url" {
+  description = "CloudFront's own address. It still works, behind the same login."
+  value       = module.app.cloudfront_url
 }
 
 output "password" {

@@ -1,5 +1,12 @@
 # Copy to terraform.tfvars (gitignored) and edit.
 region                 = "us-east-1"
+
+# The Route 53 zone of album-ranker.com: `terraform -chdir=infra/dns output -raw zone_id`.
+zone_id = "Z0123456789ABCDEFGHIJ"
+
+# The address of this environment; it must be album-ranker.com or a name under it.
+domain_name = "staging.album-ranker.com"
+
 musicbrainz_user_agent = "album-ranker/0.1 (you@example.com)"
 
 # Email for a monthly cost alert above 5 USD; leave empty for none.

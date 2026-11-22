@@ -8,6 +8,26 @@ variable "environment" {
   }
 }
 
+variable "domain_name" {
+  description = "The address of this environment, e.g. album-ranker.com or staging.album-ranker.com. It must be the zone's domain or a name under it."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$", var.domain_name))
+    error_message = "domain_name must be a lower-case host name such as album-ranker.com."
+  }
+}
+
+variable "zone_id" {
+  description = "The Route 53 hosted zone that holds domain_name: `terraform -chdir=infra/dns output -raw zone_id`."
+  type        = string
+
+  validation {
+    condition     = can(regex("^Z[A-Z0-9]+$", var.zone_id))
+    error_message = "zone_id must be a Route 53 hosted zone ID such as Z0123456789ABCDEFGHIJ."
+  }
+}
+
 variable "dist_dir" {
   description = "The folder `npm run build:lambda` writes: lambda/, static/ and build-info.json."
   type        = string
