@@ -33,8 +33,7 @@ export function loadMatchupState(
 ): { pair: { a: AlbumCard; b: AlbumCard } | null; count: number; ratings: Map<number, number> } {
   const entries = listLibrary(db);
   const { ratings, used } = computeRatings({ albumIds: entries.map((entry) => entry.albumId), matchups: listMatchups(db) });
-  const years = new Map(entries.map((entry) => [entry.albumId, entry.year]));
-  const albums = [...ratings].map(([id, rating]) => ({ id, rating, year: years.get(id)! }));
+  const albums = [...ratings].map(([id, rating]) => ({ id, rating }));
 
   const picked = pickMatchup({ albums, matchups: used, avoid, random });
   const a = picked && loadAlbumCard(db, picked.a);

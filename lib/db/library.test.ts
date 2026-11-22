@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addToLibrary, findLibraryEntryBySource, getLibraryEntry, listLibrary, setLibraryYear } from "./library";
+import { createAlbum } from "./albums";
+import { addToLibrary, findLibraryEntryBySource, getLibraryEntry, libraryYearsByCatalogId, listLibrary, setLibraryYear } from "./library";
 import { errorCode, memoryDb, seedAlbums } from "./test-db";
 
 const SOURCE = { title: "Fake Album", artist: "Fake Artist", year: 1975 };
@@ -75,5 +76,16 @@ describe("library", () => {
     expect(errorCode(() => setLibraryYear(db, 999, 1980))).toBe("not_found");
     expect(errorCode(() => setLibraryYear(db, b, 1980, SOURCE))).toBe("invalid_input");
     expect(getLibraryEntry(db, b)!.year).toBe(1976);
+  });
+
+  it("maps catalog ids to library years, leaving out albums not in the library and unknown ids", () => {
+    const db = memoryDb();
+    const make = (catalogId: string) => createAlbum(db, { title: catalogId, artist: { name: catalogId }, catalogId }).id;
+    const inLibrary = make("cat-in");
+    make("cat-out");
+    addToLibrary(db, { albumId: inLibrary, year: 1964 });
+
+    expect(libraryYearsByCatalogId(db, ["cat-in", "cat-out", "cat-none"])).toEqual(new Map([["cat-in", 1964]]));
+    expect(libraryYearsByCatalogId(db, [])).toEqual(new Map());
   });
 });
