@@ -1,13 +1,23 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./lib/security-headers";
 
 // Links from before the library and analytics pages. Query values pass through to the destination.
 // A `has` rule comes before the plain `/artists` rule so a decade picks its scope.
 const nextConfig: NextConfig = {
   // A self-contained server in .next/standalone, which `npm run build:lambda` packages for AWS Lambda.
   output: "standalone",
+  poweredByHeader: false,
   // Also set by proxy.ts on the responses it answers itself.
   async headers() {
-    return [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          ...securityHeaders({ development: process.env.NODE_ENV === "development" }),
+        ],
+      },
+    ];
   },
   async redirects() {
     return [
