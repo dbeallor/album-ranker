@@ -81,9 +81,13 @@ Open <http://localhost:3000/matchups> to answer "which of these two do you like 
 
 Matchups are the only thing that rates an album. Ratings are never stored: every request replays your matchup answers, oldest first, as Elo with K = 32, starting every library album at 1500. Details are in [the ALBUM-7 spec](docs/superpowers/specs/2026-11-21-album-7-elo-matchup.md) and the ALBUM-34 spec above.
 
+Beside the matchup count, the page shows how far you are toward an approximately right overall order, as "N% there · about R more to go" ("Target reached" at 100%). It is hidden with fewer than two library albums. How it is measured is in [the ALBUM-42 spec](docs/superpowers/specs/2026-11-22-album-42-ranking-progress.md).
+
 ## Analytics
 
 Open <http://localhost:3000/analytics> for album and artist rankings by lifetime, era (before 1960, 1960 to 1979, 1980 to 1999, 2000 on), decade or year, and summary tables by year, decade and era. An artist's score is 1500 + 100 × ln(1 + excess / 100), where excess is the total of each album's points above 1500, so more good albums raise it with diminishing returns and albums at or below 1500 add nothing. Open an artist to see their albums with year, rating and win-loss-tie record. Old `/artists`, `/years` and `/decades` links redirect here or to the library. The view tabs are labeled "Show" (Albums, Artists, Years, Decades, Eras) and the scope tabs and pickers "Period"; a period with no albums offers Show lifetime. The home page shows how many albums and matchups you have and links here.
+
+A "Ranking progress" panel sits above the Show tabs on every view. It is library-wide and ignores the period. It shows the percent, "N of about M matchups", and the order confidence (the expected share of album pairs in the right order) against its 90% target, with a Play matchups link. The goal is the matchups played plus an estimate of how many more it takes to reach the target, so adding albums lowers the percent and playing matchups raises it. With fewer than two albums it shows an empty state. Details are in [the ALBUM-42 spec](docs/superpowers/specs/2026-11-22-album-42-ranking-progress.md).
 
 ## Import the spreadsheet
 
