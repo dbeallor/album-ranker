@@ -4,6 +4,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { safeEqual } from "@/lib/auth/compare";
+import { logGate } from "@/lib/auth/gate-log";
 import { clientIp, loginLimiter, VIEWER_IP_HEADER } from "@/lib/auth/login-limiter";
 import { safeNext } from "@/lib/auth/redirect-target";
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
@@ -25,11 +26,15 @@ export async function loginAction(formData: FormData): Promise<void> {
   if (gate.appPassword === null) redirect(next); // no gate configured: nothing to log in to
 
   const ip = clientIp((await headers()).get(VIEWER_IP_HEADER));
-  if (loginLimiter.isLocked(ip)) redirect(loginUrl(next, "locked"));
+  if (loginLimiter.isLocked(ip)) {
+    logGate({ event: "login-locked", ip });
+    redirect(loginUrl(next, "locked"));
+  }
 
   const password = formData.get("password");
   if (typeof password !== "string" || !safeEqual(password, gate.appPassword)) {
-    loginLimiter.recordFailure(ip);
+    const locked = loginLimiter.recordFailure(ip);
+    logGate(locked ? { event: "login-failed", ip, locked: true } : { event: "login-failed", ip });
     await new Promise((resolve) => setTimeout(resolve, FAILURE_PAUSE_MS));
     redirect(loginUrl(next, "wrong"));
   }

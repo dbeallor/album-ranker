@@ -12,6 +12,7 @@ import { TextField } from "@/components/ui/text-field";
 import { searchAlbums } from "@/lib/catalog/search";
 import { libraryYearsByCatalogId } from "@/lib/db/library";
 import { getDb } from "@/lib/db/server";
+import { ADD_ALBUM_ERRORS, type AddAlbumErrorCode } from "@/lib/library-service";
 import { addToLibraryAction } from "./actions";
 import styles from "./page.module.css";
 
@@ -34,7 +35,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
 
   const addedId = first(params.added);
   const added = addedId === "" ? undefined : albums.find((album) => album.catalogId === addedId && libraryYears.has(album.catalogId));
-  const errorMessage = first(params.error);
+  const errorCode = first(params.error);
+  const errorMessage = Object.hasOwn(ADD_ALBUM_ERRORS, errorCode) ? ADD_ALBUM_ERRORS[errorCode as AddAlbumErrorCode] : "";
   const errorItem = first(params.item);
 
   return (

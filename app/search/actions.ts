@@ -5,7 +5,7 @@ import { resolveCover } from "@/lib/catalog/server-cover";
 import { findAlbumByCatalogId } from "@/lib/db/albums";
 import { requireSession } from "@/lib/auth/require-session";
 import { getDb } from "@/lib/db/server";
-import { addCatalogAlbumToLibrary, validateCatalogAlbum, validateLibraryYear } from "@/lib/library-service";
+import { addCatalogAlbumToLibrary, type AddAlbumErrorCode, validateCatalogAlbum, validateLibraryYear } from "@/lib/library-service";
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -18,11 +18,11 @@ export async function addToLibraryAction(formData: FormData): Promise<void> {
   const catalogId = field(formData, "catalogId");
   const db = getDb();
   const redirectBack = (params: Record<string, string>): never => redirect(`/search?${new URLSearchParams({ q, ...params })}`);
-  const fail = (message: string): never => redirectBack({ error: message, item: catalogId });
+  const fail = (code: AddAlbumErrorCode): never => redirectBack({ error: code, item: catalogId });
 
   // Check the form before asking the Cover Art Archive or Deezer for anything.
   const year = validateLibraryYear(field(formData, "year"));
-  if (!year.ok) return fail(year.message);
+  if (!year.ok) return fail(year.code);
   const checked = validateCatalogAlbum({
     catalogId,
     title: field(formData, "title"),
@@ -30,7 +30,7 @@ export async function addToLibraryAction(formData: FormData): Promise<void> {
     artistId: field(formData, "artistId"),
     releaseYear: field(formData, "releaseYear"),
   });
-  if (!checked.ok) return fail(checked.message);
+  if (!checked.ok) return fail(checked.code);
   const album = checked.album;
 
   // The server picks the cover; the browser's `coverUrl` is ignored. An album already stored keeps its cover.
@@ -38,5 +38,5 @@ export async function addToLibraryAction(formData: FormData): Promise<void> {
     ? null
     : await resolveCover({ catalogId: album.catalogId, title: album.title, artist: album.artist });
   const result = addCatalogAlbumToLibrary(db, { ...album, coverUrl, year: year.year });
-  return result.ok ? redirectBack({ added: catalogId }) : fail(result.message);
+  return result.ok ? redirectBack({ added: catalogId }) : fail(result.code);
 }

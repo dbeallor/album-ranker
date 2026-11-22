@@ -7,15 +7,34 @@ import { getLibraryEntry } from "@/lib/db/library";
 import { getDb } from "@/lib/db/server";
 import type { CatalogCandidate } from "@/lib/db/types";
 import { defaultSearchText, rankStoredCandidates, searchForReview } from "@/lib/import/match";
+import { ADD_ALBUM_ERRORS, type AddAlbumErrorCode } from "@/lib/library-service";
 import { openInReviewOrder } from "@/lib/import/review-order";
 import type { CatalogSearch } from "@/lib/import/types";
 import { chooseAlbumAction, keepManualAction, skipAction } from "./actions";
 
 type Param = string | string[] | undefined;
-type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; done?: Param; already?: Param; moved?: Param }>;
+type SearchParams = Promise<{ search?: Param; q?: Param; error?: Param; item?: Param; album?: Param; done?: Param; already?: Param; moved?: Param }>;
 
 function first(param: Param): string {
   return (Array.isArray(param) ? param[0] : param) ?? "";
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  not_found: "That review item could not be found.",
+  missing_details: "That album is missing its catalog details.",
+  invalid: "That album couldn't be saved. Check its details and try again.",
+};
+
+/** The message for an action's `error` code, or null for a code the app didn't send. `in_library` names the album from the database. */
+function errorText(db: DatabaseSync, code: string, albumParam: string): string | null {
+  if (code === "in_library") {
+    const albumId = /^\d+$/.test(albumParam) ? Number(albumParam) : null;
+    const album = albumId === null || !Number.isSafeInteger(albumId) ? undefined : getAlbum(db, albumId);
+    const entry = album && getLibraryEntry(db, album.id);
+    return album && entry ? `${album.title} is already in your library (${entry.year}).` : "That album is already in your library.";
+  }
+  if (Object.hasOwn(ERROR_MESSAGES, code)) return ERROR_MESSAGES[code];
+  return Object.hasOwn(ADD_ALBUM_ERRORS, code) ? ADD_ALBUM_ERRORS[code as AddAlbumErrorCode] : null;
 }
 
 function withLibraryYear(db: DatabaseSync, candidate: CatalogCandidate): CandidateView {
@@ -92,7 +111,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Searc
   }
 
   const errorItemId = Number(first(params.item));
-  const errorMessage = first(params.error) || null;
+  const errorMessage = errorText(db, first(params.error), first(params.album));
 
   const items: ReviewItemView[] = open.map((item) => {
     const isSearched = item === searched;

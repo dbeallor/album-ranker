@@ -4,7 +4,7 @@ import { createAlbum, findAlbumByCatalogId, getAlbum, listAlbums } from "./db/al
 import { getLibraryEntry, listLibrary } from "./db/library";
 import { countMatchups, listMatchups, recordMatchup } from "./db/matchups";
 import { memoryDb } from "./db/test-db";
-import { addCatalogAlbumToLibrary, removeFromLibrary, validateCatalogAlbum, validateLibraryYear, type AddCatalogAlbumInput } from "./library-service";
+import { ADD_ALBUM_ERRORS, addCatalogAlbumToLibrary, removeFromLibrary, validateCatalogAlbum, validateLibraryYear, type AddAlbumErrorCode, type AddCatalogAlbumInput } from "./library-service";
 import { computeRatings } from "./elo/replay";
 import { loadRatings } from "./ratings";
 
@@ -108,7 +108,7 @@ describe("addCatalogAlbumToLibrary", () => {
     { name: "missing", year: null },
     { name: "text", year: "nineteen" },
   ])("refuses the year $name and writes nothing", ({ year }) => {
-    expect(addCatalogAlbumToLibrary(db, input({ year }))).toEqual({ ok: false, message: "Enter a year from 1900 to 2100." });
+    expect(addCatalogAlbumToLibrary(db, input({ year }))).toEqual({ ok: false, code: "year", message: "Enter a year from 1900 to 2100." });
     expect(listAlbums(db)).toEqual([]);
   });
 
@@ -129,31 +129,31 @@ describe("addCatalogAlbumToLibrary", () => {
   });
 
   it.each([
-    { name: "a catalog id that is too short", overrides: { catalogId: "1111" } },
-    { name: "a catalog id with other characters", overrides: { catalogId: "zzzzzzzz-2222-3333-4444-555555555555" } },
-    { name: "a missing catalog id", overrides: { catalogId: null } },
-    { name: "an empty title", overrides: { title: "   " } },
-    { name: "a title over 300 characters", overrides: { title: "t".repeat(301) } },
-    { name: "an empty artist", overrides: { artist: "" } },
-    { name: "an artist over 300 characters", overrides: { artist: "a".repeat(301) } },
-    { name: "a cover from another host", overrides: { coverUrl: "https://example.com/cover.jpg" } },
-    { name: "a cover over plain http", overrides: { coverUrl: "http://coverartarchive.org/x" } },
-    { name: "a cover on a look-alike of the CAA host", overrides: { coverUrl: "https://coverartarchive.org.evil.com/x" } },
-    { name: "a cover on a look-alike of the Deezer host", overrides: { coverUrl: "https://cdn-images.dzcdn.net.evil.com/x.jpg" } },
-    { name: "a Deezer cover over plain http", overrides: { coverUrl: "http://cdn-images.dzcdn.net/x.jpg" } },
-    { name: "a cover over 300 characters", overrides: { coverUrl: `https://coverartarchive.org/${"x".repeat(300)}` } },
-    { name: "a fractional release year", overrides: { releaseYear: "1959.5" } },
-    { name: "a text release year", overrides: { releaseYear: "soon" } },
-    { name: "a release year of 0", overrides: { releaseYear: 0 } },
-    { name: "a release year of 2101", overrides: { releaseYear: "2101" } },
-    { name: "a huge release year", overrides: { releaseYear: "99999999999999999999" } },
-    { name: "an artist id that is not an id", overrides: { artistId: "artist-1" } },
-    { name: "an artist id with a trailing plus", overrides: { artistId: `${ARTIST_ID}+` } },
-    { name: "an artist id with a bad second id", overrides: { artistId: `${ARTIST_ID}+nope` } },
-    { name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") } },
-  ])("refuses $name and writes nothing", ({ overrides }) => {
+    { code: "catalog_id", name: "a catalog id that is too short", overrides: { catalogId: "1111" } },
+    { code: "catalog_id", name: "a catalog id with other characters", overrides: { catalogId: "zzzzzzzz-2222-3333-4444-555555555555" } },
+    { code: "catalog_id", name: "a missing catalog id", overrides: { catalogId: null } },
+    { code: "title", name: "an empty title", overrides: { title: "   " } },
+    { code: "title", name: "a title over 300 characters", overrides: { title: "t".repeat(301) } },
+    { code: "artist", name: "an empty artist", overrides: { artist: "" } },
+    { code: "artist", name: "an artist over 300 characters", overrides: { artist: "a".repeat(301) } },
+    { code: "cover", name: "a cover from another host", overrides: { coverUrl: "https://example.com/cover.jpg" } },
+    { code: "cover", name: "a cover over plain http", overrides: { coverUrl: "http://coverartarchive.org/x" } },
+    { code: "cover", name: "a cover on a look-alike of the CAA host", overrides: { coverUrl: "https://coverartarchive.org.evil.com/x" } },
+    { code: "cover", name: "a cover on a look-alike of the Deezer host", overrides: { coverUrl: "https://cdn-images.dzcdn.net.evil.com/x.jpg" } },
+    { code: "cover", name: "a Deezer cover over plain http", overrides: { coverUrl: "http://cdn-images.dzcdn.net/x.jpg" } },
+    { code: "cover", name: "a cover over 300 characters", overrides: { coverUrl: `https://coverartarchive.org/${"x".repeat(300)}` } },
+    { code: "release_year", name: "a fractional release year", overrides: { releaseYear: "1959.5" } },
+    { code: "release_year", name: "a text release year", overrides: { releaseYear: "soon" } },
+    { code: "release_year", name: "a release year of 0", overrides: { releaseYear: 0 } },
+    { code: "release_year", name: "a release year of 2101", overrides: { releaseYear: "2101" } },
+    { code: "release_year", name: "a huge release year", overrides: { releaseYear: "99999999999999999999" } },
+    { code: "artist_id", name: "an artist id that is not an id", overrides: { artistId: "artist-1" } },
+    { code: "artist_id", name: "an artist id with a trailing plus", overrides: { artistId: `${ARTIST_ID}+` } },
+    { code: "artist_id", name: "an artist id with a bad second id", overrides: { artistId: `${ARTIST_ID}+nope` } },
+    { code: "artist_id", name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") } },
+  ])("refuses $name with the code $code and writes nothing", ({ code, overrides }) => {
     const result = addCatalogAlbumToLibrary(db, input(overrides));
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({ ok: false, code, message: ADD_ALBUM_ERRORS[code as AddAlbumErrorCode] });
     expect(listAlbums(db)).toEqual([]);
     expect(listLibrary(db)).toEqual([]);
   });
@@ -164,29 +164,24 @@ describe("validateCatalogAlbum", () => {
     const { catalogId, title, artist, artistId, releaseYear } = input(overrides);
     return { catalogId, title, artist, artistId, releaseYear };
   };
-  const CATALOG = "That album's catalog id isn't valid.";
-  const ARTIST_ID_MESSAGE = "That album's artist id isn't valid.";
-  const TITLE = "That album's title isn't valid.";
-  const ARTIST = "That album's artist isn't valid.";
-  const RELEASE_YEAR = "That album's release year isn't valid.";
 
   it.each([
-    { name: "a catalog id that is not a UUID", overrides: { catalogId: "x" }, message: CATALOG },
-    { name: "a missing catalog id", overrides: { catalogId: null }, message: CATALOG },
-    { name: "an artist id that is not UUIDs", overrides: { artistId: "artist-1" }, message: ARTIST_ID_MESSAGE },
-    { name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") }, message: ARTIST_ID_MESSAGE },
-    { name: "an empty title", overrides: { title: "  " }, message: TITLE },
-    { name: "a title of 301 characters", overrides: { title: "t".repeat(301) }, message: TITLE },
-    { name: "an empty artist", overrides: { artist: "" }, message: ARTIST },
-    { name: "an artist of 301 characters", overrides: { artist: "a".repeat(301) }, message: ARTIST },
-    { name: "a release year of 0", overrides: { releaseYear: "0" }, message: RELEASE_YEAR },
-    { name: "a release year of 99999", overrides: { releaseYear: "99999" }, message: RELEASE_YEAR },
-    { name: "a release year that is text", overrides: { releaseYear: "abc" }, message: RELEASE_YEAR },
-    { name: "a release year with a fraction", overrides: { releaseYear: "1959.5" }, message: RELEASE_YEAR },
-    { name: "a bad catalog id and a bad title (the catalog id is reported)", overrides: { catalogId: "x", title: "" }, message: CATALOG },
-    { name: "a bad title and a bad release year (the title is reported)", overrides: { title: "", releaseYear: "abc" }, message: TITLE },
-  ])("refuses $name", ({ overrides, message }) => {
-    expect(validateCatalogAlbum(fields(overrides))).toEqual({ ok: false, message });
+    { name: "a catalog id that is not a UUID", overrides: { catalogId: "x" }, code: "catalog_id" },
+    { name: "a missing catalog id", overrides: { catalogId: null }, code: "catalog_id" },
+    { name: "an artist id that is not UUIDs", overrides: { artistId: "artist-1" }, code: "artist_id" },
+    { name: "an artist id over 400 characters", overrides: { artistId: Array(12).fill(ARTIST_ID).join("+") }, code: "artist_id" },
+    { name: "an empty title", overrides: { title: "  " }, code: "title" },
+    { name: "a title of 301 characters", overrides: { title: "t".repeat(301) }, code: "title" },
+    { name: "an empty artist", overrides: { artist: "" }, code: "artist" },
+    { name: "an artist of 301 characters", overrides: { artist: "a".repeat(301) }, code: "artist" },
+    { name: "a release year of 0", overrides: { releaseYear: "0" }, code: "release_year" },
+    { name: "a release year of 99999", overrides: { releaseYear: "99999" }, code: "release_year" },
+    { name: "a release year that is text", overrides: { releaseYear: "abc" }, code: "release_year" },
+    { name: "a release year with a fraction", overrides: { releaseYear: "1959.5" }, code: "release_year" },
+    { name: "a bad catalog id and a bad title (the catalog id is reported)", overrides: { catalogId: "x", title: "" }, code: "catalog_id" },
+    { name: "a bad title and a bad release year (the title is reported)", overrides: { title: "", releaseYear: "abc" }, code: "title" },
+  ])("refuses $name", ({ overrides, code }) => {
+    expect(validateCatalogAlbum(fields(overrides))).toEqual({ ok: false, code, message: ADD_ALBUM_ERRORS[code as AddAlbumErrorCode] });
   });
 
   it.each([
@@ -232,7 +227,7 @@ describe("validateLibraryYear", () => {
   ])("$name", ({ value, ok }) => {
     const result = validateLibraryYear(value);
     expect(result.ok).toBe(ok);
-    if (!result.ok) expect(result.message).toBe("Enter a year from 1900 to 2100.");
+    if (!result.ok) expect(result).toEqual({ ok: false, code: "year", message: "Enter a year from 1900 to 2100." });
   });
 });
 
