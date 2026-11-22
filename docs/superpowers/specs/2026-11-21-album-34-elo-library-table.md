@@ -1,6 +1,7 @@
 # Matchup-only ratings, one library, and an analytics page
 
-**Status:** Draft (second revision after "changes 34")
+**Status:** Shipped
+**Shipped:** in PR #39, as specified
 **Date:** 2026-11-21
 **Ticket:** [ALBUM-34](https://github.com/dbeallor/album-ranker/issues/34)
 **Follows:** [Elo rating engine and matchup screen](2026-11-21-album-7-elo-matchup.md), [protect the local SQLite data](2026-11-21-album-24-protect-sqlite-data.md). Replaces [per-year ranking screen](2026-11-21-album-6-year-ranking-screen.md) and [decade top 25 lists](2026-11-21-album-9-decade-top-25.md).
