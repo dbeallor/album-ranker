@@ -70,6 +70,27 @@ describe("the Cover Art Archive check", () => {
   });
 });
 
+describe("input the browser could have forged", () => {
+  it.each([
+    { name: "a catalog id with path characters", query: { ...ALBUM, catalogId: "../../etc/passwd" } },
+    { name: "an empty catalog id", query: { ...ALBUM, catalogId: "" } },
+    { name: "a title over 300 characters", query: { ...ALBUM, title: "t".repeat(301) } },
+    { name: "an artist over 300 characters", query: { ...ALBUM, artist: "a".repeat(301) } },
+  ])("makes no request for $name", async ({ query }) => {
+    const { resolveCover, fetchMock } = setup(noCover);
+
+    expect(await resolveCover(query)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lower-cases the catalog id in the CAA URL", async () => {
+    const { resolveCover } = setup(new Response(null, { status: 307 }));
+
+    const upper = "ABCDEF12-2222-3333-4444-555555555555";
+    expect(await resolveCover({ ...ALBUM, catalogId: upper })).toBe(`https://coverartarchive.org/release-group/${upper.toLowerCase()}/front-250`);
+  });
+});
+
 describe("the Deezer fallback", () => {
   it("takes the cover of a close match when CAA answers 404", async () => {
     const { resolveCover, deezerCalls } = setup(noCover, json({ data: [deezerAlbum("Kind of Blue (Legacy Edition)", "Miles Davis")] }));

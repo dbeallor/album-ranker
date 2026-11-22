@@ -5,6 +5,8 @@ const DEEZER_SEARCH_URL = "https://api.deezer.com/search/album";
 const DEEZER_RESULT_LIMIT = 10;
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_COVER_URL_LENGTH = 300;
+const MAX_NAME_LENGTH = 300;
+const CATALOG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Hosts a stored cover may come from: the Cover Art Archive and the two the Deezer CDN serves covers from. */
 const COVER_HOSTS = new Set(["coverartarchive.org", "cdn-images.dzcdn.net", "e-cdns-images.dzcdn.net"]);
@@ -59,7 +61,8 @@ function deezerQuery(title: string, artist: string): string {
 
 /**
  * Builds `resolveCover`, which gives the cover to store for a catalog album: the Cover Art Archive's when it
- * has one, else Deezer's cover for an album with the same title and artist, else null. Never throws.
+ * has one, else Deezer's cover for an album with the same title and artist, else null. Never throws. A catalog
+ * id that isn't a UUID, or a title or artist over 300 characters, gets null without a request: the browser can send anything.
  */
 export function createResolveCover(deps: CoverArtDeps) {
   const log = deps.log ?? ((message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])));
@@ -101,7 +104,8 @@ export function createResolveCover(deps: CoverArtDeps) {
   }
 
   return async function resolveCover({ catalogId, title, artist }: CoverQuery): Promise<string | null> {
-    const caaUrl = `${CAA_URL}/${catalogId}/front-250`;
+    if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return null;
+    const caaUrl = `${CAA_URL}/${catalogId.toLowerCase()}/front-250`;
     try {
       const response = await deps.fetch(caaUrl, {
         method: "HEAD",

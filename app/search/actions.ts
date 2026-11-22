@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { resolveCover } from "@/lib/catalog/server-cover";
+import { findAlbumByCatalogId } from "@/lib/db/albums";
 import { getDb } from "@/lib/db/server";
 import { addCatalogAlbumToLibrary } from "@/lib/library-service";
 
@@ -12,13 +14,18 @@ function field(formData: FormData, name: string): string {
 export async function addToLibraryAction(formData: FormData): Promise<void> {
   const q = field(formData, "q");
   const catalogId = field(formData, "catalogId");
-  const result = addCatalogAlbumToLibrary(getDb(), {
+  const title = field(formData, "title");
+  const artist = field(formData, "artist");
+  const db = getDb();
+  // The server picks the cover; the browser's `coverUrl` is ignored. An album already stored keeps its cover.
+  const coverUrl = findAlbumByCatalogId(db, catalogId.toLowerCase()) ? null : await resolveCover({ catalogId, title, artist });
+  const result = addCatalogAlbumToLibrary(db, {
     catalogId,
-    title: field(formData, "title"),
-    artist: field(formData, "artist"),
+    title,
+    artist,
     artistId: field(formData, "artistId"),
     releaseYear: field(formData, "releaseYear"),
-    coverUrl: field(formData, "coverUrl"),
+    coverUrl,
     year: field(formData, "year"),
   });
   const params: Record<string, string> = result.ok ? { q, added: catalogId } : { q, error: result.message, item: catalogId };
