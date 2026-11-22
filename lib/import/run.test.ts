@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { CatalogError } from "../catalog/musicbrainz.ts";
 import type { CatalogAlbum } from "../catalog/types.ts";
-import { listAlbums } from "../db/albums.ts";
+import { createAlbum, listAlbums } from "../db/albums.ts";
 import { listImportReviewItems, skipImportReviewItem } from "../db/import-review.ts";
 import { listLibrary } from "../db/library.ts";
 import { memoryDb } from "../db/test-db.ts";
@@ -163,6 +163,55 @@ describe("importing the fixture spreadsheet", () => {
         "Open review items      3    see /import",
       ].join("\n"),
     );
+  });
+});
+
+describe("album covers", () => {
+  const rows = simpleRows(2);
+  const catalog = catalogFor(rows);
+
+  async function run(db: DatabaseSync, resolveCover?: RunDeps["resolveCover"]) {
+    const { deps } = fakeDeps(catalog, { resolveCover });
+    await runImport(db, prepareRows(rows), deps);
+    return new Map(listAlbums(db).map((album) => [album.title, album.coverUrl]));
+  }
+
+  it.each([
+    { name: "stores the resolved cover", resolve: async () => "https://cdn-images.dzcdn.net/c.jpg", expected: "https://cdn-images.dzcdn.net/c.jpg" },
+    { name: "stores no cover when none was found", resolve: async () => null, expected: null },
+    { name: "keeps the catalog's cover when there is no resolver", resolve: undefined, expected: "https://covers.test/cat-0" },
+  ])("$name for an accepted row", async ({ resolve, expected }) => {
+    const covers = await run(memoryDb(), resolve);
+
+    expect(covers.get("Fake Album 1")).toBe(expected);
+  });
+
+  it("asks for the cover with the catalog id, title and artist, once per row", async () => {
+    const resolveCover = vi.fn<NonNullable<RunDeps["resolveCover"]>>(async () => null);
+    await run(memoryDb(), resolveCover);
+
+    expect(resolveCover.mock.calls.map(([query]) => query)).toEqual([
+      { catalogId: "cat-0", title: "Fake Album 1", artist: "Fake Artist 1" },
+      { catalogId: "cat-1", title: "Fake Album 2", artist: "Fake Artist 2" },
+    ]);
+  });
+
+  it("does not ask for the cover of an album that is stored already, and keeps its cover", async () => {
+    const db = memoryDb();
+    createAlbum(db, { title: "Fake Album 1", artist: { name: "Fake Artist 1" }, catalogId: "cat-0", coverUrl: "https://coverartarchive.org/stored" });
+    const resolveCover = vi.fn<NonNullable<RunDeps["resolveCover"]>>(async () => "https://cdn-images.dzcdn.net/c.jpg");
+    const covers = await run(db, resolveCover);
+
+    expect(resolveCover.mock.calls.map(([query]) => query.catalogId)).toEqual(["cat-1"]);
+    expect(covers.get("Fake Album 1")).toBe("https://coverartarchive.org/stored");
+  });
+
+  it("does not ask for the cover of a row that goes to review", async () => {
+    const resolveCover = vi.fn<NonNullable<RunDeps["resolveCover"]>>(async () => null);
+    const { deps } = fakeDeps([], { resolveCover });
+    await runImport(memoryDb(), prepareRows(rows), deps);
+
+    expect(resolveCover).not.toHaveBeenCalled();
   });
 });
 

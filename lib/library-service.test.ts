@@ -120,6 +120,15 @@ describe("addCatalogAlbumToLibrary", () => {
   });
 
   it.each([
+    { name: "the Cover Art Archive", coverUrl: `https://coverartarchive.org/release-group/${CATALOG_ID}/front-250` },
+    { name: "the Deezer CDN", coverUrl: "https://cdn-images.dzcdn.net/images/cover/abc/250x250-000000-80-0-0.jpg" },
+    { name: "the second Deezer CDN host", coverUrl: "https://e-cdns-images.dzcdn.net/images/cover/abc/250x250-000000-80-0-0.jpg" },
+  ])("stores a cover from $name", ({ coverUrl }) => {
+    expect(addCatalogAlbumToLibrary(db, input({ coverUrl }))).toEqual({ ok: true, added: true });
+    expect(findAlbumByCatalogId(db, CATALOG_ID)!.coverUrl).toBe(coverUrl);
+  });
+
+  it.each([
     { name: "a catalog id that is too short", overrides: { catalogId: "1111" } },
     { name: "a catalog id with other characters", overrides: { catalogId: "zzzzzzzz-2222-3333-4444-555555555555" } },
     { name: "a missing catalog id", overrides: { catalogId: null } },
@@ -129,6 +138,9 @@ describe("addCatalogAlbumToLibrary", () => {
     { name: "an artist over 300 characters", overrides: { artist: "a".repeat(301) } },
     { name: "a cover from another host", overrides: { coverUrl: "https://example.com/cover.jpg" } },
     { name: "a cover over plain http", overrides: { coverUrl: "http://coverartarchive.org/x" } },
+    { name: "a cover on a look-alike of the CAA host", overrides: { coverUrl: "https://coverartarchive.org.evil.com/x" } },
+    { name: "a cover on a look-alike of the Deezer host", overrides: { coverUrl: "https://cdn-images.dzcdn.net.evil.com/x.jpg" } },
+    { name: "a Deezer cover over plain http", overrides: { coverUrl: "http://cdn-images.dzcdn.net/x.jpg" } },
     { name: "a cover over 300 characters", overrides: { coverUrl: `https://coverartarchive.org/${"x".repeat(300)}` } },
     { name: "a fractional release year", overrides: { releaseYear: "1959.5" } },
     { name: "a text release year", overrides: { releaseYear: "soon" } },

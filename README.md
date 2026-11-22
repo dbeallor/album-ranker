@@ -67,7 +67,7 @@ If the preview isn't running, the command prints the `npm run preview -- <target
 
 ## Search albums
 
-Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups.
+Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive. Each result can be added to your library under a year you choose (it starts as the catalog's year); one already in the library shows its year instead. After you add one, the confirmation links to View library (sorted by year, so it sits under its year heading) and to Play matchups. When an album is added (from search, import review or the import script) and the Cover Art Archive has no front cover for it, the server looks for a cover on Deezer, accepting only an album with the same title and artist, and stores it; with no match the grey placeholder stays. Results on the search page still show only Cover Art Archive covers, and albums already in your library are not changed.
 
 MusicBrainz asks API users to put contact details in the User-Agent. Set `MUSICBRAINZ_USER_AGENT` (for example `album-ranker/0.1 (you@example.com)`) in `.env`; the default is `album-ranker/0.1`. MusicBrainz allows about one request per second, so a busy message means to wait a moment and try again.
 
@@ -95,7 +95,7 @@ A "Ranking progress" panel sits above the Show tabs on every view. It is library
 
 `npm run import -- "/path/to/Best Albums.xlsx"` loads the Albums sheet into the database at `DATABASE_PATH`. It matches each row to a MusicBrainz album, then adds the albums to the library with the year from the sheet. Rows it can't match with confidence go to the review page.
 
-- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
+- It takes about 15 minutes for 750 rows. It makes one MusicBrainz request per row and at most one per second (1.1 s apart), plus a Cover Art Archive check (and a Deezer search when that has no cover) for each new album, so allow longer, and prints progress every 25 rows. Set `MUSICBRAINZ_USER_AGENT` in `.env` first.
 - It is safe to re-run or stop. Each row is written in its own transaction. A second run skips rows it already imported, sent to review or that you skipped there, and tries the rows it could not reach again.
 - Review the rest at <http://localhost:3000/import> (linked from the home page while items are open). For each item, pick a candidate or search the catalog, keep it as a manual album, or skip it.
 - The spreadsheet is never committed; keep it outside the repo.
@@ -109,7 +109,7 @@ Reading the summary the script prints at the end:
 
 ## Browser tests
 
-Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz (`MUSICBRAINZ_URL`), so no test calls the live service.
+Playwright drives Chromium against a production build of the app on port 3100, with its own SQLite file under `test-results/` and a local stand-in for MusicBrainz, the Cover Art Archive and Deezer (`MUSICBRAINZ_URL`, `COVER_ART_ARCHIVE_URL`, `DEEZER_URL`), so no test calls a live service.
 
 1. One time: `npx playwright install chromium`
 2. `npm run test:e2e`
