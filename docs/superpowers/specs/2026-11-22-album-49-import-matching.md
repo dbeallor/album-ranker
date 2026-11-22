@@ -1,6 +1,7 @@
 # Smarter import matching and a dependable import review page
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #52, with differences: [as-built](../as-built/2026-11-22-album-49-import-matching.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-49](https://github.com/dbeallor/album-ranker/issues/49)
 **Follows:** [ALBUM-5 catalog search](2026-11-21-album-5-catalog-search.md)
