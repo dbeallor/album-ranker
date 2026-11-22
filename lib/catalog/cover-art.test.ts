@@ -290,6 +290,17 @@ describe("pacing lookups", () => {
     expect(fetchMock).toHaveBeenCalledTimes(skipped ? lookups - 1 : lookups);
   });
 
+  it("does not take a slot for a query that makes no request", async () => {
+    const { resolveCover, fetchMock, sleep } = paced();
+
+    const bad = await Promise.all([resolveCover({ ...ALBUM, catalogId: "x" }), resolveCover({ ...ALBUM, title: "a".repeat(301) })]);
+    await resolveCover(ALBUM);
+
+    expect(bad).toEqual([null, null]);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not pace without a clock", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
     const resolveCover = createResolveCover({ fetch: fetchMock, log: vi.fn() });

@@ -75,6 +75,11 @@ type FinderResult =
   | { kind: "failed"; at: "caa"; caaUrl: string }
   | { kind: "failed"; at: "deezer" };
 
+/** A query the lookup can ask about: a UUID catalog id and a title and artist of at most 300 characters. */
+function isLookupable({ catalogId, title, artist }: CoverQuery): boolean {
+  return CATALOG_ID.test(catalogId) && title.length <= MAX_NAME_LENGTH && artist.length <= MAX_NAME_LENGTH;
+}
+
 function createCoverFinder(deps: CoverArtDeps) {
   const log = deps.log ?? ((message, detail) => console.error(...(detail === undefined ? [message] : [message, detail])));
 
@@ -118,7 +123,7 @@ function createCoverFinder(deps: CoverArtDeps) {
   }
 
   return async function find({ catalogId, title, artist }: CoverQuery): Promise<FinderResult> {
-    if (!CATALOG_ID.test(catalogId) || title.length > MAX_NAME_LENGTH || artist.length > MAX_NAME_LENGTH) return { kind: "none" };
+    if (!isLookupable({ catalogId, title, artist })) return { kind: "none" };
     const id = catalogId.toLowerCase();
     // Only the HEAD check uses the configurable base; what gets stored is always the canonical URL.
     const checkUrl = `${deps.caaUrl?.() ?? DEFAULT_CAA_URL}/release-group/${id}/front-250`;
@@ -194,6 +199,8 @@ export function createResolveCover(deps: ResolveCoverDeps) {
   }
 
   return async function resolveCover(query: CoverQuery): Promise<string | null> {
+    // A query that makes no request does not take a slot.
+    if (!isLookupable(query)) return null;
     if (!(await waitForSlot())) return null;
     const result = await find(query);
     if (result.kind === "found") return result.url;
