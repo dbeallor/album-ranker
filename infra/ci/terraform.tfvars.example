@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored). state_bucket and region are the values in backend.hcl.
+# zone_id comes from `terraform -chdir=infra/dns output -raw zone_id`.
+region       = "us-east-1"
+state_bucket = "album-ranker-tfstate-123456789012"
+zone_id      = "Z0123456789ABCDEFGHIJ"
+
+# Defaults, shown for reference:
+# github_repository    = "dbeallor/album-ranker"
+# staging_domain       = "staging.album-ranker.com"
+# create_oidc_provider = true # false if the account already has a GitHub OIDC provider
