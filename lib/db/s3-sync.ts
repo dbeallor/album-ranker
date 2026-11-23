@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -327,31 +327,52 @@ function runHeld(listener: Listener, req: IncomingMessage, res: ServerResponse, 
   });
 }
 
+const turnHeader = "x-album-ranker-sync-turn";
+
+function isLiveToken(header: string | string[] | undefined, live: string | undefined): boolean {
+  if (typeof header !== "string" || live === undefined || header.length !== live.length) return false;
+  return timingSafeEqual(Buffer.from(header), Buffer.from(live));
+}
+
 /**
- * Wraps a Node request listener (Next.js's) so each request runs alone, with the stored database current when it starts
- * and saved before its response goes out. A request that can't have its database loaded gets an error page; one whose
- * changes can't be saved gets a 503 and the app's response is discarded.
+ * Wraps a Node request listener (Next.js's) so each outside request runs alone, with the stored database current when
+ * it starts and saved before its response goes out. A request that can't have its database loaded gets an error page;
+ * one whose changes can't be saved gets a 503 and the app's response is discarded.
+ *
+ * The request holding the turn carries a per-turn token in `x-album-ranker-sync-turn`, which Next copies into the
+ * requests it makes to itself (the redirect render of a server action). Those requests run at once inside the turn,
+ * with no load, save or hold of their own: the outer request's save covers them. Any other value of the header is
+ * dropped and the request queues.
  */
 export function serveWithSync(listener: Listener, sync: Pick<S3Sync, "beforeRequest" | "afterRequest">): Listener {
   let tail: Promise<unknown> = Promise.resolve();
+  let live: string | undefined;
   return (req, res) => {
+    if (isLiveToken(req.headers[turnHeader], live)) return Promise.resolve().then(() => listener(req, res));
+    delete req.headers[turnHeader];
     const turn = tail.then(async () => {
+      live = randomBytes(32).toString("hex");
+      req.headers[turnHeader] = live;
       try {
-        await sync.beforeRequest();
-      } catch (error) {
-        if (error instanceof StoredDatabaseError) {
-          console.error("[s3-sync] Stored database can't be opened:", error.message);
-          sendError(res, 500, "The stored database can't be opened", "The database file in storage is not a usable album-ranker database. Nothing was changed. Restore a good copy and reload.");
-        } else {
-          console.error("[s3-sync] Loading the database failed:", error);
-          sendError(res, 503, "The database is unavailable", "Loading the database from storage failed. Reload to try again.");
+        try {
+          await sync.beforeRequest();
+        } catch (error) {
+          if (error instanceof StoredDatabaseError) {
+            console.error("[s3-sync] Stored database can't be opened:", error.message);
+            sendError(res, 500, "The stored database can't be opened", "The database file in storage is not a usable album-ranker database. Nothing was changed. Restore a good copy and reload.");
+          } else {
+            console.error("[s3-sync] Loading the database failed:", error);
+            sendError(res, 503, "The database is unavailable", "Loading the database from storage failed. Reload to try again.");
+          }
+          return;
         }
-        return;
+        await runHeld(listener, req, res, () => sync.afterRequest(), (error) => {
+          console.error("[s3-sync] Saving the database failed:", error);
+          sendError(res, 503, "Your change was not saved", "Saving to storage failed, so nothing changed. Reload and try again.");
+        });
+      } finally {
+        live = undefined;
       }
-      await runHeld(listener, req, res, () => sync.afterRequest(), (error) => {
-        console.error("[s3-sync] Saving the database failed:", error);
-        sendError(res, 503, "Your change was not saved", "Saving to storage failed, so nothing changed. Reload and try again.");
-      });
     });
     tail = turn.catch(() => {});
     return turn;
