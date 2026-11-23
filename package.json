@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.ts",
     "db:backup": "node scripts/backup.ts",
     "db:restore": "node scripts/restore.ts",
+    "db:push": "node scripts/db-push.ts",
     "import": "node --conditions=react-server scripts/import.ts",
     "backfill-covers": "node --conditions=react-server scripts/backfill-covers.ts",
     "import:fixture": "node lib/import/fixtures/make-fixture.ts",

@@ -86,21 +86,24 @@ export function readDatabaseS3(): { bucket: string; key: string } | null {
   return { bucket, key };
 }
 
+/** Only the local database and backup folder settings, for scripts that need no password gate, S3 or catalog settings. */
+export function getDataPaths(): { databasePath: string; backupDir: string } {
+  return {
+    databasePath: readSetting("DATABASE_PATH", DEFAULT_DATABASE_PATH, "Set it to a file path, or unset it to use the default."),
+    backupDir: expandHome(
+      readSetting("BACKUP_DIR", DEFAULT_BACKUP_DIR, "Set it to a folder path, or unset it to use the default."),
+    ),
+  };
+}
+
 export function getConfig(): Config {
   const gate = readGateConfig();
   const problem = gatePasswordProblem(gate);
   if (problem) throw new Error(problem);
   return {
     ...gate,
-    databasePath: readSetting(
-      "DATABASE_PATH",
-      DEFAULT_DATABASE_PATH,
-      "Set it to a file path, or unset it to use the default.",
-    ),
+    ...getDataPaths(),
     databaseS3: readDatabaseS3(),
-    backupDir: expandHome(
-      readSetting("BACKUP_DIR", DEFAULT_BACKUP_DIR, "Set it to a folder path, or unset it to use the default."),
-    ),
     musicbrainzUserAgent: readSetting(
       "MUSICBRAINZ_USER_AGENT",
       DEFAULT_MUSICBRAINZ_USER_AGENT,

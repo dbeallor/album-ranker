@@ -122,7 +122,16 @@ Set `BUCKET` to the environment's `data_bucket` (`BUCKET=$(terraform -chdir=infr
 
 - **Restore takes effect on the next page load.** The app checks the object on every request, so there is nothing to restart. A file that isn't an album-ranker database gives an error page, and the stored object is left as it was.
 - **Undo a restore:** list the versions, pick the one from just before your restore, download it with `get-object` and copy it back.
-- **Move your local data up:** run `npm run db:backup` first (the live `data/album-ranker.db` can have recent answers in its `-wal` file), then upload the backup file with the restore command. Do the same after `npm run import` or `npm run backfill-covers`, which run on your machine only.
+- **Move your local data up:** `npm run db:push` uploads a consistent copy of `data/album-ranker.db` (its `-wal` contents included) to the environment's data bucket. It backs up the local file first, never overwrites S3 data that changed after it read it, and asks before replacing data that is already there. Use it after `npm run import` or `npm run backfill-covers`, which run on your machine only. Stop the app first, and sign in to AWS the way the other deploy steps do (`AWS_PROFILE`, SSO).
+
+  1. Dry run. It reads only, prints local and deployed counts side by side, and prints the command for step 2 with `--expect-etag` filled in:
+     ```
+     npm run db:push -- staging --dry-run
+     ```
+  2. Run the command it printed. Production also needs `--confirm-production`, which the printed command includes. If the deployed data changed since the dry run, it stops and uploads nothing. Otherwise it asks you to type `yes` before replacing existing data (`--yes` skips the question).
+  3. To undo, run the `aws s3api` commands it prints at the end: the first downloads the version it replaced, the second restores it in place (S3 keeps the pushed version as an older one). Undoing replaces whatever is in the bucket by then, including anything written since the push (answers given in the app, for example), so check first with the `head-object` command it prints (its `VersionId` should be the pushed version) or in the app. The printed commands carry `--region` when you gave one. It also prints the path of the local backup. Each push adds a `manual` backup to your local backups, and the newest 10 are kept (see "Back up and restore your data" below).
+
+  The bucket comes from `terraform -chdir=infra/envs/<env> output -raw data_bucket`; pass `--bucket <name>` (and `--region <region>`) to skip that. Try staging before production. The app loads the pushed data on its next request.
 - Backups are your personal data. Keep them out of git.
 
 ### Tear down

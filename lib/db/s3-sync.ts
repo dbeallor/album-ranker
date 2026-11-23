@@ -34,12 +34,12 @@ export type PutCondition = { ifMatch: string } | { ifNoneMatch: "*" };
 
 /** The three S3 calls the sync needs, for one bucket and key. The AWS-backed version is in `s3-store.ts`; tests use a fake. */
 export interface ObjectStore {
-  /** The stored object's ETag, or null when there is no object. */
-  head(): Promise<{ etag: string } | null>;
+  /** The stored object's ETag, or null when there is no object. `versionId` and `lastModified` are there when S3 sends them; the app's sync ignores them. */
+  head(): Promise<{ etag: string; versionId?: string; lastModified?: Date } | null>;
   /** The stored object, or null when there is none. */
   get(): Promise<StoredObject | null>;
   /** Writes the object if `condition` holds; throws `ConditionFailedError` when it doesn't. */
-  put(body: Uint8Array, condition: PutCondition): Promise<{ etag: string }>;
+  put(body: Uint8Array, condition: PutCondition): Promise<{ etag: string; versionId?: string }>;
 }
 
 /** The object changed (or appeared) since this copy read it. */
