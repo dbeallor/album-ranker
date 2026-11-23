@@ -1,6 +1,7 @@
 # Faster album covers in matchups
 
-**Status:** Spec
+**Status:** Shipped
+**Shipped:** in PR #80, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-78](https://github.com/dbeallor/album-ranker/issues/78)
 
