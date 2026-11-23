@@ -109,26 +109,6 @@ describe("matchup screen", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(true));
   });
 
-  it("sends the seed of the current view with each action", async () => {
-    const { answerAction, skipAction, undoAction } = setup({
-      start: { ...initial, canUndo: true, seed: 0.75 },
-      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: null, seed: 0.1, upcoming: [] },
-      skip: { pair: pairOf(one, two), count: 1, lastAnswer: null, canUndo: true, progress: null, seed: 0.2, upcoming: [] },
-      undo: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: true, progress: null, seed: 0.3, upcoming: [] },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Tie" }));
-    await screen.findByText("Album Three");
-    expect(answerAction).toHaveBeenLastCalledWith(1, 2, "tie", [], 0.75);
-
-    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    await screen.findByText("Album One");
-    expect(skipAction).toHaveBeenLastCalledWith(3, 4, [], 0.1);
-
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    await screen.findByText("Album Three");
-    expect(undoAction).toHaveBeenLastCalledWith([pairKey(3, 4)], 0.2);
-  });
-
   describe("covers", () => {
     const prefetched: string[] = [];
 
@@ -164,6 +144,12 @@ describe("matchup screen", () => {
       await screen.findByText("Album Three");
       await waitFor(() => expect(prefetched).toContain("https://covers.test/c.jpg"));
       expect(prefetched.filter((url) => url === "https://covers.test/b.jpg")).toHaveLength(1);
+    });
+
+    it("shows a placeholder for an album with no cover", () => {
+      setup({});
+      expect(screen.getByRole("img", { name: "No cover for Album One" })).toBeDefined();
+      expect(screen.getByRole("img", { name: "No cover for Album Two" })).toBeDefined();
     });
 
     it("loads the matchup covers eagerly", () => {

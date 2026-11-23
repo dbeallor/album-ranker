@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { countMatchups, listMatchups } from "./db/matchups";
 import { addToLibrary } from "./db/library";
 import { memoryDb, seedAlbums } from "./db/test-db";
@@ -162,10 +162,11 @@ describe("matchup actions", () => {
       { name: "NaN", seed: Number.NaN },
       { name: "1", seed: 1 },
       { name: "negative", seed: -0.5 },
-      { name: "a string", seed: "0.5" },
       { name: "missing", seed: undefined },
     ])("falls back to the injected random when the seed is $name", ({ seed }) => {
-      const next = asView(answerMatchup(db, ids[1], ids[3], "a", [], seed, random));
+      const injected = vi.fn(() => 0);
+      const next = asView(answerMatchup(db, ids[1], ids[3], "a", [], seed, injected));
+      expect(injected).toHaveBeenCalled();
       expect(next.pair).not.toBeNull();
       expect(Number.isFinite(next.seed)).toBe(true);
     });

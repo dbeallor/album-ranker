@@ -1,9 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DataError, type MatchupResult } from "./db/types";
+import { listLibrary } from "./db/library";
 import { countMatchups, listMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
 import { pairKey, pickMatchup } from "./elo/pick";
 import type { RankingProgress } from "./elo/progress";
-import type { ReplayMatchup } from "./elo/replay";
+import { computeRatings, type ReplayMatchup } from "./elo/replay";
 import { loadAlbumCard, loadMatchupState, loadRatings, progressOf, type AlbumCard } from "./ratings";
 
 export type MatchupView = {
@@ -43,15 +44,6 @@ function randomFor(seed: unknown, random: () => number): () => number {
 
 type Pair = { a: AlbumCard; b: AlbumCard };
 
-/** The pair `pickMatchup` serves for these ratings, or undefined when none is possible. */
-function pickPair(db: DatabaseSync, loaded: ReturnType<typeof loadRatings>, avoid: Set<string>, seed: number): Pair | undefined {
-  const albums = [...loaded.ratings].map(([id, rating]) => ({ id, rating }));
-  const picked = pickMatchup({ albums, matchups: loaded.used, avoid, random: () => seed });
-  const a = picked && loadAlbumCard(db, picked.a);
-  const b = picked && loadAlbumCard(db, picked.b);
-  return a && b ? { a, b } : undefined;
-}
-
 /** A matchup that sorts after every stored one, standing in for the answer the user is about to give. */
 function hypothetical(pair: Pair, result: MatchupResult, id: number): ReplayMatchup {
   return { id, albumAId: pair.a.id, albumBId: pair.b.id, result, createdAt: "9999-12-31T23:59:59.999Z" };
@@ -60,18 +52,34 @@ function hypothetical(pair: Pair, result: MatchupResult, id: number): ReplayMatc
 /**
  * The cover URLs of every pair the next action can serve from `pair`, given the same stored matchups, `avoid` and `seed`.
  * Null covers, repeats and the current pair's own covers are left out.
+ * The library and the stored matchups are read once, and each album card at most once.
  */
 function upcomingCovers(db: DatabaseSync, pair: Pair, avoid: Set<string>, seed: number): string[] {
+  const albumIds = listLibrary(db).map((entry) => entry.albumId);
   const stored = listMatchups(db);
   const nextId = Math.max(0, ...stored.map((matchup) => matchup.id)) + 1;
-  const served: (Pair | undefined)[] = RESULTS.map((result) =>
-    pickPair(db, loadRatings(db, [hypothetical(pair, result, nextId)]), avoid, seed),
-  );
-  served.push(pickPair(db, loadRatings(db), new Set(avoid).add(pairKey(pair.a.id, pair.b.id)), seed));
 
+  const cards = new Map<number, AlbumCard | undefined>();
+  const cardOf = (id: number) => {
+    if (!cards.has(id)) cards.set(id, loadAlbumCard(db, id));
+    return cards.get(id);
+  };
+  const pickPair = (matchups: ReplayMatchup[], avoided: Set<string>): Pair | undefined => {
+    const { ratings, used } = computeRatings({ albumIds, matchups });
+    const albums = [...ratings].map(([id, rating]) => ({ id, rating }));
+    const picked = pickMatchup({ albums, matchups: used, avoid: avoided, random: () => seed });
+    const a = picked && cardOf(picked.a);
+    const b = picked && cardOf(picked.b);
+    return a && b ? { a, b } : undefined;
+  };
+
+  const served: (Pair | undefined)[] = RESULTS.map((result) => pickPair([...stored, hypothetical(pair, result, nextId)], avoid));
+  served.push(pickPair(stored, new Set(avoid).add(pairKey(pair.a.id, pair.b.id))));
+
+  // Undo serves the newest stored pair; when an album has left the library the fallback pick is not predicted.
   const newest = stored.at(-1);
-  const a = newest && loadAlbumCard(db, newest.albumAId);
-  const b = newest && loadAlbumCard(db, newest.albumBId);
+  const a = newest && cardOf(newest.albumAId);
+  const b = newest && cardOf(newest.albumBId);
   if (a && b) served.push({ a, b });
 
   const own = new Set([pair.a.coverUrl, pair.b.coverUrl]);
