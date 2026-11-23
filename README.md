@@ -47,6 +47,10 @@ The state holds the generated passwords, so keep the state bucket private (the b
 
 ### Deploy staging
 
+Every merge to `main` deploys staging from GitHub Actions (`.github/workflows/deploy-staging.yml`, set up once below). The run prints the `url` and `deployed_commit` and fails if staging doesn't run the commit that was pushed. **Actions**, **Deploy staging**, **Run workflow** (on `main`) repeats it without a new merge. Production is never deployed from CI.
+
+By hand, which is the fallback when CI is down and how the first apply of an environment goes:
+
 ```
 npm ci && npm run build:lambda
 terraform -chdir=infra/envs/staging init -backend-config=backend.hcl
@@ -68,14 +72,34 @@ The `*.cloudfront.net` address (`output cloudfront_url`) still works and shows t
 - **If the first apply fails on concurrency:** a new AWS account can have a Lambda quota too low to reserve any. Set `reserved_concurrency = -1` in `terraform.tfvars` and apply again. The function can then run more than one copy, and the conditional write (`If-Match`) on the database file is the only thing that stops two copies saving over each other: the loser's request fails and nothing is overwritten.
 - **Each apply replaces the build files** in the assets bucket and removes the old ones. A page left open across a deploy may need a reload.
 
+### Set up the CI deploy (once)
+
+CI signs in to AWS with GitHub's OIDC token, no stored keys. It assumes the role `album-ranker-ci-staging-deploy`, which only a run on the `main` branch of this repository can assume (a pull request, a fork, another branch or a tag is refused), and which can change staging and nothing else. `infra/ci` creates the role, the OIDC provider and the permissions boundary the staging function's role now carries. Do this once, after the staging deploy above works, with your admin profile:
+
+1. In `infra/ci`, copy `backend.hcl.example` to `backend.hcl` and `terraform.tfvars.example` to `terraform.tfvars` (both gitignored) and fill them in: the bucket and region from the bootstrap, and `zone_id`. An AWS account holds one GitHub OIDC provider; if yours already has one, set `create_oidc_provider = false`. Then:
+   ```
+   terraform -chdir=infra/ci init -backend-config=backend.hcl
+   terraform -chdir=infra/ci apply
+   ```
+2. Apply staging by hand once, so the function's role gets the permissions boundary this created and staging's state publishes the IDs of its CloudFront response headers policy and origin access control (`npm ci && npm run build:lambda`, then the `init` and `apply` from "Deploy staging"). Production is untouched.
+3. Apply `infra/ci` again. It reads those two IDs from staging's state and only now lets the role update or delete those two things.
+4. In the repository settings, **Secrets and variables**, **Actions**, add the variables from `terraform -chdir=infra/ci output`: `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `TF_STATE_BUCKET` and `ZONE_ID`. Add two secrets, the same values as in staging's `terraform.tfvars`: `MUSICBRAINZ_USER_AGENT` and `BUDGET_EMAIL` (skip it if you don't use the budget). CI doesn't read your `terraform.tfvars`, so a value that differs from it, or a setting only in that file such as `reserved_concurrency = -1`, is applied to staging on the next merge.
+5. Merge to `main`, or run the workflow by hand. The first run may stop on an `AccessDenied` for an action the role lacks: add it to `infra/ci/policy.tf` (not in the console) and apply `infra/ci`.
+
+If staging ever replaces its response headers policy or its origin access control, the next CI deploy fails with `AccessDenied` on that resource: apply `infra/ci` again so the role learns the new IDs, then re-run the workflow.
+
 ### Promote to production
 
-Use the same `dist/`, so production gets exactly what you tried in staging:
+Build `dist/` from the commit staging runs, so production gets exactly what you tried in staging. CI deploys staging, so your checkout may be on a different commit:
 
 ```
+git switch --detach "$(terraform -chdir=infra/envs/staging output -raw deployed_commit)"
+npm ci && npm run build:lambda
 terraform -chdir=infra/envs/production init -backend-config=backend.hcl
 terraform -chdir=infra/envs/production apply
 ```
+
+(`git switch main` afterwards.)
 
 Production is <https://album-ranker.com>, with its own `url`, `password` and `data_bucket`. Staging data never reaches it. Both send HSTS (one year) for their own host only, so once a browser has seen an address over HTTPS it refuses plain HTTP for it.
 
