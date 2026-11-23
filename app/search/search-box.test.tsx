@@ -86,7 +86,7 @@ describe("search box", () => {
     await finish();
 
     expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
   const skipped: { name: string; initial: string; typed: string; sent: string | null }[] = [
@@ -111,5 +111,15 @@ describe("search box", () => {
     await wait(500);
 
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows a new ?q= from another navigation, and then searches the same text again", async () => {
+    const { rerender } = render(<SearchBox query="getz" />);
+    rerender(<SearchBox query="" />);
+    expect((box() as HTMLInputElement).value).toBe("");
+
+    type("getz");
+    await wait(500);
+    expect(router.replace).toHaveBeenCalledWith("/search?q=getz", { scroll: false });
   });
 });

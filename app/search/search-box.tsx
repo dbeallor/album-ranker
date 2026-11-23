@@ -11,6 +11,10 @@ import styles from "./search-box.module.css";
 const PAUSE_MS = 500;
 const MIN_LENGTH = 2;
 
+function normalize(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
+}
+
 /**
  * The search form. It still submits as a plain GET, and it also updates `?q=` after a pause in typing, so the server page
  * shows results without Search. One search is on the server at a time; the latest text wins.
@@ -20,7 +24,7 @@ export function SearchBox({ query }: { query: string }) {
   const [isPending, startTransition] = useTransition();
   const [value, setValue] = useState(query);
   const latest = useRef(query);
-  const lastSent = useRef(query.trim());
+  const lastSent = useRef(normalize(query));
   // A search is in flight from the moment it is sent until `isPending` has shown true and then false again.
   const inFlight = useRef(false);
   const sawPending = useRef(false);
@@ -36,8 +40,8 @@ export function SearchBox({ query }: { query: string }) {
     if (inFlight.current) {
       return;
     }
-    const text = latest.current.trim();
-    const length = text.replace(/\s+/g, " ").length;
+    const text = latest.current.trim().replace(/\s+/g, " ");
+    const length = text.length;
     if (text === lastSent.current || (length > 0 && length < MIN_LENGTH)) {
       return;
     }
@@ -62,6 +66,18 @@ export function SearchBox({ query }: { query: string }) {
     }
   });
 
+  // The URL's `?q=` changed by a navigation that wasn't this box's own search (the header link, Back): show it.
+  useEffect(() => {
+    if (inFlight.current || normalize(query) === lastSent.current) {
+      return;
+    }
+    clearTimeout(timer.current);
+    timer.current = undefined;
+    latest.current = query;
+    lastSent.current = normalize(query);
+    setValue(query);
+  }, [query]);
+
   useEffect(() => clearTimer, []);
 
   return (
@@ -85,11 +101,9 @@ export function SearchBox({ query }: { query: string }) {
           Search
         </Button>
       </InlineForm>
-      {isPending && (
-        <p role="status" className={styles.status}>
-          Searching…
-        </p>
-      )}
+      <p role="status" className={styles.status}>
+        {isPending ? "Searching…" : ""}
+      </p>
     </Stack>
   );
 }
