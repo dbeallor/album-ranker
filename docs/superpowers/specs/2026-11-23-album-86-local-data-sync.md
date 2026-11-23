@@ -1,6 +1,7 @@
 # Push local data to staging or production
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #88, with differences: [as-built](../as-built/2026-11-23-album-86-local-data-sync.md)
 **Date:** 2026-11-23
 **Ticket:** [ALBUM-86](https://github.com/dbeallor/album-ranker/issues/86)
 
