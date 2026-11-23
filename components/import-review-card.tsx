@@ -82,11 +82,11 @@ function ReportPending() {
   return null;
 }
 
-function SubmitButton({ children }: { children: ReactNode }) {
+function SubmitButton({ children, event }: { children: ReactNode; event: string }) {
   const { pending } = useFormStatus();
   const { busy } = useContext(BusyContext);
   return (
-    <Button type="submit" disabled={busy || pending}>
+    <Button type="submit" disabled={busy || pending} data-event={event}>
       {pending ? "Working..." : children}
     </Button>
   );
@@ -129,7 +129,7 @@ function Candidate({ item, candidate, actions }: { item: ImportReviewItem; candi
         <ActionForm action={actions.chooseAlbum}>
           <HiddenFields item={item} candidate={candidate} />
           {candidate.inLibraryYear !== null && <input type="hidden" name="moveHere" value="1" />}
-          <SubmitButton>{candidate.inLibraryYear !== null ? "Move it here" : "Use this album"}</SubmitButton>
+          <SubmitButton event="import-use-album">{candidate.inLibraryYear !== null ? "Move it here" : "Use this album"}</SubmitButton>
         </ActionForm>
       }
     >
@@ -188,7 +188,7 @@ export function ReviewCard({ view, actions }: { view: ReviewItemView; actions: R
               defaultValue={search.query}
               aria-label={`Search the catalog for ${item.source.title}`}
             />
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy} data-event="import-search">
               Search
             </Button>
             <input type="hidden" name="search" value={item.id} />
@@ -209,11 +209,11 @@ export function ReviewCard({ view, actions }: { view: ReviewItemView; actions: R
           <Cluster>
             <ActionForm action={actions.keepManual}>
               <input type="hidden" name="itemId" value={item.id} />
-              <SubmitButton>Keep as manual album</SubmitButton>
+              <SubmitButton event="import-keep-manual">Keep as manual album</SubmitButton>
             </ActionForm>
             <ActionForm action={actions.skip}>
               <input type="hidden" name="itemId" value={item.id} />
-              <SubmitButton>Skip</SubmitButton>
+              <SubmitButton event="import-skip">Skip</SubmitButton>
             </ActionForm>
           </Cluster>
         </Stack>

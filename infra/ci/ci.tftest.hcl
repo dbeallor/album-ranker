@@ -221,16 +221,16 @@ run "deploy_policy_stays_out_of_production" {
   }
 }
 
-run "deploy_policy_iam_is_the_function_role_only" {
+run "deploy_policy_iam_is_the_two_function_roles_only" {
   command = plan
 
   assert {
     condition = alltrue([
       for s in data.aws_iam_policy_document.deploy.statement :
-      length(s.resources) == 1 && contains(s.resources, "arn:aws:iam::123456789012:role/album-ranker-staging")
+      toset(s.resources) == toset(["arn:aws:iam::123456789012:role/album-ranker-staging", "arn:aws:iam::123456789012:role/album-ranker-staging-events"])
       if s.effect != "Deny" && anytrue([for a in s.actions : startswith(a, "iam:")])
     ])
-    error_message = "Every iam allow statement must be limited to the staging function role."
+    error_message = "Every iam allow statement must be limited to the app role and the events role."
   }
 
   assert {
@@ -249,14 +249,14 @@ run "deploy_policy_iam_is_the_function_role_only" {
   }
 
   # UpdateAssumeRolePolicy is not subject to the boundary condition (IAM probably never matches it there), so its own
-  # statement names the function role and nothing else.
+  # statement names the two function roles and nothing else.
   assert {
     condition = alltrue([
       for s in data.aws_iam_policy_document.deploy.statement :
-      toset(s.resources) == toset(["arn:aws:iam::123456789012:role/album-ranker-staging"]) && length(s.condition) == 0
+      toset(s.resources) == toset(["arn:aws:iam::123456789012:role/album-ranker-staging", "arn:aws:iam::123456789012:role/album-ranker-staging-events"]) && length(s.condition) == 0
       if s.effect != "Deny" && contains(s.actions, "iam:UpdateAssumeRolePolicy")
     ])
-    error_message = "iam:UpdateAssumeRolePolicy must be allowed on the function role only, with no boundary condition."
+    error_message = "iam:UpdateAssumeRolePolicy must be allowed on the app role and the events role only, with no boundary condition."
   }
 
   assert {
@@ -276,6 +276,53 @@ run "deploy_policy_iam_is_the_function_role_only" {
   assert {
     condition     = !anytrue([for s in data.aws_iam_policy_document.deploy.statement : contains(s.actions, "iam:PutRolePermissionsBoundary") || contains(s.actions, "iam:DeleteRolePermissionsBoundary") if s.effect != "Deny"])
     error_message = "No allow statement may change a permissions boundary."
+  }
+}
+
+# The events function (ALBUM-85) is a second function with its own role and log group. Each resource type is limited to
+# exactly the app's name and the events name: no prefix wildcard, so production's names and any third function stay out.
+run "deploy_policy_function_role_and_log_group_are_the_two_staging_names" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset(["arn:aws:lambda:us-east-1:123456789012:function:album-ranker-staging", "arn:aws:lambda:us-east-1:123456789012:function:album-ranker-staging-events"])
+      if s.effect != "Deny" && length([for a in s.actions : a if startswith(a, "lambda:") && a != "lambda:GetLayerVersion"]) > 0
+    ])
+    error_message = "Every lambda allow (the layer read aside) must be limited to the app function and the events function."
+  }
+
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset([
+        "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging", "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging:*",
+        "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging-events", "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging-events:*",
+      ])
+      if s.sid == "LogGroupManage"
+    ])
+    error_message = "LogGroupManage must be limited to the app and events log groups."
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.sid == "LogGroupManage" || s.sid == "FunctionManage" || s.sid == "FunctionRead"]) == 3
+    error_message = "The test would pass on nothing: expected the log group and function statements."
+  }
+
+  # Neither the policy nor the boundary may name anything wider than the two names (no album-ranker-staging*).
+  assert {
+    condition     = !anytrue(flatten([for s in data.aws_iam_policy_document.deploy.statement : [for r in s.resources : strcontains(r, "album-ranker-staging*") || strcontains(r, "function:*") || strcontains(r, "role/*")] if s.effect != "Deny"]))
+    error_message = "No allow statement may use a wildcard on the staging name, or on all functions or roles."
+  }
+
+  # The boundary must let the events role write its own log group, or the function runs but logs nothing.
+  assert {
+    condition = length([
+      for s in data.aws_iam_policy_document.boundary.statement : s
+      if s.sid == "WriteLogs" && toset(s.resources) == toset(["arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging:*", "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/album-ranker-staging-events:*"])
+    ]) == 1
+    error_message = "The boundary must allow log writes to the app and events log groups only."
   }
 }
 

@@ -23,6 +23,9 @@ describe("securityHeaders", () => {
     const csp = headers["Content-Security-Policy"].split("; ");
 
     expect(csp).toEqual([DIRECTIVES[0], scriptSrc, ...DIRECTIVES.slice(1)]);
+    // Front-end events (ALBUM-85) post to /events on this origin, so no host is ever added here. A later change that adds
+    // one has to change this test.
+    expect(csp.filter((directive) => directive.startsWith("connect-src"))).toEqual(["connect-src 'self'"]);
     expect(headers["Content-Security-Policy"].includes("'unsafe-eval'")).toBe(development);
     expect(headers["X-Frame-Options"]).toBe("DENY");
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");

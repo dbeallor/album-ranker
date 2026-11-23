@@ -19,6 +19,11 @@ output "data_bucket" {
   value       = module.app.data_bucket
 }
 
+output "events_log_group" {
+  description = "The CloudWatch log group of the front-end events: `aws logs tail <group> --follow`."
+  value       = module.app.events_log_group
+}
+
 output "deployed_commit" {
   description = "The git commit of the build this environment runs."
   value       = module.app.deployed_commit

@@ -14,7 +14,7 @@ The app listens on this machine only (127.0.0.1), so other devices on your netwo
 
 ## Deploy to AWS
 
-Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
+Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function (plus a small events function, see Front-end events) behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
 
 Two trade-offs of that choice. After a quiet spell the first request takes 1 to 3 seconds (a cold start). Only one request runs at a time, so a second one that lands mid-request gets a 429 and works on a reload.
 
@@ -49,7 +49,7 @@ The state holds the generated passwords, so keep the state bucket private (the b
 
 Every merge to `main` deploys staging from GitHub Actions (`.github/workflows/deploy-staging.yml`, set up once below). The run prints the `url` and `deployed_commit` and fails if staging doesn't run the commit that was pushed. **Actions**, **Deploy staging**, **Run workflow** (on `main`) repeats it without a new merge. Production is never deployed from CI.
 
-By hand, which is the fallback when CI is down and how the first apply of an environment goes (a brand-new account applies `infra/ci` first, see "Set up the CI deploy", because staging's function role carries a permissions boundary that `infra/ci` creates):
+By hand, which is the fallback when CI is down and how the first apply of an environment goes (a brand-new account applies `infra/ci` first, see "Set up the CI deploy", because staging's two function roles (app and events) carry a permissions boundary that `infra/ci` creates):
 
 ```
 npm ci && npm run build:lambda
@@ -57,7 +57,7 @@ terraform -chdir=infra/envs/staging init -backend-config=backend.hcl
 terraform -chdir=infra/envs/staging apply
 ```
 
-`build:lambda` writes `dist/` (the function and the build files). The first apply of an environment takes a few minutes while CloudFront comes up, and it **waits for the HTTPS certificate to validate**, which only happens once the name servers at GoDaddy have taken effect. If that is still pending, the apply sits on `aws_acm_certificate_validation` for up to 75 minutes and then fails with a timeout. Nothing is lost: check the name servers with `dig NS album-ranker.com +short` and run `terraform apply` again, which picks up where it stopped. Then:
+`build:lambda` writes `dist/` (the app function, the events function and the build files). The first apply of an environment takes a few minutes while CloudFront comes up, and it **waits for the HTTPS certificate to validate**, which only happens once the name servers at GoDaddy have taken effect. If that is still pending, the apply sits on `aws_acm_certificate_validation` for up to 75 minutes and then fails with a timeout. Nothing is lost: check the name servers with `dig NS album-ranker.com +short` and run `terraform apply` again, which picks up where it stopped. Then:
 
 ```
 terraform -chdir=infra/envs/staging output url
@@ -74,17 +74,19 @@ The `*.cloudfront.net` address (`output cloudfront_url`) still works and shows t
 
 ### Set up the CI deploy (once)
 
-CI signs in to AWS with GitHub's OIDC token, no stored keys. It assumes the role `album-ranker-ci-staging-deploy`, which only a run on the `main` branch of this repository can assume (a pull request, a fork, another branch or a tag is refused), and which can change staging and nothing else. The trust is on the `main` ref, not on the workflow file: any workflow on `main` that runs on `issue_comment`, `workflow_run`, `schedule` or another event gets the same token subject and could assume the role too. Keep `deploy-staging.yml` the only workflow on `main` that asks for `id-token: write`, and review any new one as if it were a deploy key. `infra/ci` creates the role, the OIDC provider and the permissions boundary the staging function's role now carries. Do this once, with your admin profile. A brand-new account runs step 1 before its first staging apply, then steps 2 to 5 (step 2 is then that first apply); an account whose staging already runs follows the steps in order:
+CI signs in to AWS with GitHub's OIDC token, no stored keys. It assumes the role `album-ranker-ci-staging-deploy`, which only a run on the `main` branch of this repository can assume (a pull request, a fork, another branch or a tag is refused), and which can change staging and nothing else. The trust is on the `main` ref, not on the workflow file: any workflow on `main` that runs on `issue_comment`, `workflow_run`, `schedule` or another event gets the same token subject and could assume the role too. Keep `deploy-staging.yml` the only workflow on `main` that asks for `id-token: write`, and review any new one as if it were a deploy key. `infra/ci` creates the role, the OIDC provider and the permissions boundary the staging app role and events role now carry. Do this once, with your admin profile. A brand-new account runs step 1 before its first staging apply, then steps 2 to 5 (step 2 is then that first apply); an account whose staging already runs follows the steps in order:
 
 1. In `infra/ci`, copy `backend.hcl.example` to `backend.hcl` and `terraform.tfvars.example` to `terraform.tfvars` (both gitignored) and fill them in: the bucket and region from the bootstrap, and `zone_id`. An AWS account holds one GitHub OIDC provider; if yours already has one, set `create_oidc_provider = false`. Then:
    ```
    terraform -chdir=infra/ci init -backend-config=backend.hcl
    terraform -chdir=infra/ci apply
    ```
-2. Apply staging by hand once, so the function's role gets the permissions boundary this created and staging's state publishes the IDs of its CloudFront response headers policy and origin access control (`npm ci && npm run build:lambda`, then the `init` and `apply` from "Deploy staging"). Production is untouched.
+2. Apply staging by hand once, so the app role and the events role get the permissions boundary this created and staging's state publishes the IDs of its CloudFront response headers policy and origin access control (`npm ci && npm run build:lambda`, then the `init` and `apply` from "Deploy staging"). Production is untouched.
 3. Apply `infra/ci` again. It reads those two IDs from staging's state, looks each one up with your admin credentials, and only if they are named `album-ranker-staging-security` and `album-ranker-staging` lets the role update or delete those two things. The role can write staging's state, so an ID that names anything else (production's, say) makes this apply fail instead of being granted.
 4. In the repository settings, **Secrets and variables**, **Actions**, add the variables from `terraform -chdir=infra/ci output`: `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `TF_STATE_BUCKET` and `ZONE_ID`. Add two secrets, the same values as in staging's `terraform.tfvars`: `MUSICBRAINZ_USER_AGENT` and `BUDGET_EMAIL` (skip it if you don't use the budget). CI doesn't read your `terraform.tfvars`, so a value that differs from it, or a setting only in that file such as `reserved_concurrency = -1`, is applied to staging on the next merge.
 5. Merge to `main`, or run the workflow by hand. The first run may stop on an `AccessDenied` for an action the role lacks: add it to `infra/ci/policy.tf` (not in the console) and apply `infra/ci`.
+
+If a merge adds the events function to a staging that CI already deploys, apply `infra/ci` again (as in step 3) before that merge: the role and the boundary only cover the events function, its role and its log group after that, and without it the staging deploy fails with `AccessDenied` on all three. Apply it from the checkout of the `feat/album-85-front-end-event-capture` branch, not from `main`: `main`'s `infra/ci` does not list the events names until the merge. If the merge happens first, the staging deploy fails with `AccessDenied` on the events function, role and log group; then apply `infra/ci` from `main` and re-run the workflow (a partly applied deploy is safe to re-run). If the events role already exists in staging without the boundary (from an earlier hand apply), CI can't add one: apply staging by hand once with your admin profile.
 
 If staging ever replaces its response headers policy or its origin access control, the next change to it fails with `AccessDenied` on that resource: apply `infra/ci` again so the role learns the new IDs, then re-run the workflow.
 
@@ -108,6 +110,27 @@ Production is <https://album-ranker.com>, with its own `url`, `password` and `da
 ### New password
 
 `terraform -chdir=infra/envs/staging apply -replace=module.app.random_password.app` makes a new one (read it with `output -raw password`). Everyone is signed out, and the old password stops working. Do the same in `infra/envs/production` for production.
+
+### Front-end events
+
+Staging and production report what happens in the browser to a log group in your own AWS account: which pages were opened, which buttons and links were used, and front-end errors and failed requests. Nothing goes to a third party, and the Content-Security-Policy does not change (the browser posts to `/events` on the same address). Events start after login, not on the login page.
+
+- **Captured:** pathnames (no query string or hash), the tag and the `data-event`, `aria-label`, `name` or `id` of what was clicked or submitted, viewport width, error messages and stacks (clipped, with the page's origin, query strings and hashes removed, and `data:` URLs reduced to `data:`), the method, pathname and status of a failed same-origin request, and a random id per browser tab that groups one visit.
+- **Never captured:** the password, the session cookie or any cookie, field values or typed text, query strings and hashes, visible page text, headers, bodies, IP address, user agent.
+- **When it is on:** by default, in both environments. `npm run build:lambda` is the only build that includes the capture code, so `npm run dev`, `npm run preview`, `npm test` and the browser tests never send anything, and no events function exists locally.
+- **Switch it off:** set `client_events = false` in that environment's `terraform.tfvars` and `terraform apply`. The events function then answers 404 and logs nothing. Browsers built with capture keep sending until the next deploy, and those requests are cheap and dropped. Events already logged stay until retention expires.
+- **Read it:** `aws logs tail $(terraform -chdir=infra/envs/staging output -raw events_log_group) --follow` (the group is `/aws/lambda/album-ranker-<env>-events`). In CloudWatch Logs Insights on that group:
+  ```
+  fields @timestamp, @message | filter @message like "[client-event]" | sort @timestamp desc
+  ```
+  and, to read one visit, group by the tab's `session` id:
+  ```
+  fields @timestamp, @message | filter @message like "[client-event]" | parse @message '"session":"*"' as session | sort session, @timestamp asc
+  ```
+  Requests the function refused log one `[client-event-refused]` line with a status and reason, and no request data.
+- **Retention:** 30 days, set by `client_events_retention_days` (a value CloudWatch Logs accepts, such as 7, 14, 30 or 90).
+
+It is its own small function, not part of the app, because the app takes one request at a time and a batch of events would collide with a page load. Idle cost is essentially unchanged: the function and its log group cost pennies a month at this volume.
 
 ### Back up, restore, undo a restore
 
@@ -147,7 +170,7 @@ The data bucket refuses to be destroyed, so a stray `terraform destroy` can't de
    (If it reports delete markers too, run it again with `DeleteMarkers` in place of `Versions`.)
 4. `terraform -chdir=infra/envs/<env> destroy`
 
-`infra/ci` holds the deploy role, the OIDC provider and the permissions boundary that staging's function role carries, and it has no `prevent_destroy`. Destroy it with `terraform -chdir=infra/ci destroy` after staging is destroyed and before the state bucket goes, since its state lives in that bucket.
+`infra/ci` holds the deploy role, the OIDC provider and the permissions boundary that staging's app and events roles carry, and it has no `prevent_destroy`. Destroy it with `terraform -chdir=infra/ci destroy` after staging is destroyed and before the state bucket goes, since its state lives in that bucket.
 
 Put the lifecycle block back afterwards (`git checkout infra/modules/app/main.tf`). The state bucket from the bootstrap has the same protection; remove it the same way, after both environments are gone.
 

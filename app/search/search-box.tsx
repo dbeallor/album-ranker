@@ -97,7 +97,7 @@ export function SearchBox({ query }: { query: string }) {
           placeholder="Search an album or artist"
           className={styles.search}
         />
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" data-event="search">
           Search
         </Button>
       </InlineForm>

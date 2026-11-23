@@ -21,6 +21,18 @@ variable "reserved_concurrency" {
   default     = 1
 }
 
+variable "client_events" {
+  description = "Log the front-end events the browser sends (ALBUM-85). false makes the events function answer 404 and log nothing."
+  type        = bool
+  default     = true
+}
+
+variable "client_events_retention_days" {
+  description = "Days the front-end events are kept in CloudWatch Logs. Must be a value CloudWatch accepts (7, 14, 30, 60, 90, ...)."
+  type        = number
+  default     = 30
+}
+
 variable "domain_name" {
   description = "The address of this environment. Must be the zone's domain or a name under it."
   type        = string

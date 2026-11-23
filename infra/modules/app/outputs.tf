@@ -19,6 +19,11 @@ output "data_bucket" {
   value       = aws_s3_bucket.data.id
 }
 
+output "events_log_group" {
+  description = "The CloudWatch log group that holds the front-end events: read with `aws logs tail <group> --follow`."
+  value       = aws_cloudwatch_log_group.events.name
+}
+
 output "deployed_commit" {
   description = "The git commit the deployed build came from (dist/build-info.json)."
   value       = local.build_info.commit

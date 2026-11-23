@@ -1,5 +1,6 @@
 # One environment of the app: Lambda (Next.js behind the Lambda Web Adapter), a function URL, CloudFront, the S3 bucket
 # that holds the database file and the S3 bucket for build files. See docs/superpowers/specs/2026-11-22-album-14-aws-terraform-deploy.md.
+# A second, small function takes the browser's front-end events (ALBUM-85, docs/superpowers/specs/2026-11-23-album-85-front-end-event-capture.md).
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
@@ -338,6 +339,79 @@ resource "aws_lambda_function_url" "app" {
   authorization_type = "NONE"
 }
 
+# ---------------------------------------------------------------- events function (front-end events, ALBUM-85)
+
+# Separate from the app because the app runs one request at a time: a batch sent while a page loads would make one of
+# the two answer 429, and each batch would cost the app an S3 HEAD. This one checks the request and writes log lines.
+data "archive_file" "events" {
+  type        = "zip"
+  source_dir  = "${var.dist_dir}/events"
+  output_path = "${path.root}/.terraform/${local.name}-events.zip"
+}
+
+resource "aws_cloudwatch_log_group" "events" {
+  name              = "/aws/lambda/${local.name}-events"
+  retention_in_days = var.client_events_retention_days
+}
+
+resource "aws_iam_role" "events" {
+  name               = "${local.name}-events"
+  assume_role_policy = data.aws_iam_policy_document.assume.json
+
+  permissions_boundary = var.permissions_boundary_arn
+}
+
+# Writes to its own log group and nothing else: no S3, no database.
+data "aws_iam_policy_document" "events" {
+  statement {
+    sid       = "WriteLogs"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.events.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "events" {
+  name   = "${local.name}-events"
+  role   = aws_iam_role.events.id
+  policy = data.aws_iam_policy_document.events.json
+}
+
+resource "aws_lambda_function" "events" {
+  function_name = "${local.name}-events"
+  role          = aws_iam_role.events.arn
+
+  runtime       = "nodejs24.x"
+  architectures = ["arm64"]
+  handler       = "lambda/events.handler"
+  memory_size   = 128
+  timeout       = 5
+
+  filename         = data.archive_file.events.output_path
+  source_code_hash = data.archive_file.events.output_base64sha256
+
+  # A cap on how much a stray caller can run up. It follows the app's -1 convention for accounts whose concurrency
+  # quota is too low to reserve any.
+  reserved_concurrent_executions = var.reserved_concurrency == -1 ? -1 : 2
+
+  environment {
+    variables = {
+      DEPLOY_ENV    = var.environment
+      APP_PASSWORD  = random_password.app.result
+      ORIGIN_SECRET = random_password.origin_secret.result
+      CLIENT_EVENTS = var.client_events ? "on" : "off"
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.events, aws_iam_role_policy.events]
+}
+
+# Public by address only, like the app's: the function refuses any request without CloudFront's secret header.
+# With authorization_type NONE the provider also adds the two resource permissions the URL needs.
+resource "aws_lambda_function_url" "events" {
+  function_name      = aws_lambda_function.events.function_name
+  authorization_type = "NONE"
+}
+
 # ---------------------------------------------------------------- domain name and certificate
 
 # CloudFront only takes a certificate from us-east-1, so this one uses the aliased provider the environment passes in.
@@ -510,6 +584,25 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  origin {
+    origin_id   = "events"
+    domain_name = trimsuffix(trimprefix(aws_lambda_function_url.events.function_url, "https://"), "/")
+
+    custom_header {
+      name  = "x-origin-secret"
+      value = random_password.origin_secret.result
+    }
+
+    custom_origin_config {
+      http_port                = 80
+      https_port               = 443
+      origin_protocol_policy   = "https-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 60
+      origin_keepalive_timeout = 5
+    }
+  }
+
   # Everything that isn't a build file goes to the function, uncached.
   default_cache_behavior {
     target_origin_id           = "app"
@@ -525,6 +618,21 @@ resource "aws_cloudfront_distribution" "app" {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.forward_host.arn
     }
+  }
+
+  # The browser's front-end events go to the events function. CloudFront needs the full method list to allow POST. The
+  # origin request policy passes the session cookie and Sec-Fetch-Site on for the function's checks. Host stays out of
+  # it, as the function URL answers only to its own host name.
+  ordered_cache_behavior {
+    path_pattern               = "/events"
+    target_origin_id           = "events"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
   ordered_cache_behavior {

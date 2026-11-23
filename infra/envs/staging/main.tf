@@ -66,6 +66,9 @@ module "app" {
   budget_email           = var.budget_email
   reserved_concurrency   = var.reserved_concurrency
 
-  # Created by infra/ci. Caps what the CI deploy role can give the function's role.
+  client_events                = var.client_events
+  client_events_retention_days = var.client_events_retention_days
+
+  # Created by infra/ci. Caps what the CI deploy role can give the app's and the events function's roles.
   permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/album-ranker-staging-function-boundary"
 }

@@ -94,7 +94,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
                             hint={album.year === null ? "The catalog has no year. Enter the year to file it under." : undefined}
                             fieldClassName={styles.year}
                           />
-                          <Button type="submit" variant="primary">
+                          <Button type="submit" variant="primary" data-event="add-album">
                             Add to library
                           </Button>
                         </Cluster>

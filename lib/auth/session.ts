@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
-import type { DeployEnv } from "../config";
-import { safeEqual } from "./compare";
+import type { DeployEnv } from "../config.ts";
+import { safeEqual } from "./compare.ts";
 
 export const SESSION_COOKIE = "album_session";
 export const SESSION_DAYS = 90;

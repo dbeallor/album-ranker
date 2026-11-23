@@ -2,16 +2,19 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildEventsPackage } from "./events-package.ts";
 import { collectSources, packageClosure } from "./files.ts";
 
 // `npm run build:lambda`: builds Next.js and assembles what Terraform ships, in dist/ (see infra/modules/app).
 //   dist/lambda        the Lambda package: Next.js standalone server, the S3 sync entry, run.sh for the Web Adapter
+//   dist/events        the events Lambda function (handler lambda/events.handler), transpiled to JavaScript
 //   dist/static        the files for /_next/static, uploaded to the assets bucket
 //   dist/build-info.json  the commit the build came from
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DIST = join(ROOT, "dist");
 const LAMBDA = join(DIST, "lambda");
+const EVENTS = join(DIST, "events");
 const ENTRY = "lambda/server.ts";
 const MIGRATIONS = "lib/db/migrations";
 
@@ -36,11 +39,16 @@ function copyPackageFolder(from: string, to: string): void {
   cpSync(from, to, { recursive: true, force: true, filter: (source) => !["node_modules", "dist-types"].includes(basename(source)) });
 }
 
+/** The environment for `next build`: switches on front-end event capture (components/client-events.tsx), which no other build or run has. */
+export function nextBuildEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...base, NEXT_PUBLIC_CLIENT_EVENTS: "1" };
+}
+
 export function main(): void {
   rmSync(DIST, { recursive: true, force: true });
 
   console.log("Building Next.js (standalone output)...");
-  execFileSync(join(ROOT, "node_modules", ".bin", "next"), ["build"], { cwd: ROOT, stdio: "inherit" });
+  execFileSync(join(ROOT, "node_modules", ".bin", "next"), ["build"], { cwd: ROOT, stdio: "inherit", env: nextBuildEnv(process.env) });
   const standalone = join(ROOT, ".next", "standalone");
   if (!existsSync(join(standalone, "server.js"))) {
     throw new Error('.next/standalone/server.js is missing. Check that next.config.ts sets output: "standalone".');
@@ -76,6 +84,9 @@ export function main(): void {
     writeFileSync(join(LAMBDA, dir, "package.json"), '{ "type": "module" }\n');
   }
 
+  // The events function (ALBUM-85) is its own Lambda function, so it gets its own folder, as JavaScript.
+  const eventsFiles = buildEventsPackage(ROOT, EVENTS);
+
   writeFileSync(join(LAMBDA, "run.sh"), RUN_SH);
   chmodSync(join(LAMBDA, "run.sh"), 0o755);
 
@@ -83,5 +94,5 @@ export function main(): void {
   const buildInfo = { commit: git("rev-parse", "HEAD"), dirty, builtAt: new Date().toISOString() };
   writeFileSync(join(DIST, "build-info.json"), `${JSON.stringify(buildInfo, null, 2)}\n`);
 
-  console.log(`Built dist/lambda (${files.length} source files, ${packages.join(", ") || "no extra packages"}), dist/static and dist/build-info.json for ${buildInfo.commit}${dirty ? " (with uncommitted changes)" : ""}.`);
+  console.log(`Built dist/lambda (${files.length} source files, ${packages.join(", ") || "no extra packages"}), dist/events (${eventsFiles.length} files), dist/static and dist/build-info.json for ${buildInfo.commit}${dirty ? " (with uncommitted changes)" : ""}.`);
 }

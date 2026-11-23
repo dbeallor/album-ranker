@@ -24,7 +24,7 @@ type Props = {
 
 const COVER = 480;
 
-function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () => void; disabled: boolean }) {
+function AlbumPick({ album, onPick, disabled, event }: { album: AlbumCard; onPick: () => void; disabled: boolean; event: string }) {
   return (
     <div className={styles.pick}>
       <div className={styles.cover}>
@@ -35,7 +35,7 @@ function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () =
         <span>{album.artist}</span>
         <span className={styles.muted}>{album.year}</span>
       </div>
-      <Button type="button" variant="primary" className={styles.choose} onClick={onPick} disabled={disabled}>
+      <Button type="button" variant="primary" className={styles.choose} onClick={onPick} disabled={disabled} data-event={event}>
         I like this more
       </Button>
     </div>
@@ -99,23 +99,26 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
             <AlbumPick
               key={pair.a.id}
               album={pair.a}
+              event="pick-a"
               disabled={busy}
               onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "a", avoid, view.seed))}
             />
             <AlbumPick
               key={pair.b.id}
               album={pair.b}
+              event="pick-b"
               disabled={busy}
               onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "b", avoid, view.seed))}
             />
           </div>
           <Cluster justify="center">
-            <Button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid, view.seed))}>
+            <Button type="button" disabled={busy} data-event="tie" onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid, view.seed))}>
               Tie
             </Button>
             <Button
               type="button"
               disabled={busy}
+              data-event="skip"
               onClick={() =>
                 run(
                   () => skipAction(pair.a.id, pair.b.id, avoid, view.seed),
@@ -134,7 +137,7 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
       )}
 
       <Cluster justify="between">
-        <Button type="button" variant="secondary" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid, view.seed))}>
+        <Button type="button" variant="secondary" disabled={busy || !view.canUndo} data-event="undo" onClick={() => run(() => undoAction(avoid, view.seed))}>
           Undo
         </Button>
         <Stack gap={1} className={styles.counts}>
