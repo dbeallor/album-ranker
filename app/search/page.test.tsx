@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({ db: undefined as unknown as DatabaseSync }));
 vi.mock("@/lib/db/server", () => ({ getDb: () => state.db }));
 vi.mock("@/lib/catalog/search", () => ({ searchAlbums: vi.fn() }));
 vi.mock("./actions", () => ({ addToLibraryAction: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 import { searchAlbums } from "@/lib/catalog/search";
 import { createAlbum } from "@/lib/db/albums";
