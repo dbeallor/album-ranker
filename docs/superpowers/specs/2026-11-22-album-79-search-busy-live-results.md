@@ -1,7 +1,7 @@
 # Fix the catalog busy error on search and show results while typing
 
 **Status:** Shipped
-**Shipped:** in PR #PRNUM, as specified
+**Shipped:** in PR #81, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-79](https://github.com/dbeallor/album-ranker/issues/79)
 
