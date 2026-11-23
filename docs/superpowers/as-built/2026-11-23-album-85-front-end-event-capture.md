@@ -18,3 +18,4 @@
 - A batch is cut to 30 KB of body, and on hide or pagehide the buffer goes out in up to 5 batches, not one.
 - Error message and stack text also lose query strings and hashes, and `data:` URLs are reduced to `data:`, not just the origin.
 - `client_events_retention_days` is validated against CloudWatch's allowed values.
+- After ALBUM-84 landed (a CI deploy role scoped to the staging app's exact names), the events function's IAM role carries the same permissions boundary as the app's role, and `infra/ci` (deploy role policy and the boundary's log write) now also covers the `album-ranker-staging-events` function, role and log group, each by exact name. `infra/ci` has to be applied again by hand before the first merge that contains the events function.
