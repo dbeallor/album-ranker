@@ -1,6 +1,7 @@
 # Capture front-end events in staging and production
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #89, with differences: [as-built](../as-built/2026-11-23-album-85-front-end-event-capture.md)
 **Date:** 2026-11-23
 **Ticket:** [ALBUM-85](https://github.com/dbeallor/album-ranker/issues/85)
 
