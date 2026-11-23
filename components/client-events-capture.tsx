@@ -8,6 +8,8 @@ import { cleanEvent, MAX_BATCH_EVENTS, type ClientEvent } from "@/lib/client-eve
 
 const ENDPOINT = "/events";
 const FLUSH_MS = 15_000;
+// The events function refuses a body over 32 KB, so a batch stops short of that.
+const MAX_BODY_BYTES = 30_000;
 const CLICKABLE = 'a, button, [role="button"], input[type="submit"], input[type="button"]';
 const SESSION_KEY = "album-events-session";
 const SEQ_KEY = "album-events-seq";
@@ -57,6 +59,18 @@ function nextSeq(): number {
   }
 }
 
+/** Events from the front of the buffer while the body stays under the byte budget. Always at least one. */
+function takeBatch(buffer: ClientEvent[]): ClientEvent[] {
+  let bytes = '{"events":[]}'.length;
+  let count = 0;
+  for (const event of buffer.slice(0, MAX_BATCH_EVENTS)) {
+    bytes += new Blob([JSON.stringify(event)]).size + 1;
+    if (count > 0 && bytes > MAX_BODY_BYTES) break;
+    count++;
+  }
+  return buffer.slice(0, count);
+}
+
 /** Collects events, and sends them in batches. Every public method swallows its own errors. */
 function createCapture() {
   const session = sessionId();
@@ -76,7 +90,7 @@ function createCapture() {
   function flush(): void {
     try {
       if (buffer.length === 0 || typeof navigator.sendBeacon !== "function") return;
-      const batch = buffer.slice(0, MAX_BATCH_EVENTS);
+      const batch = takeBatch(buffer);
       const body = new Blob([JSON.stringify({ events: batch })], { type: "application/json" });
       if (navigator.sendBeacon(ENDPOINT, body)) buffer = buffer.slice(batch.length);
     } catch {
@@ -176,7 +190,7 @@ function start(capture: Capture): () => void {
     let response: Response;
     let target: { method: string; path: string | undefined } | undefined;
     try {
-      target = fetchTarget(input, init);
+      target = fetchTarget(input, init); // Throws on a malformed URL; the catch leaves the request unreported.
     } catch {
       target = undefined;
     }

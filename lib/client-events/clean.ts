@@ -36,6 +36,8 @@ const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 const TAG = /^[a-z][a-z0-9-]*$/;
 const METHOD = /^[A-Za-z]{1,10}$/;
 const ORIGIN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/'"()<>]*/gi;
+// A `?query` or `#hash` on a path-like token, up to the end of the token. A trailing `:line:col` is kept.
+const QUERY_OR_HASH = /(\/[^\s?#'"()<>]*)[?#][^\s'"()<>]*?((?::\d+){0,2})(?=[\s'"()<>]|$)/g;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,10 +55,13 @@ export function cleanPathname(value: unknown): string | undefined {
   return (end === -1 ? value : value.slice(0, end)).slice(0, MAX_PATH);
 }
 
-/** Removes every `scheme://host:port` so the page's own origin never reaches the log, then clips. */
+/**
+ * Removes every `scheme://host:port` so the page's own origin never reaches the log, then removes the `?query` and
+ * `#hash` of path-like tokens (keeping a trailing `:line:col`), then clips.
+ */
 export function cleanText(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
-  const text = value.replace(ORIGIN, "").slice(0, max);
+  const text = value.replace(ORIGIN, "").replace(QUERY_OR_HASH, "$1$2").slice(0, max);
   return text === "" ? undefined : text;
 }
 

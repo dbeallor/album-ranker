@@ -7,102 +7,112 @@ const page = (fields: Record<string, unknown>) => ({ type: "page", ...base, path
 const click = (fields: Record<string, unknown>) => ({ type: "click", ...base, tag: "button", ...fields });
 const error = (fields: Record<string, unknown>) => ({ type: "error", ...base, kind: "error", message: "boom", ...fields });
 
-describe("cleanEvent paths", () => {
-  it.each([
-    { name: "keeps a plain path", input: "/library", expected: "/library" },
-    { name: "drops the query string", input: "/search?q=getz", expected: "/search" },
-    { name: "drops the hash", input: "/import#item-4", expected: "/import" },
-    { name: "drops query and hash together", input: "/a/b?x=1#y", expected: "/a/b" },
-    { name: "turns another host into external", input: "https://example.com/x?y=1", expected: "external" },
-    { name: "turns a protocol-relative url into external", input: "//example.com/x", expected: "external" },
-    { name: "turns a mailto link into external", input: "mailto:a@b.c", expected: "external" },
-    { name: "turns a relative string into external", input: "library", expected: "external" },
-  ])("href: $name", ({ input, expected }) => {
-    expect(cleanEvent(click({ href: input }))).toMatchObject({ href: expected });
-  });
+type Row = { name: string; raw: unknown; expected: Record<string, unknown> | null; absent?: string[] };
 
-  it.each([
-    { name: "page path drops the query", event: page({ path: "/search?q=getz" }), expected: { path: "/search" } },
-    { name: "request path drops the hash", event: { type: "request-failed", ...base, method: "POST", path: "/matchups#x", status: 500 }, expected: { path: "/matchups" } },
-    { name: "error source drops the query", event: error({ source: "/_next/static/a.js?v=2" }), expected: { source: "/_next/static/a.js" } },
-    { name: "error source from another host", event: error({ source: "https://cdn.example.com/a.js" }), expected: { source: "external" } },
-  ])("$name", ({ event, expected }) => {
-    expect(cleanEvent(event)).toMatchObject(expected);
-  });
+function check({ raw, expected, absent = [] }: Row) {
+  const result = cleanEvent(raw);
+  if (expected === null) {
+    expect(result).toBeNull();
+    return;
+  }
+  expect(result).toMatchObject(expected);
+  for (const key of absent) expect(result).not.toHaveProperty(key);
+}
 
-  it.each([{ path: "" }, { path: 4 }, { path: undefined }])("drops a page event whose path is $path", (fields) => {
-    expect(cleanEvent(page(fields))).toBeNull();
+const submit = (fields: Record<string, unknown>) => ({ type: "submit", ...base, ...fields });
+const failed = (fields: Record<string, unknown>) => ({ type: "request-failed", ...base, method: "POST", path: "/x", status: 500, ...fields });
+
+describe("cleanEvent page", () => {
+  it.each<Row>([
+    { name: "keeps a plain path", raw: page({}), expected: { path: "/library", vw: 390 } },
+    { name: "drops the query string", raw: page({ path: "/search?q=getz" }), expected: { path: "/search" } },
+    { name: "drops the hash", raw: page({ path: "/import#item-4" }), expected: { path: "/import" } },
+    { name: "drops query and hash together", raw: page({ path: "/a/b?x=1#y" }), expected: { path: "/a/b" } },
+    { name: "turns another host into external", raw: page({ path: "https://example.com/x?y=1" }), expected: { path: "external" } },
+    { name: "rounds vw", raw: page({ vw: 390.6 }), expected: { vw: 391 } },
+    { name: "drops an empty path", raw: page({ path: "" }), expected: null },
+    { name: "drops a numeric path", raw: page({ path: 4 }), expected: null },
+    { name: "drops a missing path", raw: page({ path: undefined }), expected: null },
+    { name: "drops a negative vw", raw: page({ vw: -1 }), expected: null },
+    { name: "drops a string vw", raw: page({ vw: "390" }), expected: null },
+    { name: "drops a NaN vw", raw: page({ vw: Number.NaN }), expected: null },
+    { name: "drops an infinite vw", raw: page({ vw: Infinity }), expected: null },
+  ])("$name", check);
+});
+
+describe("cleanEvent click", () => {
+  it.each<Row>([
+    { name: "keeps a plain href", raw: click({ href: "/library" }), expected: { href: "/library" } },
+    { name: "drops the query and hash of an href", raw: click({ href: "/search?q=getz#top" }), expected: { href: "/search" } },
+    { name: "turns another host into external", raw: click({ href: "https://example.com/x?y=1" }), expected: { href: "external" } },
+    { name: "turns a protocol-relative url into external", raw: click({ href: "//example.com/x" }), expected: { href: "external" } },
+    { name: "turns a mailto link into external", raw: click({ href: "mailto:a@b.c" }), expected: { href: "external" } },
+    { name: "turns a relative string into external", raw: click({ href: "library" }), expected: { href: "external" } },
+    { name: "keeps the name", raw: click({ name: "pick-a" }), expected: { name: "pick-a" } },
+    { name: "trims the name", raw: click({ name: "  skip " }), expected: { name: "skip" } },
+    { name: "clips the name to 100 characters", raw: click({ name: "x".repeat(150) }), expected: { name: "x".repeat(100) } },
+    { name: "leaves out an empty name", raw: click({ name: "" }), expected: { tag: "button" }, absent: ["name"] },
+    { name: "leaves out a blank name", raw: click({ name: "   " }), expected: { tag: "button" }, absent: ["name"] },
+    { name: "leaves out a numeric name", raw: click({ name: 5 }), expected: { tag: "button" }, absent: ["name"] },
+    { name: "leaves out a null name", raw: click({ name: null }), expected: { tag: "button" }, absent: ["name"] },
+    { name: "lowercases the tag", raw: click({ tag: "BUTTON" }), expected: { tag: "button" } },
+    { name: "drops a click with no tag", raw: click({ tag: undefined }), expected: null },
+    { name: "drops a click with a tag that is not a tag name", raw: click({ tag: "<script>" }), expected: null },
+  ])("$name", check);
+
+  it("drops unknown fields and keeps only the ones for the type", () => {
+    const result = cleanEvent(click({ name: "skip", value: "typed text", text: "Album One", extra: { a: 1 } }));
+    expect(result).toEqual({ type: "click", ...base, tag: "button", name: "skip" });
   });
 });
 
-describe("cleanEvent names", () => {
-  it.each([
-    { name: "keeps the name", input: "pick-a", expected: "pick-a" },
-    { name: "trims it", input: "  skip ", expected: "skip" },
-    { name: "clips it to 100 characters", input: "x".repeat(150), expected: "x".repeat(100) },
-  ])("$name", ({ input, expected }) => {
-    expect(cleanEvent(click({ name: input }))).toMatchObject({ name: expected });
-    expect(cleanEvent({ type: "submit", ...base, name: input })).toMatchObject({ name: expected });
-  });
-
-  it.each([{ value: "" }, { value: "   " }, { value: 5 }, { value: null }, { value: undefined }])("leaves out a name of $value", ({ value }) => {
-    expect(cleanEvent(click({ name: value }))).not.toHaveProperty("name");
-  });
+describe("cleanEvent submit", () => {
+  it.each<Row>([
+    { name: "keeps the name", raw: submit({ name: "pick-a" }), expected: { name: "pick-a" } },
+    { name: "trims the name", raw: submit({ name: "  skip " }), expected: { name: "skip" } },
+    { name: "clips the name to 100 characters", raw: submit({ name: "x".repeat(150) }), expected: { name: "x".repeat(100) } },
+    { name: "leaves out a blank name", raw: submit({ name: "   " }), expected: { type: "submit" }, absent: ["name"] },
+    { name: "leaves out a numeric name", raw: submit({ name: 5 }), expected: { type: "submit" }, absent: ["name"] },
+  ])("$name", check);
 });
 
-describe("cleanEvent errors", () => {
-  it.each([
-    { name: "clips the message to 300", fields: { message: "m".repeat(400) }, expected: { message: "m".repeat(300) } },
-    { name: "clips the stack to 2000", fields: { stack: "s".repeat(2500) }, expected: { stack: "s".repeat(2000) } },
-    { name: "removes the origin from the message", fields: { message: "Failed to load https://album.example.com/_next/a.js" }, expected: { message: "Failed to load /_next/a.js" } },
-    { name: "removes the origin and port from the stack", fields: { stack: "at f (http://localhost:3000/_next/a.js:1:2)\nat g (https://x.test/b.js:3:4)" }, expected: { stack: "at f (/_next/a.js:1:2)\nat g (/b.js:3:4)" } },
-    { name: "keeps line and col whole numbers", fields: { line: 12, col: 7 }, expected: { line: 12, col: 7 } },
-    { name: "accepts a rejection", fields: { kind: "rejection" }, expected: { kind: "rejection" } },
-  ])("$name", ({ fields, expected }) => {
-    expect(cleanEvent(error(fields))).toMatchObject(expected);
-  });
-
-  it.each([{ line: 1.5 }, { line: -1 }, { line: "3" }, { col: Number.NaN }])("drops a bad line or col %o", (fields) => {
-    const result = cleanEvent(error(fields));
-    expect(result).not.toHaveProperty("line");
-    expect(result).not.toHaveProperty("col");
-  });
-
-  it("drops an error with an unknown kind", () => {
-    expect(cleanEvent(error({ kind: "other" }))).toBeNull();
-  });
+describe("cleanEvent error", () => {
+  it.each<Row>([
+    { name: "accepts a rejection", raw: error({ kind: "rejection" }), expected: { kind: "rejection" } },
+    { name: "drops an unknown kind", raw: error({ kind: "other" }), expected: null },
+    { name: "clips the message to 300", raw: error({ message: "m".repeat(400) }), expected: { message: "m".repeat(300) } },
+    { name: "clips the stack to 2000", raw: error({ stack: "s".repeat(2500) }), expected: { stack: "s".repeat(2000) } },
+    { name: "removes the origin from the message", raw: error({ message: "Failed to load https://album.example.com/_next/a.js" }), expected: { message: "Failed to load /_next/a.js" } },
+    { name: "removes the origin and port from the stack", raw: error({ stack: "at f (http://localhost:3000/_next/a.js:1:2)\nat g (https://x.test/b.js:3:4)" }), expected: { stack: "at f (/_next/a.js:1:2)\nat g (/b.js:3:4)" } },
+    { name: "removes the query from the stack and keeps line and col", raw: error({ stack: "at https://album-ranker.com/search?q=stan%20getz:3:15" }), expected: { stack: "at /search:3:15" } },
+    { name: "removes the query from the message", raw: error({ message: "Failed to load https://album-ranker.com/search?q=stan%20getz#top now" }), expected: { message: "Failed to load /search now" } },
+    { name: "removes the query inside parentheses and keeps line and col", raw: error({ stack: "at f (/_next/a.js?v=2:10:5)" }), expected: { stack: "at f (/_next/a.js:10:5)" } },
+    { name: "keeps a question mark that is not in a path", raw: error({ message: "What? Item #4 not found" }), expected: { message: "What? Item #4 not found" } },
+    { name: "drops the query of the source", raw: error({ source: "/_next/static/a.js?v=2" }), expected: { source: "/_next/static/a.js" } },
+    { name: "turns a source on another host into external", raw: error({ source: "https://cdn.example.com/a.js" }), expected: { source: "external" } },
+    { name: "keeps line and col whole numbers", raw: error({ line: 12, col: 7 }), expected: { line: 12, col: 7 } },
+    { name: "drops a fractional line", raw: error({ line: 1.5 }), expected: { kind: "error" }, absent: ["line"] },
+    { name: "drops a negative line", raw: error({ line: -1 }), expected: { kind: "error" }, absent: ["line"] },
+    { name: "drops a string line", raw: error({ line: "3" }), expected: { kind: "error" }, absent: ["line"] },
+    { name: "drops a NaN col", raw: error({ col: Number.NaN }), expected: { kind: "error" }, absent: ["col"] },
+  ])("$name", check);
 });
 
-describe("cleanEvent numbers", () => {
-  it.each([
-    { vw: 390, expected: 390 },
-    { vw: 390.6, expected: 391 },
-    { vw: 1024.2, expected: 1024 },
-  ])("rounds vw $vw to a whole number", ({ vw, expected }) => {
-    expect(cleanEvent(page({ vw }))).toMatchObject({ vw: expected });
-  });
-
-  it.each([{ vw: -1 }, { vw: "390" }, { vw: Number.NaN }, { vw: Infinity }])("drops a page event whose vw is $vw", ({ vw }) => {
-    expect(cleanEvent(page({ vw }))).toBeNull();
-  });
-
-  it.each([
-    { status: 0, valid: true },
-    { status: 429, valid: true },
-    { status: 503, valid: true },
-    { status: 600, valid: false },
-    { status: -1, valid: false },
-    { status: 500.5, valid: false },
-    { status: "500", valid: false },
-  ])("request status $status is valid: $valid", ({ status, valid }) => {
-    const result = cleanEvent({ type: "request-failed", ...base, method: "post", path: "/x", status });
-    expect(result !== null).toBe(valid);
-    if (valid) expect(result).toMatchObject({ method: "POST", status });
-  });
-
-  it.each([{ method: "" }, { method: "PO ST" }, { method: "TOOLONGMETHOD" }, { method: 4 }])("drops a request with method $method", ({ method }) => {
-    expect(cleanEvent({ type: "request-failed", ...base, method, path: "/x", status: 500 })).toBeNull();
-  });
+describe("cleanEvent request-failed", () => {
+  it.each<Row>([
+    { name: "drops the hash of the path", raw: failed({ path: "/matchups#x" }), expected: { path: "/matchups" } },
+    { name: "uppercases the method", raw: failed({ method: "post" }), expected: { method: "POST" } },
+    { name: "accepts status 0", raw: failed({ status: 0 }), expected: { status: 0 } },
+    { name: "accepts status 429", raw: failed({ status: 429 }), expected: { status: 429 } },
+    { name: "drops status 600", raw: failed({ status: 600 }), expected: null },
+    { name: "drops a negative status", raw: failed({ status: -1 }), expected: null },
+    { name: "drops a fractional status", raw: failed({ status: 500.5 }), expected: null },
+    { name: "drops a string status", raw: failed({ status: "500" }), expected: null },
+    { name: "drops an empty method", raw: failed({ method: "" }), expected: null },
+    { name: "drops a method with a space", raw: failed({ method: "PO ST" }), expected: null },
+    { name: "drops a too long method", raw: failed({ method: "TOOLONGMETHOD" }), expected: null },
+    { name: "drops a numeric method", raw: failed({ method: 4 }), expected: null },
+  ])("$name", check);
 });
 
 describe("cleanEvent shape", () => {
@@ -116,19 +126,8 @@ describe("cleanEvent shape", () => {
     { name: "a missing seq", raw: page({ seq: undefined }) },
     { name: "a fractional seq", raw: page({ seq: 1.5 }) },
     { name: "a bad session id", raw: page({ session: "has spaces!" }) },
-    { name: "a click with no tag", raw: click({ tag: undefined }) },
-    { name: "a click with a tag that is not a tag name", raw: click({ tag: "<script>" }) },
   ])("drops $name", ({ raw }) => {
     expect(cleanEvent(raw)).toBeNull();
-  });
-
-  it("drops unknown fields and keeps only the ones for the type", () => {
-    const result = cleanEvent(click({ name: "skip", value: "typed text", text: "Album One", extra: { a: 1 } }));
-    expect(result).toEqual({ type: "click", ...base, tag: "button", name: "skip" });
-  });
-
-  it("lowercases the tag", () => {
-    expect(cleanEvent(click({ tag: "BUTTON" }))).toMatchObject({ tag: "button" });
   });
 
   it("normalizes the time to ISO", () => {

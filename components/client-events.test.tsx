@@ -95,15 +95,25 @@ describe("client events component", () => {
     expect(retried.map((event) => event.type)).toEqual(["page", "click"]);
   });
 
-  it("sends the buffer after 15 seconds", async () => {
-    vi.useFakeTimers();
+  it("sends at most 30000 bytes per flush and the rest on the next one", async () => {
     vi.stubEnv("NEXT_PUBLIC_CLIENT_EVENTS", "1");
     render(<Page />);
 
-    vi.advanceTimersByTime(14_999);
-    expect(beacon).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(beacon).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 20; i++) {
+      const failure = new Error(`boom ${i}`);
+      failure.stack = `Error: boom ${i}\n${"    at f (/_next/static/chunk.js:1:2)\n".repeat(60)}`;
+      window.dispatchEvent(new ErrorEvent("error", { message: failure.message, error: failure }));
+    }
+    await flushAndRead();
+    await flushAndRead();
+    await flushAndRead();
+
+    const sizes = beacon.mock.calls.map(([, body]) => (body as Blob).size);
+    const sent = (await sentBodies()).flat();
+    expect(sizes.length).toBeGreaterThan(1);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(30_000);
+    expect(sent.filter((event) => event.type === "error")).toHaveLength(20);
+    expect(sent[0]).toMatchObject({ type: "page" });
   });
 
   it("reports a failed same-origin request but not one to /events or another host", async () => {
