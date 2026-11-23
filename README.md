@@ -49,7 +49,7 @@ The state holds the generated passwords, so keep the state bucket private (the b
 
 Every merge to `main` deploys staging from GitHub Actions (`.github/workflows/deploy-staging.yml`, set up once below). The run prints the `url` and `deployed_commit` and fails if staging doesn't run the commit that was pushed. **Actions**, **Deploy staging**, **Run workflow** (on `main`) repeats it without a new merge. Production is never deployed from CI.
 
-By hand, which is the fallback when CI is down and how the first apply of an environment goes:
+By hand, which is the fallback when CI is down and how the first apply of an environment goes (a brand-new account applies `infra/ci` first, see "Set up the CI deploy", because staging's function role carries a permissions boundary that `infra/ci` creates):
 
 ```
 npm ci && npm run build:lambda
@@ -74,7 +74,7 @@ The `*.cloudfront.net` address (`output cloudfront_url`) still works and shows t
 
 ### Set up the CI deploy (once)
 
-CI signs in to AWS with GitHub's OIDC token, no stored keys. It assumes the role `album-ranker-ci-staging-deploy`, which only a run on the `main` branch of this repository can assume (a pull request, a fork, another branch or a tag is refused), and which can change staging and nothing else. The trust is on the `main` ref, not on the workflow file: any workflow on `main` that runs on `issue_comment`, `workflow_run`, `schedule` or another event gets the same token subject and could assume the role too. Keep `deploy-staging.yml` the only workflow on `main` that asks for `id-token: write`, and review any new one as if it were a deploy key. `infra/ci` creates the role, the OIDC provider and the permissions boundary the staging function's role now carries. Do this once, after the staging deploy above works, with your admin profile:
+CI signs in to AWS with GitHub's OIDC token, no stored keys. It assumes the role `album-ranker-ci-staging-deploy`, which only a run on the `main` branch of this repository can assume (a pull request, a fork, another branch or a tag is refused), and which can change staging and nothing else. The trust is on the `main` ref, not on the workflow file: any workflow on `main` that runs on `issue_comment`, `workflow_run`, `schedule` or another event gets the same token subject and could assume the role too. Keep `deploy-staging.yml` the only workflow on `main` that asks for `id-token: write`, and review any new one as if it were a deploy key. `infra/ci` creates the role, the OIDC provider and the permissions boundary the staging function's role now carries. Do this once, with your admin profile. A brand-new account runs step 1 before its first staging apply, then steps 2 to 5 (step 2 is then that first apply); an account whose staging already runs follows the steps in order:
 
 1. In `infra/ci`, copy `backend.hcl.example` to `backend.hcl` and `terraform.tfvars.example` to `terraform.tfvars` (both gitignored) and fill them in: the bucket and region from the bootstrap, and `zone_id`. An AWS account holds one GitHub OIDC provider; if yours already has one, set `create_oidc_provider = false`. Then:
    ```
@@ -137,6 +137,8 @@ The data bucket refuses to be destroyed, so a stray `terraform destroy` can't de
    ```
    (If it reports delete markers too, run it again with `DeleteMarkers` in place of `Versions`.)
 4. `terraform -chdir=infra/envs/<env> destroy`
+
+`infra/ci` holds the deploy role, the OIDC provider and the permissions boundary that staging's function role carries, and it has no `prevent_destroy`. Destroy it with `terraform -chdir=infra/ci destroy` after staging is destroyed and before the state bucket goes, since its state lives in that bucket.
 
 Put the lifecycle block back afterwards (`git checkout infra/modules/app/main.tf`). The state bucket from the bootstrap has the same protection; remove it the same way, after both environments are gone.
 
