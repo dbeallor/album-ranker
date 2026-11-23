@@ -30,3 +30,4 @@ Every push to `main` builds the app and applies `infra/envs/staging` from `.gith
 
 - No apply with the role has run; expect an `AccessDenied` or two on the first CI run.
 - Tag conditions on CloudFront and ACM reads, and the S3 backend's `init` against the list condition, are untested without AWS.
+- The build and the deploy share one job, so a compromised npm dependency could request the OIDC token during `npm ci`. Splitting the build into a job without `id-token` that hands `dist/` to the deploy job would contain that; deferred.

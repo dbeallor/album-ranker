@@ -51,7 +51,8 @@ jobs:
           npm ci
           npm run build:lambda
 
-      # Signed in only once the build is done, so no step that runs project code before this holds AWS credentials.
+      # Signed in only once the build is done, so the build gets no AWS keys in its environment. The job still has id-token: write,
+      # so a compromised dependency could ask for the OIDC token itself; a separate build job would be needed to contain that.
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
