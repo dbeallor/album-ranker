@@ -32,7 +32,8 @@ data "aws_iam_policy_document" "deploy" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["${local.state_key}*"]
+      # init may list workspaces under env:/; that shows key names only.
+      values = ["${local.state_key}*", "env:/*"]
     }
   }
 

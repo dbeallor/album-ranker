@@ -262,7 +262,7 @@ run "deploy_policy_state_access_is_staging_only" {
   assert {
     condition = alltrue([
       for s in data.aws_iam_policy_document.deploy.statement :
-      toset(s.actions) == toset(["s3:ListBucket"]) && length([for c in s.condition : c if c.test == "StringLike" && c.variable == "s3:prefix" && toset(c.values) == toset(["album-ranker/staging.tfstate*"])]) == 1
+      toset(s.actions) == toset(["s3:ListBucket"]) && length([for c in s.condition : c if c.test == "StringLike" && c.variable == "s3:prefix" && toset(c.values) == toset(["album-ranker/staging.tfstate*", "env:/*"])]) == 1
       if s.effect != "Deny" && contains(s.resources, "arn:aws:s3:::album-ranker-tfstate-123456789012")
     ])
     error_message = "Listing the state bucket must be limited to the staging.tfstate prefix."
