@@ -1,6 +1,7 @@
 # Deploy staging from CI after every merge to main
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #87, with differences: [as-built](../as-built/2026-11-23-album-84-ci-staging-deploy.md)
 **Date:** 2026-11-23
 **Ticket:** [ALBUM-84](https://github.com/dbeallor/album-ranker/issues/84)
 
