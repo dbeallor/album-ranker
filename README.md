@@ -14,7 +14,7 @@ The app listens on this machine only (127.0.0.1), so other devices on your netwo
 
 ## Deploy to AWS
 
-Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
+Two copies run in your own AWS account, staging and production, each with its own password and its own database. Terraform builds everything; you never click through the console. Each copy is a Lambda function (plus a small events function, see Front-end events) behind CloudFront, with the database as one file in a versioned S3 bucket. Production is at <https://album-ranker.com> and staging at <https://staging.album-ranker.com>, with certificates from AWS. Idle, both together cost about $0.60 a month, almost all of it the $0.50 DNS zone.
 
 Two trade-offs of that choice. After a quiet spell the first request takes 1 to 3 seconds (a cold start). Only one request runs at a time, so a second one that lands mid-request gets a 429 and works on a reload.
 
@@ -53,7 +53,7 @@ terraform -chdir=infra/envs/staging init -backend-config=backend.hcl
 terraform -chdir=infra/envs/staging apply
 ```
 
-`build:lambda` writes `dist/` (the function and the build files). The first apply of an environment takes a few minutes while CloudFront comes up, and it **waits for the HTTPS certificate to validate**, which only happens once the name servers at GoDaddy have taken effect. If that is still pending, the apply sits on `aws_acm_certificate_validation` for up to 75 minutes and then fails with a timeout. Nothing is lost: check the name servers with `dig NS album-ranker.com +short` and run `terraform apply` again, which picks up where it stopped. Then:
+`build:lambda` writes `dist/` (the app function, the events function and the build files). The first apply of an environment takes a few minutes while CloudFront comes up, and it **waits for the HTTPS certificate to validate**, which only happens once the name servers at GoDaddy have taken effect. If that is still pending, the apply sits on `aws_acm_certificate_validation` for up to 75 minutes and then fails with a timeout. Nothing is lost: check the name servers with `dig NS album-ranker.com +short` and run `terraform apply` again, which picks up where it stopped. Then:
 
 ```
 terraform -chdir=infra/envs/staging output url
@@ -87,7 +87,7 @@ Production is <https://album-ranker.com>, with its own `url`, `password` and `da
 
 Staging and production report what happens in the browser to a log group in your own AWS account: which pages were opened, which buttons and links were used, and front-end errors and failed requests. Nothing goes to a third party, and the Content-Security-Policy does not change (the browser posts to `/events` on the same address). Events start after login, not on the login page.
 
-- **Captured:** pathnames (no query string or hash), the tag and the `data-event`, `aria-label`, `name` or `id` of what was clicked or submitted, viewport width, error messages and stacks (clipped, with the page's origin removed), the method, pathname and status of a failed same-origin request, and a random id per browser tab that groups one visit.
+- **Captured:** pathnames (no query string or hash), the tag and the `data-event`, `aria-label`, `name` or `id` of what was clicked or submitted, viewport width, error messages and stacks (clipped, with the page's origin, query strings and hashes removed, and `data:` URLs reduced to `data:`), the method, pathname and status of a failed same-origin request, and a random id per browser tab that groups one visit.
 - **Never captured:** the password, the session cookie or any cookie, field values or typed text, query strings and hashes, visible page text, headers, bodies, IP address, user agent.
 - **When it is on:** by default, in both environments. `npm run build:lambda` is the only build that includes the capture code, so `npm run dev`, `npm run preview`, `npm test` and the browser tests never send anything, and no events function exists locally.
 - **Switch it off:** set `client_events = false` in that environment's `terraform.tfvars` and `terraform apply`. The events function then answers 404 and logs nothing. Browsers built with capture keep sending until the next deploy, and those requests are cheap and dropped. Events already logged stay until retention expires.

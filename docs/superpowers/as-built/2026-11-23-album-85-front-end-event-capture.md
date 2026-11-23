@@ -15,3 +15,6 @@
 - Reserved concurrency of the events function follows the app's -1 low-quota fallback.
 - The per-tab event counter (`seq`) is kept in sessionStorage.
 - `lib/auth/session.ts` imports now use `.ts` extensions so the events package can follow them.
+- A batch is cut to 30 KB of body, and on hide or pagehide the buffer goes out in up to 5 batches, not one.
+- Error message and stack text also lose query strings and hashes, and `data:` URLs are reduced to `data:`, not just the origin.
+- `client_events_retention_days` is validated against CloudWatch's allowed values.
