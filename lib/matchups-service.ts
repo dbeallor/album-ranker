@@ -1,8 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DataError, type MatchupResult } from "./db/types";
-import { countMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
-import { pairKey } from "./elo/pick";
+import { listLibrary } from "./db/library";
+import { countMatchups, listMatchups, recordMatchup, undoLastMatchup } from "./db/matchups";
+import { pairKey, pickMatchup } from "./elo/pick";
 import type { RankingProgress } from "./elo/progress";
+import { computeRatings, type ReplayMatchup } from "./elo/replay";
 import { loadAlbumCard, loadMatchupState, loadRatings, progressOf, type AlbumCard } from "./ratings";
 
 export type MatchupView = {
@@ -13,6 +15,10 @@ export type MatchupView = {
   canUndo: boolean;
   /** How far the library is from an approximately right order; null with fewer than two albums. */
   progress: RankingProgress | null;
+  /** The `random()` value the next action uses for its pick, so the pair it serves can be predicted. */
+  seed: number;
+  /** Cover URLs of the pairs the next action can serve (answer a, b or tie, skip, undo), minus the current pair's own. */
+  upcoming: string[];
 };
 
 export type MatchupActionResult = MatchupView | { error: string };
@@ -31,9 +37,74 @@ function parseAvoid(avoid: unknown): Set<string> {
   return new Set(avoid.slice(0, MAX_AVOID).filter((key): key is string => typeof key === "string" && PAIR_KEY.test(key)));
 }
 
+/** The injected random, unless the browser sent a usable seed, which makes the pick the predicted one. */
+function randomFor(seed: unknown, random: () => number): () => number {
+  return typeof seed === "number" && Number.isFinite(seed) && seed >= 0 && seed < 1 ? () => seed : random;
+}
+
+type Pair = { a: AlbumCard; b: AlbumCard };
+
+/** A matchup that sorts after every stored one, standing in for the answer the user is about to give. */
+function hypothetical(pair: Pair, result: MatchupResult, id: number): ReplayMatchup {
+  return { id, albumAId: pair.a.id, albumBId: pair.b.id, result, createdAt: "9999-12-31T23:59:59.999Z" };
+}
+
+/**
+ * The cover URLs of every pair the next action can serve from `pair`, given the same stored matchups, `avoid` and `seed`.
+ * Null covers, repeats and the current pair's own covers are left out.
+ * The library and the stored matchups are read once, and each album card at most once.
+ */
+function upcomingCovers(db: DatabaseSync, pair: Pair, avoid: Set<string>, seed: number): string[] {
+  const albumIds = listLibrary(db).map((entry) => entry.albumId);
+  const stored = listMatchups(db);
+  const nextId = Math.max(0, ...stored.map((matchup) => matchup.id)) + 1;
+
+  const cards = new Map<number, AlbumCard | undefined>();
+  const cardOf = (id: number) => {
+    if (!cards.has(id)) cards.set(id, loadAlbumCard(db, id));
+    return cards.get(id);
+  };
+  const pickPair = (matchups: ReplayMatchup[], avoided: Set<string>): Pair | undefined => {
+    const { ratings, used } = computeRatings({ albumIds, matchups });
+    const albums = [...ratings].map(([id, rating]) => ({ id, rating }));
+    const picked = pickMatchup({ albums, matchups: used, avoid: avoided, random: () => seed });
+    const a = picked && cardOf(picked.a);
+    const b = picked && cardOf(picked.b);
+    return a && b ? { a, b } : undefined;
+  };
+
+  const served: (Pair | undefined)[] = RESULTS.map((result) => pickPair([...stored, hypothetical(pair, result, nextId)], avoid));
+  served.push(pickPair(stored, new Set(avoid).add(pairKey(pair.a.id, pair.b.id))));
+
+  // Undo serves the newest stored pair; when an album has left the library the fallback pick is not predicted.
+  const newest = stored.at(-1);
+  const a = newest && cardOf(newest.albumAId);
+  const b = newest && cardOf(newest.albumBId);
+  if (a && b) served.push({ a, b });
+
+  const own = new Set([pair.a.coverUrl, pair.b.coverUrl]);
+  const urls = served.flatMap((next) => (next ? [next.a.coverUrl, next.b.coverUrl] : []));
+  return [...new Set(urls.filter((url): url is string => url !== null && !own.has(url)))];
+}
+
+function withUpcoming(
+  db: DatabaseSync,
+  avoid: Set<string>,
+  base: { pair: Pair | null; count: number; lastAnswer: MatchupView["lastAnswer"]; progress: RankingProgress | null },
+): MatchupView {
+  const seed = Math.random();
+  const upcoming = base.pair ? upcomingCovers(db, base.pair, avoid, seed) : [];
+  return { ...base, canUndo: base.count > 0, seed, upcoming };
+}
+
 function view(db: DatabaseSync, avoid: Set<string>, random: () => number, lastAnswer: MatchupView["lastAnswer"]): MatchupView {
   const { pair, count, progress } = loadMatchupState(db, avoid, random);
-  return { pair, count, lastAnswer, canUndo: count > 0, progress };
+  return withUpcoming(db, avoid, { pair, count, lastAnswer, progress });
+}
+
+/** The first view of the matchup screen: a fresh pair with nothing avoided, and the covers that may follow it. */
+export function initialMatchupView(db: DatabaseSync): MatchupView {
+  return view(db, new Set(), Math.random, null);
 }
 
 function round(rating: number): number {
@@ -63,6 +134,7 @@ export function answerMatchup(
   albumBId: unknown,
   result: unknown,
   avoid: unknown,
+  seed: unknown,
   random: () => number = Math.random,
 ): MatchupActionResult {
   if (!isId(albumAId) || !isId(albumBId) || albumAId === albumBId || !RESULTS.includes(result as MatchupResult)) {
@@ -83,7 +155,7 @@ export function answerMatchup(
   const after = loadRatings(db).ratings;
   const a = loadAlbumCard(db, albumAId)!;
   const b = loadAlbumCard(db, albumBId)!;
-  return view(db, parseAvoid(avoid), random, { text: changeText(before, after, [a, b])! });
+  return view(db, parseAvoid(avoid), randomFor(seed, random), { text: changeText(before, after, [a, b])! });
 }
 
 /** Records nothing. The skipped pair is avoided from now on, so the next pair is a different one. */
@@ -92,17 +164,23 @@ export function skipMatchup(
   albumAId: unknown,
   albumBId: unknown,
   avoid: unknown,
+  seed: unknown,
   random: () => number = Math.random,
 ): MatchupActionResult {
   if (!isId(albumAId) || !isId(albumBId) || albumAId === albumBId) {
     return { error: "That pair wasn't valid. Reload the page." };
   }
   const avoided = parseAvoid(avoid).add(pairKey(albumAId, albumBId));
-  return view(db, avoided, random, null);
+  return view(db, avoided, randomFor(seed, random), null);
 }
 
 /** Deletes the newest matchup and serves its pair again, so the user can answer it differently. */
-export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => number = Math.random): MatchupActionResult {
+export function undoMatchup(
+  db: DatabaseSync,
+  avoid: unknown,
+  seed: unknown,
+  random: () => number = Math.random,
+): MatchupActionResult {
   const before = loadRatings(db).ratings;
   const undone = undoLastMatchup(db);
   if (!undone) return { error: "There is nothing to undo." };
@@ -115,9 +193,8 @@ export function undoMatchup(db: DatabaseSync, avoid: unknown, random: () => numb
   const lastAnswer = { text: text ?? "Undone." };
 
   if (a && b && after.has(a.id) && after.has(b.id)) {
-    const count = countMatchups(db);
-    return { pair: { a, b }, count, lastAnswer, canUndo: count > 0, progress: progressOf(afterState) };
+    return withUpcoming(db, parseAvoid(avoid), { pair: { a, b }, count: countMatchups(db), lastAnswer, progress: progressOf(afterState) });
   }
   // One of the albums has lost its placement since, so the pair can't be asked again.
-  return view(db, parseAvoid(avoid), random, lastAnswer);
+  return view(db, parseAvoid(avoid), randomFor(seed, random), lastAnswer);
 }

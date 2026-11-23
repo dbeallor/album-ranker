@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Cover } from "@/components/cover";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
@@ -17,9 +17,9 @@ type Answer = "a" | "b" | "tie";
 
 type Props = {
   initial: MatchupView;
-  answerAction: (albumAId: number, albumBId: number, result: Answer, avoid: string[]) => Promise<MatchupActionResult>;
-  skipAction: (albumAId: number, albumBId: number, avoid: string[]) => Promise<MatchupActionResult>;
-  undoAction: (avoid: string[]) => Promise<MatchupActionResult>;
+  answerAction: (albumAId: number, albumBId: number, result: Answer, avoid: string[], seed: number) => Promise<MatchupActionResult>;
+  skipAction: (albumAId: number, albumBId: number, avoid: string[], seed: number) => Promise<MatchupActionResult>;
+  undoAction: (avoid: string[], seed: number) => Promise<MatchupActionResult>;
 };
 
 const COVER = 480;
@@ -28,7 +28,7 @@ function AlbumPick({ album, onPick, disabled }: { album: AlbumCard; onPick: () =
   return (
     <div className={styles.pick}>
       <div className={styles.cover}>
-        <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={COVER} fill />
+        <Cover src={album.coverUrl} alt={`Cover of ${album.title}`} size={COVER} fill priority />
       </div>
       <div className={styles.text}>
         <strong className={styles.title}>{album.title}</strong>
@@ -47,6 +47,21 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
   const [avoid, setAvoid] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const prefetched = useRef(new Map<string, HTMLImageElement>());
+
+  // Start the covers of the pairs the next action can serve now, so they are in the browser when the pair appears.
+  useEffect(() => {
+    const next = new Map<string, HTMLImageElement>();
+    for (const url of view.upcoming) {
+      let image = prefetched.current.get(url);
+      if (!image) {
+        image = new Image();
+        image.src = url;
+      }
+      next.set(url, image);
+    }
+    prefetched.current = next;
+  }, [view.upcoming]);
 
   async function run(call: () => Promise<MatchupActionResult>, onDone?: () => void) {
     setBusy(true);
@@ -85,17 +100,17 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
               key={pair.a.id}
               album={pair.a}
               disabled={busy}
-              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "a", avoid))}
+              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "a", avoid, view.seed))}
             />
             <AlbumPick
               key={pair.b.id}
               album={pair.b}
               disabled={busy}
-              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "b", avoid))}
+              onPick={() => run(() => answerAction(pair.a.id, pair.b.id, "b", avoid, view.seed))}
             />
           </div>
           <Cluster justify="center">
-            <Button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid))}>
+            <Button type="button" disabled={busy} onClick={() => run(() => answerAction(pair.a.id, pair.b.id, "tie", avoid, view.seed))}>
               Tie
             </Button>
             <Button
@@ -103,7 +118,7 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
               disabled={busy}
               onClick={() =>
                 run(
-                  () => skipAction(pair.a.id, pair.b.id, avoid),
+                  () => skipAction(pair.a.id, pair.b.id, avoid, view.seed),
                   () => setAvoid((current) => [...current, pairKey(pair.a.id, pair.b.id)]),
                 )
               }
@@ -119,7 +134,7 @@ export function MatchupScreen({ initial, answerAction, skipAction, undoAction }:
       )}
 
       <Cluster justify="between">
-        <Button type="button" variant="secondary" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid))}>
+        <Button type="button" variant="secondary" disabled={busy || !view.canUndo} onClick={() => run(() => undoAction(avoid, view.seed))}>
           Undo
         </Button>
         <Stack gap={1} className={styles.counts}>
