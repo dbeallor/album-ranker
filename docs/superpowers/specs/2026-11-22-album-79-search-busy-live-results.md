@@ -1,7 +1,7 @@
 # Fix the catalog busy error on search and show results while typing
 
 **Status:** Shipped
-**Shipped:** in PR #81, as specified
+**Shipped:** in PR #81, with differences: [as-built](../as-built/2026-11-22-album-79-search-busy-live-results.md)
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-79](https://github.com/dbeallor/album-ranker/issues/79)
 
