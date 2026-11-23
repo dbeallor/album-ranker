@@ -27,9 +27,13 @@ export function createAwsObjectStore(target: { bucket: string; key: string }, cl
   return {
     async head() {
       try {
-        const result = (await send(new HeadObjectCommand({ Bucket: bucket, Key: key }))) as { ETag?: string };
+        const result = (await send(new HeadObjectCommand({ Bucket: bucket, Key: key }))) as { ETag?: string; VersionId?: string; LastModified?: Date };
         if (!result.ETag) throw new Error(`S3 returned no ETag for s3://${bucket}/${key}.`);
-        return { etag: result.ETag };
+        return {
+          etag: result.ETag,
+          ...(result.VersionId ? { versionId: result.VersionId } : {}),
+          ...(result.LastModified ? { lastModified: result.LastModified } : {}),
+        };
       } catch (error) {
         if (isMissing(error)) return null;
         throw error;
@@ -60,9 +64,9 @@ export function createAwsObjectStore(target: { bucket: string; key: string }, cl
             ContentType: "application/vnd.sqlite3",
             ...("ifMatch" in condition ? { IfMatch: condition.ifMatch } : { IfNoneMatch: condition.ifNoneMatch }),
           }),
-        )) as { ETag?: string };
+        )) as { ETag?: string; VersionId?: string };
         if (!result.ETag) throw new Error(`S3 returned no ETag after writing s3://${bucket}/${key}.`);
-        return { etag: result.ETag };
+        return { etag: result.ETag, ...(result.VersionId ? { versionId: result.VersionId } : {}) };
       } catch (error) {
         if (isConditionFailure(error)) throw new ConditionFailedError();
         throw error;

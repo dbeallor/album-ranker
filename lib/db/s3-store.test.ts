@@ -39,6 +39,14 @@ describe("createAwsObjectStore", () => {
     expect((sent[0] as HeadObjectCommand).input).toEqual({ Bucket: "data", Key: "album-ranker.db" });
   });
 
+  it("passes on the version id and last-modified time when S3 sends them", async () => {
+    const lastModified = new Date("2026-11-23T10:00:00Z");
+    const head = stubClient(() => ({ ETag: '"abc"', VersionId: "v1", LastModified: lastModified }));
+    expect(await createAwsObjectStore(target, head.client).head()).toEqual({ etag: '"abc"', versionId: "v1", lastModified });
+    const put = stubClient(() => ({ ETag: '"new"', VersionId: "v2" }));
+    expect(await createAwsObjectStore(target, put.client).put(new Uint8Array(), { ifNoneMatch: "*" })).toEqual({ etag: '"new"', versionId: "v2" });
+  });
+
   it("gets the object's bytes and ETag", async () => {
     const { client, sent } = stubClient(() => ({ ETag: '"abc"', Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3]) } }));
     expect(await createAwsObjectStore(target, client).get()).toEqual({ body: new Uint8Array([1, 2, 3]), etag: '"abc"' });
