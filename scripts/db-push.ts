@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { getConfig } from "../lib/config.ts";
+import { getDataPaths } from "../lib/config.ts";
 import { createAwsObjectStore } from "../lib/db/s3-store.ts";
 import type { ObjectStore } from "../lib/db/s3-sync.ts";
 import { describeCounts, pushDatabase, type DeployTarget, type PushSummary, type Side } from "../lib/db/push.ts";
@@ -60,8 +60,8 @@ function splitOnce(arg: string): [string, string | undefined] {
 
 /** Everything `run` reaches outside itself through, so a test can stand in for Terraform, AWS and the terminal. */
 export type Deps = {
-  databasePath: string;
-  backupDir: string;
+  /** Read only after the arguments check out, so a bad flag is reported before any unrelated setting can fail. */
+  localPaths(): { databasePath: string; backupDir: string };
   terraformBucket(environment: DeployTarget): string;
   createStore(target: { bucket: string; key: string }, region: string | undefined): ObjectStore;
   /** Asks for the typed `yes`. */
@@ -75,8 +75,8 @@ function sideLine(side: Side): string {
   return `${describeCounts(side.counts)}; migrations ${side.versions.join(", ") || "none"}`;
 }
 
-function showSummary(summary: PushSummary, deps: Deps, target: string): void {
-  deps.log(`  Local:   ${deps.databasePath}: ${sideLine(summary.local)}`);
+function showSummary(summary: PushSummary, deps: Deps, databasePath: string, target: string): void {
+  deps.log(`  Local:   ${databasePath}: ${sideLine(summary.local)}`);
   const { remote } = summary;
   if (!remote) {
     deps.log(`  Remote:  ${target}: nothing stored yet`);
@@ -91,6 +91,7 @@ function showSummary(summary: PushSummary, deps: Deps, target: string): void {
 /** Runs one push from a command line. Throws on any refusal; the caller prints the message and exits 1. */
 export async function run(argv: string[], deps: Deps): Promise<void> {
   const args = parseArgs(argv);
+  const { databasePath, backupDir } = deps.localPaths();
   const bucket = args.bucket ?? deps.terraformBucket(args.environment);
   const target = `s3://${bucket}/${KEY}`;
   deps.log(`${args.dryRun ? "Dry run for" : "Pushing to"} ${args.environment}: ${target}`);
@@ -102,13 +103,13 @@ export async function run(argv: string[], deps: Deps): Promise<void> {
     bucket,
     key: KEY,
     region: args.region,
-    databasePath: deps.databasePath,
-    backupDir: deps.backupDir,
+    databasePath,
+    backupDir,
     dryRun: args.dryRun,
     expectEtag: args.expectEtag,
     log: deps.log,
     confirm: async (summary) => {
-      showSummary(summary, deps, target);
+      showSummary(summary, deps, databasePath, target);
       shown = true;
       if (args.yes) return true;
       if (!deps.isTerminal) {
@@ -117,7 +118,7 @@ export async function run(argv: string[], deps: Deps): Promise<void> {
       return deps.ask("Type yes to replace the deployed data: ");
     },
   });
-  if (!shown) showSummary(result.summary, deps, target);
+  if (!shown) showSummary(result.summary, deps, databasePath, target);
 
   if (result.dryRun) {
     deps.log("Dry run: nothing was uploaded.");
@@ -131,7 +132,10 @@ export async function run(argv: string[], deps: Deps): Promise<void> {
   if (result.previousVersionId) deps.log(`The data it replaced is version ${result.previousVersionId}.`);
   deps.log("The app loads it on its next request and applies any pending migrations.");
   if (result.undo?.commands.length) {
-    deps.log("To undo this push (the first fetches the old copy to inspect, the second restores it in place):");
+    deps.log("To undo this push, restoring the old copy replaces whatever is in the bucket now, including anything written since this push (answers given in the app, for example).");
+    deps.log("Check what is there first, with this command (compare its VersionId to the new version above) or in the app:");
+    deps.log(`  ${result.undo.check}`);
+    deps.log("Then, to undo (the first fetches the old copy to inspect, the second restores it in place):");
     for (const command of result.undo.commands) deps.log(`  ${command}`);
   }
   if (result.undo?.note) deps.warn(result.undo.note);
@@ -152,20 +156,31 @@ function terraformBucket(environment: DeployTarget): string {
   }
 }
 
+/** Ctrl-C or Ctrl-D at the prompt is a no, so `pushDatabase` finishes normally and removes its temp folder. */
 async function ask(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const stop = new AbortController();
+  rl.once("SIGINT", () => stop.abort());
+  rl.once("close", () => stop.abort());
   try {
-    return (await rl.question(question)).trim() === "yes";
+    return (await rl.question(question, { signal: stop.signal })).trim() === "yes";
+  } catch (error) {
+    if ((error as { name?: string }).name !== "AbortError") throw error;
+    console.log();
+    return false;
   } finally {
     rl.close();
   }
 }
 
 async function main(): Promise<void> {
-  const { databasePath, backupDir } = getConfig();
+  // Ctrl-C outside the prompt: exit through the normal path so `pushDatabase` clears its temp folder.
+  process.once("SIGINT", () => {
+    console.error("\nInterrupted.");
+    process.exit(130);
+  });
   await run(process.argv.slice(2), {
-    databasePath,
-    backupDir,
+    localPaths: getDataPaths,
     terraformBucket,
     createStore: (target, region) => createAwsObjectStore(target, new S3Client({ region, followRegionRedirects: true })),
     ask,

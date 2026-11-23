@@ -57,8 +57,11 @@ export type PushResult = {
   uploaded?: { etag: string; versionId?: string; counts: Counts };
   /** The version the upload replaced, when S3 reported one. */
   previousVersionId?: string;
-  /** After an upload: the commands that put the previous version back, and a note when there are none. */
-  undo?: { commands: string[]; note?: string };
+  /**
+   * After an upload: the commands that put the previous version back, a note when there are none, and the command that shows
+   * what the bucket holds now. Undoing replaces anything written to the bucket since the push, so check first.
+   */
+  undo?: { commands: string[]; check?: string; note?: string };
 };
 
 const KEY = "album-ranker.db";
@@ -83,11 +86,17 @@ function nextCommand(options: PushOptions, etag: string | undefined): string {
   ].join(" ");
 }
 
-function undoFor(bucket: string, key: string, previous: string): string[] {
-  return [
-    `aws s3api get-object --bucket ${bucket} --key ${key} --version-id ${previous} ./before-push.db`,
-    `aws s3api copy-object --bucket ${bucket} --key ${key} --copy-source "${bucket}/${key}?versionId=${previous}"`,
-  ];
+function undoFor(options: PushOptions, key: string, previous: string): { commands: string[]; check: string } {
+  const bucket = shellQuote(options.bucket);
+  const quotedKey = shellQuote(key);
+  const region = options.region ? ` --region ${shellQuote(options.region)}` : "";
+  return {
+    check: `aws s3api head-object --bucket ${bucket} --key ${quotedKey}${region}`,
+    commands: [
+      `aws s3api get-object --bucket ${bucket} --key ${quotedKey} --version-id ${shellQuote(previous)}${region} ./before-push.db`,
+      `aws s3api copy-object --bucket ${bucket} --key ${quotedKey} --copy-source ${shellQuote(`${options.bucket}/${key}?versionId=${previous}`)}${region}`,
+    ],
+  };
 }
 
 function warningsFor(local: Side, remote: RemoteSide | null): string[] {
@@ -122,11 +131,14 @@ export async function pushDatabase(options: PushOptions): Promise<PushResult> {
   }
 
   const folder = mkdtempSync(join(options.tempRoot ?? tmpdir(), "album-ranker-push-"));
+  // The folder holds a copy of the data. A script that exits on Ctrl-C skips `finally`, so also clear it on exit.
+  const removeFolder = () => rmSync(folder, { recursive: true, force: true });
+  process.once("exit", removeFolder);
   try {
     const uploadPath = join(folder, "upload.db");
     let backupPath: string | undefined;
-    // Opened as-is: pushing must not run migrations on the local file.
-    const live = new DatabaseSync(databasePath);
+    // Opened as-is and read-only: pushing must not run migrations on, or write to, the local file.
+    const live = new DatabaseSync(databasePath, { readOnly: true });
     try {
       live.exec("PRAGMA busy_timeout = 5000");
       if (!dryRun) {
@@ -191,12 +203,13 @@ export async function pushDatabase(options: PushOptions): Promise<PushResult> {
     if (!remote) {
       result.undo = { commands: [], note: "There was no previous object, so there is nothing to undo." };
     } else if (remote.versionId) {
-      result.undo = { commands: undoFor(options.bucket, key, remote.versionId) };
+      result.undo = undoFor(options, key, remote.versionId);
     } else {
       result.undo = { commands: [], note: `S3 reported no version id, so there is no undo copy in S3 (is versioning off?). The local backup is at ${backupPath}.` };
     }
     return result;
   } finally {
-    rmSync(folder, { recursive: true, force: true });
+    process.off("exit", removeFolder);
+    removeFolder();
   }
 }

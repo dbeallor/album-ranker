@@ -17,10 +17,9 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function deps(overrides: Partial<Deps> = {}): Deps & { terraformBucket: ReturnType<typeof vi.fn>; createStore: ReturnType<typeof vi.fn> } {
+function deps(overrides: Partial<Deps> = {}): Deps & { localPaths: ReturnType<typeof vi.fn>; terraformBucket: ReturnType<typeof vi.fn>; createStore: ReturnType<typeof vi.fn> } {
   return {
-    databasePath: join(root, "album-ranker.db"),
-    backupDir: join(root, "backups"),
+    localPaths: vi.fn(() => ({ databasePath: join(root, "album-ranker.db"), backupDir: join(root, "backups") })),
     terraformBucket: vi.fn(() => "terraform-bucket"),
     createStore: vi.fn(),
     ask: vi.fn(async () => true),
@@ -28,7 +27,7 @@ function deps(overrides: Partial<Deps> = {}): Deps & { terraformBucket: ReturnTy
     log: () => {},
     warn: () => {},
     ...overrides,
-  } as Deps & { terraformBucket: ReturnType<typeof vi.fn>; createStore: ReturnType<typeof vi.fn> };
+  } as Deps & { localPaths: ReturnType<typeof vi.fn>; terraformBucket: ReturnType<typeof vi.fn>; createStore: ReturnType<typeof vi.fn> };
 }
 
 describe("db:push arguments", () => {
@@ -43,6 +42,7 @@ describe("db:push arguments", () => {
     it(`refuses ${name} before Terraform or AWS is touched`, async () => {
       const spies = deps();
       await expect(run(argv, spies)).rejects.toThrow(message);
+      expect(spies.localPaths).not.toHaveBeenCalled();
       expect(spies.terraformBucket).not.toHaveBeenCalled();
       expect(spies.createStore).not.toHaveBeenCalled();
     });
@@ -70,5 +70,28 @@ describe("db:push arguments", () => {
     await expect(run(["staging", "--bucket", "b"], spies)).rejects.toThrow(/no terminal to ask in/);
     expect(put).not.toHaveBeenCalled();
     expect(spies.terraformBucket).not.toHaveBeenCalled();
+  });
+});
+
+describe("db:push output", () => {
+  it("prints the undo commands after a warning that undoing replaces what was written since", async () => {
+    const path = join(root, "album-ranker.db");
+    openDatabase(path, { skipBackup: true }).close();
+    const body = new Uint8Array(readFileSync(path));
+    const store: ObjectStore = {
+      head: async () => ({ etag: '"e"', versionId: "old-version" }),
+      get: async () => ({ body, etag: '"e"' }),
+      put: async () => ({ etag: '"new"', versionId: "new-version" }),
+    };
+    const lines: string[] = [];
+    const spies = deps({ createStore: vi.fn(() => store), log: (message) => lines.push(message) });
+
+    await run(["staging", "--bucket", "b", "--region", "eu-west-1", "--yes"], spies);
+
+    const text = lines.join("\n");
+    expect(text).toMatch(/replaces whatever is in the bucket now, including anything written since this push/);
+    expect(text).toContain("aws s3api head-object --bucket 'b' --key 'album-ranker.db' --region 'eu-west-1'");
+    expect(text).toContain("--version-id 'old-version' --region 'eu-west-1' ./before-push.db");
+    expect(text.indexOf("head-object")).toBeLessThan(text.indexOf("get-object"));
   });
 });

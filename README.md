@@ -103,7 +103,7 @@ Set `BUCKET` to the environment's `data_bucket` (`BUCKET=$(terraform -chdir=infr
      npm run db:push -- staging --dry-run
      ```
   2. Run the command it printed. Production also needs `--confirm-production`, which the printed command includes. If the deployed data changed since the dry run, it stops and uploads nothing. Otherwise it asks you to type `yes` before replacing existing data (`--yes` skips the question).
-  3. To undo, run the two `aws s3api` commands it prints at the end: the first downloads the version it replaced, the second restores it in place (S3 keeps the pushed version as an older one). It also prints the path of the local backup.
+  3. To undo, run the `aws s3api` commands it prints at the end: the first downloads the version it replaced, the second restores it in place (S3 keeps the pushed version as an older one). Undoing replaces whatever is in the bucket by then, including anything written since the push (answers given in the app, for example), so check first with the `head-object` command it prints (its `VersionId` should be the pushed version) or in the app. The printed commands carry `--region` when you gave one. It also prints the path of the local backup. Each push adds a `manual` backup to your local backups, and the newest 10 are kept (see "Back up and restore your data" below).
 
   The bucket comes from `terraform -chdir=infra/envs/<env> output -raw data_bucket`; pass `--bucket <name>` (and `--region <region>`) to skip that. Try staging before production. The app loads the pushed data on its next request.
 - Backups are your personal data. Keep them out of git.

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -219,6 +219,51 @@ describe("pushDatabase", () => {
     expect(result.nextCommand).toBe(`npm run db:push -- production --bucket 'staging-data' --expect-etag '${remote.etag}' --confirm-production`);
   });
 
+  it("leaves the local file untouched, even with changes still in its -wal file", async () => {
+    rmSync(localPath());
+    // A writer that never checkpoints, as the running app would be: its newest rows live only in the -wal file.
+    const writer = openDatabase(localPath(), { skipBackup: true });
+    writer.exec("PRAGMA wal_autocheckpoint = 0");
+    createAlbum(writer, { title: "Only in the wal", artist: { name: "Someone" } });
+    expect(statSync(`${localPath()}-wal`).size).toBeGreaterThan(0);
+    const mainBytes = readFileSync(localPath());
+    const mainMtime = statSync(localPath()).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    try {
+      for (const dryRun of [true, false]) {
+        const result = await pushDatabase(options({ dryRun }));
+        expect(result.summary.local.counts.albums).toBe(1);
+        expect(readFileSync(localPath()).equals(mainBytes)).toBe(true);
+        expect(statSync(localPath()).mtimeMs).toBe(mainMtime);
+      }
+    } finally {
+      writer.close();
+    }
+  });
+
+  it("clears its temp folder when the process exits mid-push, and leaves no exit listener behind", async () => {
+    store.write(remoteBytes(5, 4));
+    const before = process.listeners("exit");
+
+    await expect(
+      pushDatabase(
+        options({
+          confirm: async () => {
+            const added = process.listeners("exit").filter((listener) => !before.includes(listener));
+            expect(added).toHaveLength(1);
+            expect(tempEntries()).toHaveLength(1);
+            added[0](0);
+            expect(tempEntries()).toEqual([]);
+            return false;
+          },
+        }),
+      ),
+    ).rejects.toThrow(/Not uploaded/);
+
+    expect(process.listeners("exit")).toEqual(before);
+  });
+
   it("backs up the local file before the upload starts", async () => {
     let filesAtPut: string[] = [];
     store.onPut = () => {
@@ -244,19 +289,32 @@ describe("pushDatabase", () => {
     expect(countsOf(store.current!.body).albums).toBe(3);
   });
 
-  it("can be undone by putting the previous version back, and prints the commands for it", async () => {
-    const previous = store.write(remoteBytes(5, 4));
+  it("prints undo commands that point at the version the push replaced", async () => {
+    const previousBody = remoteBytes(5, 4);
+    const previous = store.write(previousBody);
 
-    const result = await pushDatabase(options());
+    const result = await pushDatabase(options({ region: "eu-west-1" }));
+
+    // The printed version id is the pre-push object, not the one just uploaded.
+    expect(result.undo!.commands.join("\n")).not.toContain(store.current!.versionId);
+    const pointedAt = store.versions.find((version) => result.undo!.commands[0].includes(`'${version.versionId}'`))!;
+    expect(pointedAt.versionId).toBe(previous.versionId);
+    expect(countsOf(pointedAt.body)).toEqual({ albums: 5, libraryAlbums: 1, matchups: 4 });
     expect(countsOf(store.current!.body).albums).toBe(3);
 
-    // What `copy-object --copy-source ...?versionId=` does: the old bytes become the newest version.
-    store.write(store.versions.find((version) => version.versionId === previous.versionId)!.body);
-    expect(countsOf(store.current!.body)).toEqual({ albums: 5, libraryAlbums: 1, matchups: 4 });
-    expect(result.undo?.commands).toEqual([
-      `aws s3api get-object --bucket staging-data --key album-ranker.db --version-id ${previous.versionId} ./before-push.db`,
-      `aws s3api copy-object --bucket staging-data --key album-ranker.db --copy-source "staging-data/album-ranker.db?versionId=${previous.versionId}"`,
-    ]);
+    expect(result.undo).toEqual({
+      check: "aws s3api head-object --bucket 'staging-data' --key 'album-ranker.db' --region 'eu-west-1'",
+      commands: [
+        `aws s3api get-object --bucket 'staging-data' --key 'album-ranker.db' --version-id '${previous.versionId}' --region 'eu-west-1' ./before-push.db`,
+        `aws s3api copy-object --bucket 'staging-data' --key 'album-ranker.db' --copy-source 'staging-data/album-ranker.db?versionId=${previous.versionId}' --region 'eu-west-1'`,
+      ],
+    });
+  });
+
+  it("leaves --region out of the undo commands when none was given", async () => {
+    store.write(remoteBytes(5, 4));
+    const result = await pushDatabase(options());
+    expect([result.undo!.check, ...result.undo!.commands].join("\n")).not.toContain("--region");
   });
 
   it("notes there is no undo copy when S3 reports no version id", async () => {
