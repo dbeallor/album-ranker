@@ -8,6 +8,8 @@ import { cleanEvent, MAX_BATCH_EVENTS, type ClientEvent } from "@/lib/client-eve
 
 const ENDPOINT = "/events";
 const FLUSH_MS = 15_000;
+// On hide the buffer (at most 100 events) is sent in several batches; this bounds the loop.
+const MAX_HIDE_BATCHES = 5;
 // The events function refuses a body over 32 KB, so a batch stops short of that.
 const MAX_BODY_BYTES = 30_000;
 const CLICKABLE = 'a, button, [role="button"], input[type="submit"], input[type="button"]';
@@ -87,14 +89,25 @@ function createCapture() {
     schedule();
   }
 
-  function flush(): void {
+  /** Sends one batch. Returns whether the browser accepted it. */
+  function flush(): boolean {
     try {
-      if (buffer.length === 0 || typeof navigator.sendBeacon !== "function") return;
+      if (buffer.length === 0 || typeof navigator.sendBeacon !== "function") return false;
       const batch = takeBatch(buffer);
       const body = new Blob([JSON.stringify({ events: batch })], { type: "application/json" });
-      if (navigator.sendBeacon(ENDPOINT, body)) buffer = buffer.slice(batch.length);
+      if (!navigator.sendBeacon(ENDPOINT, body)) return false;
+      buffer = buffer.slice(batch.length);
+      return true;
     } catch {
       // Capture must never break a page.
+      return false;
+    }
+  }
+
+  /** The page is going away: send batches until the buffer is empty or the browser refuses one. */
+  function flushAll(): void {
+    for (let i = 0; i < MAX_HIDE_BATCHES && buffer.length > 0; i++) {
+      if (!flush()) return;
     }
   }
 
@@ -111,12 +124,12 @@ function createCapture() {
   }
 
   function stop(): void {
-    flush();
+    flushAll();
     clearTimeout(timer);
     timer = undefined;
   }
 
-  return { record, flush, stop };
+  return { record, flushAll, stop };
 }
 
 type Capture = ReturnType<typeof createCapture>;
@@ -181,9 +194,9 @@ function start(capture: Capture): () => void {
     }
   };
   const onVisibility = () => {
-    if (document.visibilityState === "hidden") capture.flush();
+    if (document.visibilityState === "hidden") capture.flushAll();
   };
-  const onPageHide = () => capture.flush();
+  const onPageHide = () => capture.flushAll();
 
   const originalFetch = window.fetch;
   const wrappedFetch: typeof window.fetch = async (input, init) => {

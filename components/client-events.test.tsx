@@ -95,7 +95,7 @@ describe("client events component", () => {
     expect(retried.map((event) => event.type)).toEqual(["page", "click"]);
   });
 
-  it("sends at most 30000 bytes per flush and the rest on the next one", async () => {
+  it("sends at most 30000 bytes per batch, and a single hide sends every batch", async () => {
     vi.stubEnv("NEXT_PUBLIC_CLIENT_EVENTS", "1");
     render(<Page />);
 
@@ -104,8 +104,6 @@ describe("client events component", () => {
       failure.stack = `Error: boom ${i}\n${"    at f (/_next/static/chunk.js:1:2)\n".repeat(60)}`;
       window.dispatchEvent(new ErrorEvent("error", { message: failure.message, error: failure }));
     }
-    await flushAndRead();
-    await flushAndRead();
     await flushAndRead();
 
     const sizes = beacon.mock.calls.map(([, body]) => (body as Blob).size);
