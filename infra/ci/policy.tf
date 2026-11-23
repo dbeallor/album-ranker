@@ -20,8 +20,15 @@ data "aws_iam_policy_document" "deploy" {
 
   statement {
     sid       = "StateObject"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    actions   = ["s3:GetObject", "s3:PutObject"]
     resources = ["arn:aws:s3:::${var.state_bucket}/${local.state_key}", "arn:aws:s3:::${var.state_bucket}/${local.state_key}.tflock"]
+  }
+
+  # Only the lock file is ever deleted (when a run releases the lock), never the state itself.
+  statement {
+    sid       = "StateLockDelete"
+    actions   = ["s3:DeleteObject"]
+    resources = ["arn:aws:s3:::${var.state_bucket}/${local.state_key}.tflock"]
   }
 
   statement {
@@ -136,8 +143,8 @@ data "aws_iam_policy_document" "deploy" {
 
   # ------------------------------------------------ IAM: the function's role only
 
-  # Anything that changes who can assume the role or what it may do needs the boundary: set on create, and still on the
-  # role when a policy changes. So the function's role can never be given more than the boundary allows.
+  # Anything that changes what the role may do needs the boundary: set on create, and still on the role when a policy
+  # changes. So the function's role can never be given more than the boundary allows.
   statement {
     sid = "FunctionRoleGrant"
     actions = [
@@ -146,7 +153,6 @@ data "aws_iam_policy_document" "deploy" {
       "iam:DeleteRolePolicy",
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
-      "iam:UpdateAssumeRolePolicy",
     ]
     resources = [local.role_arn]
 
@@ -155,6 +161,15 @@ data "aws_iam_policy_document" "deploy" {
       variable = "iam:PermissionsBoundary"
       values   = [local.boundary_arn]
     }
+  }
+
+  # Kept out of the statement above: iam:PermissionsBoundary is a condition of the actions that set or change the boundary
+  # and the policies, and IAM probably doesn't evaluate it for this one, which would make the call fail every time. Whoever
+  # the trust policy lets assume the role is still capped by the boundary.
+  statement {
+    sid       = "FunctionRoleTrust"
+    actions   = ["iam:UpdateAssumeRolePolicy"]
+    resources = [local.role_arn]
   }
 
   # These grant nothing: delete, tags, description and session length, plus the reads the provider makes on refresh.

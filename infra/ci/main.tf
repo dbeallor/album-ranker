@@ -101,7 +101,7 @@ resource "aws_iam_role" "deploy" {
   max_session_duration = 3600
 }
 
-# Inline on purpose: IAM counts about 8,100 characters (no whitespace) of this policy, over the 6,144 a managed policy
+# Inline on purpose: IAM counts about 8,300 characters (no whitespace) of this policy, over the 6,144 a managed policy
 # allows and under the 10,240 an inline one does. Check the size again when adding statements.
 resource "aws_iam_role_policy" "deploy" {
   name   = "staging-deploy"
@@ -142,8 +142,11 @@ resource "aws_iam_policy" "boundary" {
 # ---------------------------------------------------------------- staging's untaggable CloudFront resources
 
 # Response headers policies and origin access controls take no tags and get random IDs, so the role can update or delete
-# only the ones staging's state names. Until staging has been applied with the module's new outputs (README), the IDs are
-# missing and the role gets no update or delete on those two types.
+# only the ones named here. Staging's state is written by the deploy role, so it is only a source of candidate IDs: each one
+# is read back with the credentials running this root (the operator's, not the deploy role's) and refused unless the
+# resource carries staging's name. CloudFront keeps both names unique in an account, so a planted ID of another resource
+# (production's, say) fails the apply here instead of getting update and delete granted. Until staging has been applied
+# with the module's new outputs (README) there are no candidates, and the role gets no update or delete on those two types.
 data "terraform_remote_state" "staging" {
   backend = "s3"
 
@@ -155,6 +158,41 @@ data "terraform_remote_state" "staging" {
 }
 
 locals {
-  response_headers_policy_ids = [for id in [try(data.terraform_remote_state.staging.outputs.response_headers_policy_id, null)] : id if id != null && id != ""]
-  origin_access_control_ids   = [for id in [try(data.terraform_remote_state.staging.outputs.origin_access_control_id, null)] : id if id != null && id != ""]
+  response_headers_policy_candidates = [for id in [try(data.terraform_remote_state.staging.outputs.response_headers_policy_id, null)] : id if id != null && id != ""]
+  origin_access_control_candidates   = [for id in [try(data.terraform_remote_state.staging.outputs.origin_access_control_id, null)] : id if id != null && id != ""]
+}
+
+# The provider can look a response headers policy up by name, but that fails while staging has none, so this goes by the
+# candidate ID too and checks the name.
+data "aws_cloudfront_response_headers_policy" "staging" {
+  count = length(local.response_headers_policy_candidates)
+
+  id = local.response_headers_policy_candidates[count.index]
+
+  lifecycle {
+    postcondition {
+      condition     = self.name == "${local.staging_name}-security"
+      error_message = "The response headers policy ID in staging's state is named \"${self.name}\", not \"${local.staging_name}-security\". Refusing to grant update or delete on it. Look for a changed staging state."
+    }
+  }
+}
+
+# The provider has no lookup of an origin access control by name, only by ID.
+data "aws_cloudfront_origin_access_control" "staging" {
+  count = length(local.origin_access_control_candidates)
+
+  id = local.origin_access_control_candidates[count.index]
+
+  lifecycle {
+    postcondition {
+      condition     = self.name == local.staging_name
+      error_message = "The origin access control ID in staging's state is named \"${self.name}\", not \"${local.staging_name}\". Refusing to grant update or delete on it. Look for a changed staging state."
+    }
+  }
+}
+
+locals {
+  # Only IDs that passed the name check above reach the policy.
+  response_headers_policy_ids = [for d in data.aws_cloudfront_response_headers_policy.staging : d.id]
+  origin_access_control_ids   = [for d in data.aws_cloudfront_origin_access_control.staging : d.id]
 }

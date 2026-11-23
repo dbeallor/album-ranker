@@ -46,31 +46,35 @@ jobs:
           # The wrapper adds output to stdout, which breaks `terraform output -raw`.
           terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
       - name: Build
         run: |
           npm ci
           npm run build:lambda
 
+      # Signed in only once the build is done, so no step that runs project code before this holds AWS credentials.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
       - name: Terraform init
         working-directory: infra/envs/staging
+        env:
+          STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          STATE_REGION: ${{ vars.AWS_REGION }}
         run: |
           terraform init -input=false \
-            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
-            -backend-config="region=${{ vars.AWS_REGION }}"
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="region=$STATE_REGION"
 
       # A failing plan stops the run before anything changes.
       - name: Terraform plan
         working-directory: infra/envs/staging
-        run: terraform plan -input=false -out=tfplan
+        run: terraform plan -input=false -lock-timeout=5m -out=tfplan
 
       - name: Terraform apply
         working-directory: infra/envs/staging
-        run: terraform apply -input=false tfplan
+        run: terraform apply -input=false -lock-timeout=5m tfplan
 
       # Never print `password`.
       - name: Check what is deployed

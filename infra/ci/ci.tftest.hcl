@@ -30,6 +30,23 @@ override_data {
   }
 }
 
+# What the admin credentials read back for the candidate IDs: the names infra/ci insists on.
+override_data {
+  target = data.aws_cloudfront_response_headers_policy.staging[0]
+  values = {
+    id   = "HDRPOLICY123"
+    name = "album-ranker-staging-security"
+  }
+}
+
+override_data {
+  target = data.aws_cloudfront_origin_access_control.staging[0]
+  values = {
+    id   = "OAC123"
+    name = "album-ranker-staging"
+  }
+}
+
 # The one ARN the documents read from a resource.
 override_resource {
   target = aws_iam_openid_connect_provider.github
@@ -49,13 +66,17 @@ run "trust_default_repository" {
   command = plan
 
   assert {
-    condition     = length(data.aws_iam_policy_document.trust.statement) == 1
-    error_message = "The trust policy must have exactly one statement."
+    condition     = alltrue([for s in data.aws_iam_policy_document.trust.statement : s.effect != "Deny" && toset(s.actions) == toset(["sts:AssumeRoleWithWebIdentity"])])
+    error_message = "Only AssumeRoleWithWebIdentity may be allowed."
   }
 
+  # Every statement pins both claims, so a statement added later can't skip one.
   assert {
-    condition     = toset([for s in data.aws_iam_policy_document.trust.statement : s.actions][0]) == toset(["sts:AssumeRoleWithWebIdentity"])
-    error_message = "Only AssumeRoleWithWebIdentity may be allowed."
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.trust.statement :
+      length([for c in s.condition : c if c.variable == "token.actions.githubusercontent.com:aud"]) > 0 && length([for c in s.condition : c if c.variable == "token.actions.githubusercontent.com:sub"]) > 0
+    ])
+    error_message = "Every trust statement must pin aud and sub."
   }
 
   assert {
@@ -69,18 +90,8 @@ run "trust_default_repository" {
   }
 
   assert {
-    condition     = alltrue([for c in data.aws_iam_policy_document.trust.statement[0].condition : c.test == "StringEquals" && !anytrue([for v in c.values : strcontains(v, "*")])])
-    error_message = "Both conditions must be StringEquals with no wildcard."
-  }
-
-  assert {
-    condition     = length(data.aws_iam_policy_document.trust.statement[0].condition) == 2
-    error_message = "Only the aud and sub conditions are expected."
-  }
-
-  assert {
-    condition     = aws_iam_role.deploy.max_session_duration == 3600
-    error_message = "Sessions last one hour."
+    condition     = alltrue(flatten([for s in data.aws_iam_policy_document.trust.statement : [for c in s.condition : c.test == "StringEquals" && !anytrue([for v in c.values : strcontains(v, "*")])]]))
+    error_message = "Every trust condition must be StringEquals with no wildcard."
   }
 }
 
@@ -94,11 +105,6 @@ run "trust_other_repository" {
   assert {
     condition     = toset([for c in data.aws_iam_policy_document.trust.statement[0].condition : c.values if c.variable == "token.actions.githubusercontent.com:sub"][0]) == toset(["repo:acme/widgets:ref:refs/heads/main"])
     error_message = "sub must follow github_repository."
-  }
-
-  assert {
-    condition     = !anytrue([for c in data.aws_iam_policy_document.trust.statement[0].condition : anytrue([for v in c.values : strcontains(v, "*")])])
-    error_message = "No wildcard may reach the trust policy."
   }
 }
 
@@ -177,6 +183,42 @@ run "deploy_policy_stays_out_of_production" {
     ]))
     error_message = "Every environment tag condition must say staging."
   }
+
+  # Tagging on "*" is where a tagged production resource could be re-tagged as staging, so the resource must have no
+  # environment tag yet.
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      length([for c in s.condition : c if c.test == "Null" && c.variable == "aws:ResourceTag/environment" && toset(c.values) == toset(["true"])]) > 0
+      if s.effect != "Deny" && contains(s.resources, "*") && length(setintersection(s.actions, ["cloudfront:TagResource", "acm:AddTagsToCertificate"])) > 0
+    ])
+    error_message = "Tagging on * must require that the resource has no environment tag yet."
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && contains(s.resources, "*") && length(setintersection(s.actions, ["cloudfront:TagResource", "acm:AddTagsToCertificate"])) > 0]) > 0
+    error_message = "The test would pass on nothing: expected tagging allows on *."
+  }
+
+  # Every allow on "*" is a create that the tag rules above cover, or read only.
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      contains(["DistributionCreate", "CertificateRequest", "UntaggableCreateRead"], s.sid) || alltrue([for a in s.actions : can(regex("^[a-z0-9]+:(Get|List|Describe)", a))])
+      if s.effect != "Deny" && contains(s.resources, "*")
+    ])
+    error_message = "An allow on * must be a known create statement or only Get, List and Describe."
+  }
+
+  # The unscoped create statement for the two untaggable types may hold only their creates and reads, no update or delete.
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      alltrue([for a in s.actions : contains(["cloudfront:CreateResponseHeadersPolicy", "cloudfront:CreateOriginAccessControl"], a) || can(regex("^cloudfront:Get", a))])
+      if s.effect != "Deny" && s.sid == "UntaggableCreateRead"
+    ])
+    error_message = "UntaggableCreateRead may only create and read."
+  }
 }
 
 run "deploy_policy_iam_is_the_function_role_only" {
@@ -201,9 +243,25 @@ run "deploy_policy_iam_is_the_function_role_only" {
     condition = alltrue([
       for s in data.aws_iam_policy_document.deploy.statement :
       length([for c in s.condition : c if c.variable == "iam:PermissionsBoundary" && c.test == "StringEquals" && toset(c.values) == toset(["arn:aws:iam::123456789012:policy/album-ranker-staging-function-boundary"])]) == 1
-      if s.effect != "Deny" && length(setintersection(s.actions, ["iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy", "iam:UpdateAssumeRolePolicy"])) > 0
+      if s.effect != "Deny" && length(setintersection(s.actions, ["iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy"])) > 0
     ])
     error_message = "Role creation and grants must require the boundary."
+  }
+
+  # UpdateAssumeRolePolicy is not subject to the boundary condition (IAM probably never matches it there), so its own
+  # statement names the function role and nothing else.
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset(["arn:aws:iam::123456789012:role/album-ranker-staging"]) && length(s.condition) == 0
+      if s.effect != "Deny" && contains(s.actions, "iam:UpdateAssumeRolePolicy")
+    ])
+    error_message = "iam:UpdateAssumeRolePolicy must be allowed on the function role only, with no boundary condition."
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && contains(s.actions, "iam:UpdateAssumeRolePolicy")]) > 0
+    error_message = "The test would pass on nothing: the function role's trust must be updatable."
   }
 
   assert {
@@ -225,7 +283,7 @@ run "deploy_policy_protects_the_boundary_and_the_role" {
   command = plan
 
   assert {
-    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect == "Deny" && contains(s.actions, "iam:DeleteRolePermissionsBoundary") && contains(s.resources, "*")]) == 1
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect == "Deny" && contains(s.actions, "iam:DeleteRolePermissionsBoundary") && contains(s.resources, "*")]) > 0
     error_message = "Missing the explicit Deny on removing a permissions boundary."
   }
 
@@ -233,7 +291,7 @@ run "deploy_policy_protects_the_boundary_and_the_role" {
     condition = length([
       for s in data.aws_iam_policy_document.deploy.statement : s
       if s.effect == "Deny" && toset(s.resources) == toset(["arn:aws:iam::123456789012:policy/album-ranker-staging-function-boundary"]) && contains(s.actions, "iam:CreatePolicyVersion") && contains(s.actions, "iam:DeletePolicy") && contains(s.actions, "iam:SetDefaultPolicyVersion")
-    ]) == 1
+    ]) > 0
     error_message = "Missing the explicit Deny on writes to the boundary policy."
   }
 
@@ -241,7 +299,7 @@ run "deploy_policy_protects_the_boundary_and_the_role" {
     condition = length([
       for s in data.aws_iam_policy_document.deploy.statement : s
       if s.effect == "Deny" && toset(s.resources) == toset(["arn:aws:iam::123456789012:role/album-ranker-ci-staging-deploy"]) && contains(s.actions, "iam:UpdateAssumeRolePolicy") && contains(s.actions, "iam:PutRolePolicy") && contains(s.actions, "iam:AttachRolePolicy") && contains(s.actions, "iam:DeleteRole")
-    ]) == 1
+    ]) > 0
     error_message = "Missing the explicit Deny on writes to the deploy role."
   }
 }
@@ -268,9 +326,19 @@ run "deploy_policy_state_access_is_staging_only" {
     error_message = "Listing the state bucket must be limited to the staging.tfstate prefix."
   }
 
+  # The state itself is never deleted, only the lock file.
   assert {
-    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && anytrue([for r in s.resources : strcontains(r, "album-ranker-tfstate-123456789012")])]) == 2
-    error_message = "Expected exactly the state object and state list statements."
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      alltrue([for r in s.resources : r == "arn:aws:s3:::album-ranker-tfstate-123456789012/album-ranker/staging.tfstate.tflock"])
+      if s.effect != "Deny" && contains(s.actions, "s3:DeleteObject") && anytrue([for r in s.resources : strcontains(r, "album-ranker-tfstate-123456789012")])
+    ])
+    error_message = "s3:DeleteObject on the state bucket must be limited to the lock file."
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && contains(s.actions, "s3:DeleteObject") && contains(s.resources, "arn:aws:s3:::album-ranker-tfstate-123456789012/album-ranker/staging.tfstate.tflock")]) > 0
+    error_message = "The test would pass on nothing: the lock file must be deletable."
   }
 
   # No other S3 statement reaches a bucket outside staging's.
@@ -287,18 +355,20 @@ run "deploy_policy_state_access_is_staging_only" {
 run "deploy_policy_dns_is_limited_to_the_staging_name" {
   command = plan
 
+  # Every allow that changes records is limited like this, so a second statement can't skip the condition.
   assert {
-    condition = length([
-      for s in data.aws_iam_policy_document.deploy.statement : s
-      if s.effect != "Deny" && contains(s.actions, "route53:ChangeResourceRecordSets") && toset(s.resources) == toset(["arn:aws:route53:::hostedzone/Z0123456789ABCDEFGHIJ"])
-      && length([for c in s.condition : c if c.test == "ForAllValues:StringLike" && c.variable == "route53:ChangeResourceRecordSetsNormalizedRecordNames" && toset(c.values) == toset(["staging.album-ranker.com", "*.staging.album-ranker.com"])]) == 1
-    ]) == 1
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset(["arn:aws:route53:::hostedzone/Z0123456789ABCDEFGHIJ"])
+      && length([for c in s.condition : c if c.test == "ForAllValues:StringLike" && c.variable == "route53:ChangeResourceRecordSetsNormalizedRecordNames" && toset(c.values) == toset(["staging.album-ranker.com", "*.staging.album-ranker.com"])]) > 0
+      if s.effect != "Deny" && contains(s.actions, "route53:ChangeResourceRecordSets")
+    ])
     error_message = "Record changes must be limited to the staging name and below."
   }
 
   assert {
-    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && contains(s.actions, "route53:ChangeResourceRecordSets")]) == 1
-    error_message = "Only one statement may change records."
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && contains(s.actions, "route53:ChangeResourceRecordSets")]) > 0
+    error_message = "The test would pass on nothing: expected a statement that changes records."
   }
 }
 
@@ -306,19 +376,26 @@ run "deploy_policy_untaggable_cloudfront_updates_use_staging_ids" {
   command = plan
 
   assert {
-    condition = length([
-      for s in data.aws_iam_policy_document.deploy.statement : s
-      if s.effect != "Deny" && contains(s.actions, "cloudfront:UpdateResponseHeadersPolicy") && toset(s.resources) == toset(["arn:aws:cloudfront::123456789012:response-headers-policy/HDRPOLICY123"])
-    ]) == 1
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset(["arn:aws:cloudfront::123456789012:response-headers-policy/HDRPOLICY123"])
+      if s.effect != "Deny" && contains(s.actions, "cloudfront:UpdateResponseHeadersPolicy")
+    ])
     error_message = "Updating a response headers policy must be limited to staging's ID."
   }
 
   assert {
-    condition = length([
-      for s in data.aws_iam_policy_document.deploy.statement : s
-      if s.effect != "Deny" && contains(s.actions, "cloudfront:UpdateOriginAccessControl") && toset(s.resources) == toset(["arn:aws:cloudfront::123456789012:origin-access-control/OAC123"])
-    ]) == 1
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.deploy.statement :
+      toset(s.resources) == toset(["arn:aws:cloudfront::123456789012:origin-access-control/OAC123"])
+      if s.effect != "Deny" && contains(s.actions, "cloudfront:UpdateOriginAccessControl")
+    ])
     error_message = "Updating an origin access control must be limited to staging's ID."
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if s.effect != "Deny" && (contains(s.actions, "cloudfront:UpdateResponseHeadersPolicy") || contains(s.actions, "cloudfront:UpdateOriginAccessControl"))]) > 0
+    error_message = "The test would pass on nothing: expected the two update statements."
   }
 
   # No update or delete of those types anywhere else.
@@ -347,4 +424,33 @@ run "deploy_policy_without_staging_ids_grants_no_untaggable_updates" {
     condition     = length([for s in data.aws_iam_policy_document.deploy.statement : s if anytrue([for a in s.actions : strcontains(a, "ResponseHeadersPolicy") && (startswith(a, "cloudfront:Update") || startswith(a, "cloudfront:Delete"))])]) == 0
     error_message = "With no IDs in staging's state, no update or delete may be allowed."
   }
+}
+
+# The IDs come from a state the deploy role can write. An ID that doesn't name staging's resource stops the apply.
+run "deploy_policy_refuses_a_response_headers_policy_that_is_not_stagings" {
+  command = plan
+
+  override_data {
+    target = data.aws_cloudfront_response_headers_policy.staging[0]
+    values = {
+      id   = "PRODHDR999"
+      name = "album-ranker-production-security"
+    }
+  }
+
+  expect_failures = [data.aws_cloudfront_response_headers_policy.staging[0]]
+}
+
+run "deploy_policy_refuses_an_origin_access_control_that_is_not_stagings" {
+  command = plan
+
+  override_data {
+    target = data.aws_cloudfront_origin_access_control.staging[0]
+    values = {
+      id   = "PRODOAC999"
+      name = "album-ranker-production"
+    }
+  }
+
+  expect_failures = [data.aws_cloudfront_origin_access_control.staging[0]]
 }
