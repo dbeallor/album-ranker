@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pairKey } from "@/lib/elo/pick";
 import type { RankingProgress } from "@/lib/elo/progress";
 import type { MatchupActionResult, MatchupView } from "@/lib/matchups-service";
@@ -30,7 +30,7 @@ const progressAt = (percent: number, remaining: number): RankingProgress => ({
   percent,
 });
 
-const initial: MatchupView = { pair: pairOf(one, two), count: 0, lastAnswer: null, canUndo: false, progress: null };
+const initial: MatchupView = { pair: pairOf(one, two), count: 0, lastAnswer: null, canUndo: false, progress: null, seed: 0.25, upcoming: [] };
 
 function setup(actions: {
   answer?: MatchupActionResult;
@@ -69,12 +69,12 @@ describe("matchup screen", () => {
     { name: "a tie", button: () => screen.getByRole("button", { name: "Tie" }), result: "tie" },
   ])("$name sends the answer and shows the next pair, the counter and the line", async ({ button, result }) => {
     const { answerAction } = setup({
-      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "Album One 1500 → 1516" }, canUndo: true, progress: null },
+      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "Album One 1500 → 1516" }, canUndo: true, progress: null, seed: 0.5, upcoming: [] },
     });
     fireEvent.click(button());
 
     expect(await screen.findByText("Album Three")).toBeDefined();
-    expect(answerAction).toHaveBeenCalledWith(1, 2, result, []);
+    expect(answerAction).toHaveBeenCalledWith(1, 2, result, [], 0.25);
     expect(screen.getByText("Album One 1500 → 1516")).toBeDefined();
     expect(screen.getByText("1 matchups played")).toBeDefined();
     expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(false);
@@ -82,31 +82,96 @@ describe("matchup screen", () => {
 
   it("skip shows the next pair, and sends the skipped pair as avoided on the next call", async () => {
     const { skipAction, answerAction } = setup({
-      skip: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: false, progress: null },
-      answer: { pair: pairOf(one, two), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: null },
+      skip: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: false, progress: null, seed: 0.5, upcoming: [] },
+      answer: { pair: pairOf(one, two), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: null, seed: 0.5, upcoming: [] },
     });
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
 
     expect(await screen.findByText("Album Three")).toBeDefined();
-    expect(skipAction).toHaveBeenCalledWith(1, 2, []);
+    expect(skipAction).toHaveBeenCalledWith(1, 2, [], 0.25);
 
     fireEvent.click(screen.getByRole("button", { name: "Tie" }));
     await screen.findByText("Album One");
-    expect(answerAction).toHaveBeenCalledWith(3, 4, "tie", [pairKey(1, 2)]);
+    expect(answerAction).toHaveBeenCalledWith(3, 4, "tie", [pairKey(1, 2)], 0.5);
   });
 
   it("undo serves the undone pair again and shows the line", async () => {
     const { undoAction } = setup({
-      start: { pair: pairOf(three, four), count: 1, lastAnswer: null, canUndo: true, progress: null },
-      undo: { pair: pairOf(one, two), count: 0, lastAnswer: { text: "Undone: Album One 1516 → 1500" }, canUndo: false, progress: null },
+      start: { pair: pairOf(three, four), count: 1, lastAnswer: null, canUndo: true, progress: null, seed: 0.5, upcoming: [] },
+      undo: { pair: pairOf(one, two), count: 0, lastAnswer: { text: "Undone: Album One 1516 → 1500" }, canUndo: false, progress: null, seed: 0.5, upcoming: [] },
     });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     expect(await screen.findByText("Album One")).toBeDefined();
-    expect(undoAction).toHaveBeenCalledWith([]);
+    expect(undoAction).toHaveBeenCalledWith([], 0.5);
     expect(screen.getByText("Undone: Album One 1516 → 1500")).toBeDefined();
     expect(screen.getByText("0 matchups played")).toBeDefined();
     await waitFor(() => expect((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  it("sends the seed of the current view with each action", async () => {
+    const { answerAction, skipAction, undoAction } = setup({
+      start: { ...initial, canUndo: true, seed: 0.75 },
+      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: null, seed: 0.1, upcoming: [] },
+      skip: { pair: pairOf(one, two), count: 1, lastAnswer: null, canUndo: true, progress: null, seed: 0.2, upcoming: [] },
+      undo: { pair: pairOf(three, four), count: 0, lastAnswer: null, canUndo: true, progress: null, seed: 0.3, upcoming: [] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Tie" }));
+    await screen.findByText("Album Three");
+    expect(answerAction).toHaveBeenLastCalledWith(1, 2, "tie", [], 0.75);
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Album One");
+    expect(skipAction).toHaveBeenLastCalledWith(3, 4, [], 0.1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("Album Three");
+    expect(undoAction).toHaveBeenLastCalledWith([pairKey(3, 4)], 0.2);
+  });
+
+  describe("covers", () => {
+    const prefetched: string[] = [];
+
+    beforeEach(() => {
+      prefetched.length = 0;
+      vi.stubGlobal(
+        "Image",
+        class {
+          set src(url: string) {
+            prefetched.push(url);
+          }
+        },
+      );
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("prefetches the upcoming covers of the first view and of each new view, once each", async () => {
+      setup({
+        start: { ...initial, upcoming: ["https://covers.test/a.jpg", "https://covers.test/b.jpg"] },
+        answer: {
+          pair: pairOf(three, four),
+          count: 1,
+          lastAnswer: { text: "line" },
+          canUndo: true,
+          progress: null,
+          seed: 0.5,
+          upcoming: ["https://covers.test/b.jpg", "https://covers.test/c.jpg"],
+        },
+      });
+      await waitFor(() => expect(prefetched).toEqual(["https://covers.test/a.jpg", "https://covers.test/b.jpg"]));
+
+      fireEvent.click(screen.getByRole("button", { name: "Tie" }));
+      await screen.findByText("Album Three");
+      await waitFor(() => expect(prefetched).toContain("https://covers.test/c.jpg"));
+      expect(prefetched.filter((url) => url === "https://covers.test/b.jpg")).toHaveLength(1);
+    });
+
+    it("loads the matchup covers eagerly", () => {
+      setup({ start: { ...initial, pair: pairOf({ ...one, coverUrl: "https://covers.test/one.jpg" }, two) } });
+      const img = screen.getByAltText("Cover of Album One");
+      expect(img.getAttribute("loading")).toBe("eager");
+      expect(img.getAttribute("fetchpriority")).toBe("high");
+    });
   });
 
   it("shows an error and keeps the current pair when an action fails", async () => {
@@ -118,7 +183,7 @@ describe("matchup screen", () => {
   });
 
   it("asks for two library albums, with a link to search, when no pair is possible", () => {
-    setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false, progress: null } });
+    setup({ start: { pair: null, count: 0, lastAnswer: null, canUndo: false, progress: null, seed: 0.5, upcoming: [] } });
     expect(screen.getByText("Add at least two albums to your library to start matchups.")).toBeDefined();
     expect(screen.getByRole("link", { name: "Search albums" }).getAttribute("href")).toBe("/search");
   });
@@ -135,7 +200,7 @@ describe("matchup screen", () => {
   it("hides the progress line when there is no progress, and updates it from each answer", async () => {
     setup({
       start: { ...initial, progress: progressAt(40, 60) },
-      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: progressAt(55, 40) },
+      answer: { pair: pairOf(three, four), count: 1, lastAnswer: { text: "line" }, canUndo: true, progress: progressAt(55, 40), seed: 0.5, upcoming: [] },
     });
     expect(screen.getByText("40% there · about 60 more to go")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Tie" }));

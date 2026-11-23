@@ -9,8 +9,21 @@ const DEFAULT_SIZE = 125;
 /**
  * Album cover that falls back to a grey square when there is no image or it fails to load.
  * `fill` stretches it to the width of its container; `size` is then only the image's intrinsic size.
+ * `priority` loads it at once and ahead of other images, for covers that are on screen from the start.
  */
-export function Cover({ src, alt, size = DEFAULT_SIZE, fill = false }: { src: string | null; alt: string; size?: number; fill?: boolean }) {
+export function Cover({
+  src,
+  alt,
+  size = DEFAULT_SIZE,
+  fill = false,
+  priority = false,
+}: {
+  src: string | null;
+  alt: string;
+  size?: number;
+  fill?: boolean;
+  priority?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed || src === null) {
@@ -30,7 +43,8 @@ export function Cover({ src, alt, size = DEFAULT_SIZE, fill = false }: { src: st
       height={size}
       className={cx(styles.cover, fill && styles.fill)}
       style={{ "--cover-size": `${size}px` } as CSSProperties}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
       onError={() => setFailed(true)}
       ref={(img) => {
         // The error can fire before hydration attaches onError; catch that case here.

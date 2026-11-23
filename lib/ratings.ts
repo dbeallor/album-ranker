@@ -14,9 +14,15 @@ export type AlbumCard = {
   coverUrl: string | null;
 };
 
-/** Ratings are replayed from the library and the stored matchups on every call, never stored. */
-export function loadRatings(db: DatabaseSync): { ratings: Map<number, number>; used: ReplayMatchup[] } {
-  return computeRatings({ albumIds: listLibrary(db).map((entry) => entry.albumId), matchups: listMatchups(db) });
+/**
+ * Ratings are replayed from the library and the stored matchups on every call, never stored.
+ * `extra` matchups are replayed after the stored ones without being stored, to see what an answer would do.
+ */
+export function loadRatings(
+  db: DatabaseSync,
+  extra: ReplayMatchup[] = [],
+): { ratings: Map<number, number>; used: ReplayMatchup[] } {
+  return computeRatings({ albumIds: listLibrary(db).map((entry) => entry.albumId), matchups: [...listMatchups(db), ...extra] });
 }
 
 /** The ranking progress for a replay result, as `loadRatings` returns it. */
