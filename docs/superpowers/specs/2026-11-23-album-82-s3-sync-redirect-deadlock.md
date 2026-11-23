@@ -1,6 +1,7 @@
 # Fix the S3 sync deadlock on server action redirects
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #83, as specified
 **Date:** 2026-11-23
 **Ticket:** [ALBUM-82](https://github.com/dbeallor/album-ranker/issues/82)
 
