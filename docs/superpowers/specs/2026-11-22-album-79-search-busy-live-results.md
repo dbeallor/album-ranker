@@ -1,6 +1,7 @@
 # Fix the catalog busy error on search and show results while typing
 
-**Status:** Draft
+**Status:** Shipped
+**Shipped:** in PR #PRNUM, as specified
 **Date:** 2026-11-22
 **Ticket:** [ALBUM-79](https://github.com/dbeallor/album-ranker/issues/79)
 
@@ -60,7 +61,7 @@ One test per rule, table-driven where there are several cases:
   - while one replace is pending, more typing sends nothing; when it finishes, only the latest text is sent;
   - text shorter than 2 characters, or equal to the current `q`, isn't sent; clearing the box sends `/search`.
 - `app/search/page.test.tsx`: the existing tests keep passing with the box moved into `search-box.tsx` (busy message, box keeps the query, results, "Added", errors).
-- `e2e/search.spec.ts`: the existing Enter test keeps working (Playwright types faster than the 500 ms pause). A new test types "getz gilberto", doesn't press Enter, and sees results and the URL `/search?q=getz+gilberto`. The catalog stub counts release-group requests, and the test checks that typing sent exactly one.
+- `e2e/search.spec.ts`: the existing Enter test keeps working (Playwright types faster than the 500 ms pause). A new test types "stan getz" (not "getz gilberto", which an earlier e2e test already cached), doesn't press Enter, and sees results and the URL `/search?q=stan+getz`. The catalog stub counts release-group requests, and the test checks that typing sent exactly one.
 - The 503 retry gets no e2e test: the stub has no 503 mode, and the unit tests cover it.
 
 `npm test`, `npm run lint`, `npm run typecheck` and the e2e suite pass.
