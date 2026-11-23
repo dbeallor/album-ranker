@@ -29,7 +29,7 @@ variable "zone_id" {
 }
 
 variable "dist_dir" {
-  description = "The folder `npm run build:lambda` writes: lambda/, static/ and build-info.json."
+  description = "The folder `npm run build:lambda` writes: lambda/, events/, static/ and build-info.json."
   type        = string
 }
 
@@ -71,4 +71,21 @@ variable "timeout" {
   description = "Function timeout in seconds."
   type        = number
   default     = 30
+}
+
+variable "client_events" {
+  description = "Whether the events function (ALBUM-85) logs the front-end events the browser sends to /events. false makes it answer 404 and log nothing. Browsers built with capture keep sending until the next deploy built without it."
+  type        = bool
+  default     = true
+}
+
+variable "client_events_retention_days" {
+  description = "How long the events log group keeps front-end events. Must be a value CloudWatch Logs accepts."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.client_events_retention_days)
+    error_message = "client_events_retention_days must be a retention CloudWatch Logs accepts: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288 or 3653."
+  }
 }

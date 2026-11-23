@@ -63,4 +63,7 @@ module "app" {
   musicbrainz_user_agent = var.musicbrainz_user_agent
   budget_email           = var.budget_email
   reserved_concurrency   = var.reserved_concurrency
+
+  client_events                = var.client_events
+  client_events_retention_days = var.client_events_retention_days
 }

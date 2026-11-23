@@ -15,3 +15,8 @@ budget_email = ""
 # 1 keeps at most one copy of the function running. If the first apply fails because the account's Lambda concurrency
 # quota is too low to reserve any (a new account), set -1: the conditional S3 write still stops a second writer.
 reserved_concurrency = 1
+
+# Front-end events (ALBUM-85): the browser reports page views, clicks and errors to this environment's own log group.
+# false switches the logging off (the function answers 404); the default is true. Retention must be a value CloudWatch accepts.
+# client_events                = true
+# client_events_retention_days = 30
