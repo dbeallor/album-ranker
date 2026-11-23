@@ -72,3 +72,9 @@ variable "timeout" {
   type        = number
   default     = 30
 }
+
+variable "permissions_boundary_arn" {
+  description = "Permissions boundary for the function's IAM role. Staging sets one so the CI deploy role can't grant that role more than the boundary allows; null for none."
+  type        = string
+  default     = null
+}
