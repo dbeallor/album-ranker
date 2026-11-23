@@ -48,6 +48,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 module "app" {
   source = "../../modules/app"
 
@@ -66,4 +68,7 @@ module "app" {
 
   client_events                = var.client_events
   client_events_retention_days = var.client_events_retention_days
+
+  # Created by infra/ci. Caps what the CI deploy role can give the function's role.
+  permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/album-ranker-staging-function-boundary"
 }

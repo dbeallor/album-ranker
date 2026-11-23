@@ -28,3 +28,14 @@ output "deployed_commit" {
   description = "The git commit the deployed build came from (dist/build-info.json)."
   value       = local.build_info.commit
 }
+
+# These two CloudFront types take no tags, so the CI deploy role can only be scoped to them by ID (infra/ci reads these).
+output "response_headers_policy_id" {
+  description = "ID of this environment's CloudFront response headers policy."
+  value       = aws_cloudfront_response_headers_policy.security.id
+}
+
+output "origin_access_control_id" {
+  description = "ID of this environment's CloudFront origin access control."
+  value       = aws_cloudfront_origin_access_control.assets.id
+}
