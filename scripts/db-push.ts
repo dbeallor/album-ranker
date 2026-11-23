@@ -10,6 +10,9 @@ import { describeCounts, pushDatabase, type DeployTarget, type PushSummary, type
 
 const KEY = "album-ranker.db";
 
+/** Set once the bucket is known, so the Ctrl-C message can name it. */
+let resolvedBucket: string | undefined;
+
 export const USAGE =
   "Usage: npm run db:push -- <staging|production> [--dry-run] [--bucket <name>] [--region <region>] [--expect-etag <etag>] [--yes] [--confirm-production]";
 
@@ -93,6 +96,7 @@ export async function run(argv: string[], deps: Deps): Promise<void> {
   const args = parseArgs(argv);
   const { databasePath, backupDir } = deps.localPaths();
   const bucket = args.bucket ?? deps.terraformBucket(args.environment);
+  resolvedBucket = bucket;
   const target = `s3://${bucket}/${KEY}`;
   deps.log(`${args.dryRun ? "Dry run for" : "Pushing to"} ${args.environment}: ${target}`);
 
@@ -132,7 +136,7 @@ export async function run(argv: string[], deps: Deps): Promise<void> {
   if (result.previousVersionId) deps.log(`The data it replaced is version ${result.previousVersionId}.`);
   deps.log("The app loads it on its next request and applies any pending migrations.");
   if (result.undo?.commands.length) {
-    deps.log("To undo this push, restoring the old copy replaces whatever is in the bucket now, including anything written since this push (answers given in the app, for example).");
+    deps.log("Undoing this push replaces whatever is in the bucket now, including anything written since this push (answers given in the app, for example).");
     deps.log("Check what is there first, with this command (compare its VersionId to the new version above) or in the app:");
     deps.log(`  ${result.undo.check}`);
     deps.log("Then, to undo (the first fetches the old copy to inspect, the second restores it in place):");
@@ -176,7 +180,11 @@ async function ask(question: string): Promise<boolean> {
 async function main(): Promise<void> {
   // Ctrl-C outside the prompt: exit through the normal path so `pushDatabase` clears its temp folder.
   process.once("SIGINT", () => {
-    console.error("\nInterrupted.");
+    console.error(
+      "\nInterrupted. If this was during the upload, it may have finished: check the bucket " +
+        `(\`aws s3api head-object --bucket ${resolvedBucket ?? "<bucket>"} --key ${KEY}\`, add --region if you used one) ` +
+        "and compare the VersionId with the one printed above. Your local backup is untouched.",
+    );
     process.exit(130);
   });
   await run(process.argv.slice(2), {
