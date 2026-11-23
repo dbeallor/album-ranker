@@ -36,11 +36,16 @@ function copyPackageFolder(from: string, to: string): void {
   cpSync(from, to, { recursive: true, force: true, filter: (source) => !["node_modules", "dist-types"].includes(basename(source)) });
 }
 
+/** The environment for `next build`: switches on front-end event capture (components/client-events.tsx), which no other build or run has. */
+export function nextBuildEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...base, NEXT_PUBLIC_CLIENT_EVENTS: "1" };
+}
+
 export function main(): void {
   rmSync(DIST, { recursive: true, force: true });
 
   console.log("Building Next.js (standalone output)...");
-  execFileSync(join(ROOT, "node_modules", ".bin", "next"), ["build"], { cwd: ROOT, stdio: "inherit" });
+  execFileSync(join(ROOT, "node_modules", ".bin", "next"), ["build"], { cwd: ROOT, stdio: "inherit", env: nextBuildEnv(process.env) });
   const standalone = join(ROOT, ".next", "standalone");
   if (!existsSync(join(standalone, "server.js"))) {
     throw new Error('.next/standalone/server.js is missing. Check that next.config.ts sets output: "standalone".');

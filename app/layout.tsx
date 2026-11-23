@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo, Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import { ClientEvents } from "@/components/client-events";
 import { PageShell } from "@/components/ui/page-shell";
 import "./globals.css";
 
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={`${inter.variable} ${archivo.variable}`}>
       <body>
         <PageShell>{children}</PageShell>
+        <ClientEvents />
       </body>
     </html>
   );

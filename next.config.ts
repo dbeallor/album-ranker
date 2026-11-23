@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   // A self-contained server in .next/standalone, which `npm run build:lambda` packages for AWS Lambda.
   output: "standalone",
   poweredByHeader: false,
+  // Front-end event capture is on only in `npm run build:lambda`, which sets this to "1". Next.js inlines a variable
+  // only when it is set at build time, so "0" here lets every other build drop the capture code (components/client-events.tsx).
+  env: { NEXT_PUBLIC_CLIENT_EVENTS: process.env.NEXT_PUBLIC_CLIENT_EVENTS === "1" ? "1" : "0" },
   // Also set by proxy.ts, which covers the responses it answers itself.
   async headers() {
     return [
