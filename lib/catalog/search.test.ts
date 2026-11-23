@@ -241,6 +241,69 @@ describe("searchAlbums errors", () => {
   });
 });
 
+describe("searchAlbums 503 retries", () => {
+  const busy = (retryAfter?: string) =>
+    new Response("busy", { status: 503, headers: retryAfter === undefined ? {} : { "Retry-After": retryAfter } });
+
+  it("retries a 503 and caches the albums that follow", async () => {
+    let calls = 0;
+    const { search, fetchMock } = setup(() => (++calls === 1 ? busy("1") : jsonResponse(fixture)));
+
+    const first = await search(text("getz gilberto"));
+    expect(first.ok && first.albums.length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    expect(await search(text("getz gilberto"))).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives the busy message after four 503s in a row, having fetched four times", async () => {
+    const { search, fetchMock, log } = setup(() => busy("1"));
+
+    expect(await search(text("getz gilberto"))).toEqual({ ok: false, message: BUSY });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  // The 1.1 s slot spacing still applies: a 1 s wait is followed by the 100 ms left of the slot.
+  const waits: { name: string; retryAfter: string | undefined; sleeps: number[] }[] = [
+    { name: "Retry-After 2 waits 2 s", retryAfter: "2", sleeps: [2000] },
+    { name: "no Retry-After waits 1 s", retryAfter: undefined, sleeps: [1000, 100] },
+    { name: "Retry-After 0 waits 1 s", retryAfter: "0", sleeps: [1000, 100] },
+    { name: "Retry-After abc waits 1 s", retryAfter: "abc", sleeps: [1000, 100] },
+    { name: "Retry-After 10 waits 3 s", retryAfter: "10", sleeps: [3000] },
+  ];
+  it.each(waits)("$name before the retry", async ({ retryAfter, sleeps }) => {
+    let calls = 0;
+    const { search, sleep } = setup(() => (++calls === 1 ? busy(retryAfter) : jsonResponse(fixture)));
+
+    expect((await search(text("getz gilberto"))).ok).toBe(true);
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual(sleeps);
+  });
+
+  const notRetried: { name: string; respond: () => Response }[] = [
+    {
+      name: "a timeout",
+      respond: () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      },
+    },
+    { name: "a 500", respond: () => new Response("oops", { status: 500 }) },
+    {
+      name: "a network failure",
+      respond: () => {
+        throw new TypeError("fetch failed");
+      },
+    },
+  ];
+  it.each(notRetried)("does not retry $name", async ({ respond }) => {
+    const { search, fetchMock } = setup(respond);
+
+    expect((await search(text("getz gilberto"))).ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("searchAlbums cache", () => {
   it("serves the same query in another case and spacing from the cache", async () => {
     const { search, fetchMock } = setup();
@@ -253,7 +316,7 @@ describe("searchAlbums cache", () => {
 
   it("does not cache an error", async () => {
     let fail = true;
-    const { search, fetchMock } = setup(() => (fail ? new Response("busy", { status: 503 }) : jsonResponse(fixture)));
+    const { search, fetchMock } = setup(() => (fail ? new Response("oops", { status: 500 }) : jsonResponse(fixture)));
 
     expect((await search(text("getz gilberto"))).ok).toBe(false);
     fail = false;

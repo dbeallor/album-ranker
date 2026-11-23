@@ -3,7 +3,6 @@ import { Cover } from "@/components/cover";
 import { Button } from "@/components/ui/button";
 import { Cluster } from "@/components/ui/cluster";
 import { EmptyState } from "@/components/ui/empty-state";
-import { InlineForm } from "@/components/ui/inline-form";
 import { ListRow } from "@/components/ui/list-row";
 import { Message } from "@/components/ui/message";
 import { PageHeader } from "@/components/ui/page-header";
@@ -15,6 +14,7 @@ import { getDb } from "@/lib/db/server";
 import { ADD_ALBUM_ERRORS, type AddAlbumErrorCode } from "@/lib/library-service";
 import { addToLibraryAction } from "./actions";
 import styles from "./page.module.css";
+import { SearchBox } from "./search-box";
 
 type Param = string | string[] | undefined;
 type SearchParams = Promise<{ q?: Param; added?: Param; error?: Param; item?: Param }>;
@@ -43,12 +43,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     <>
       <PageHeader label="01 / Add albums" title="Add albums" />
       <Stack gap={5}>
-        <InlineForm method="get" action="/search">
-          <TextField type="search" name="q" defaultValue={query} aria-label="Album or artist" placeholder="Search an album or artist" className={styles.search} />
-          <Button type="submit" variant="primary">
-            Search
-          </Button>
-        </InlineForm>
+        <SearchBox query={query} />
 
         {added && (
           <Message tone="success" role="status">

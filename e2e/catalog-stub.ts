@@ -7,12 +7,21 @@ import { createServer } from "node:http";
 const port = Number(process.env.CATALOG_STUB_PORT ?? 3101);
 const fixture = readFileSync(new URL("../lib/catalog/fixtures/getz-gilberto.json", import.meta.url), "utf8");
 
+let releaseGroupRequests = 0;
+
 const server = createServer((request, response) => {
   const { pathname } = new URL(request.url ?? "/", "http://stub.local");
 
   if (pathname === "/ws/2/release-group") {
+    releaseGroupRequests += 1;
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(fixture);
+    return;
+  }
+  // For tests: how many release-group searches the app has made so far.
+  if (pathname === "/__count") {
+    response.writeHead(200, { "Content-Type": "text/plain" });
+    response.end(String(releaseGroupRequests));
     return;
   }
   if (pathname.startsWith("/release-group/")) {

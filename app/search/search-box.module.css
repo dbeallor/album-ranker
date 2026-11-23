@@ -1,0 +1,9 @@
+/* The big search box: the point of the page. */
+.search {
+  min-height: 3.5rem;
+  font-size: var(--text-xl);
+}
+
+.status {
+  color: var(--color-text-muted);
+}

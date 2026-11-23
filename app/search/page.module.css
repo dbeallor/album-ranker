@@ -2,12 +2,6 @@
   flex: 0 1 12rem;
 }
 
-/* The big search box: the point of the page. */
-.search {
-  min-height: 3.5rem;
-  font-size: var(--text-xl);
-}
-
 .result {
   padding: var(--space-3) 0;
   border-top: var(--rule);
