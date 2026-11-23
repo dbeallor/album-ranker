@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { DatabaseSync } from "node:sqlite";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -518,6 +518,92 @@ describe("serveWithSync", () => {
     const order = events.filter((event) => event.startsWith("start")).map((event) => event.slice(6));
     expect(events).toEqual(order.flatMap((id) => [`start ${id}`, `end ${id}`]));
     expect(order).toHaveLength(3);
+  });
+
+  describe("requests the app makes to itself", () => {
+    const turnHeader = "x-album-ranker-sync-turn";
+    const hopByHop = ["host", "connection", "content-length", "transfer-encoding", "keep-alive"];
+
+    function forwardedHeaders(req: IncomingMessage): Record<string, string> {
+      return Object.fromEntries(
+        Object.entries(req.headers)
+          .filter(([name, value]) => typeof value === "string" && !hopByHop.includes(name))
+          .map(([name, value]) => [name, value as string]),
+      );
+    }
+
+    function redirectingHandler(sync: S3Sync): Parameters<typeof serveWithSync>[0] {
+      return async (req, res) => {
+        if (req.method === "POST" && req.url === "/action") {
+          const nested = await fetch(`${url}/target`, { headers: forwardedHeaders(req) });
+          res.end(await nested.text());
+        } else {
+          if (req.url === "/target") addAlbum(sync.db(), "Nested");
+          res.end("target");
+        }
+      };
+    }
+
+    it("answers an action whose handler fetches the server itself", { timeout: 2000 }, async () => {
+      store.replace(databaseBytes());
+      const sync = newSync();
+      await start(redirectingHandler(sync), sync);
+
+      const response = await fetch(`${url}/action`, { method: "POST" });
+
+      expect(await response.text()).toBe("target");
+    });
+
+    it("saves what the nested request wrote before the outer response goes out, loading once", { timeout: 2000 }, async () => {
+      store.replace(databaseBytes());
+      const sync = newSync();
+      await start(redirectingHandler(sync), sync);
+
+      const response = await fetch(`${url}/action`, { method: "POST" });
+      await response.text();
+
+      expect(store.puts).toHaveLength(1);
+      expect(storedTitles()).toEqual(["Nested"]);
+      expect(store.calls.filter((call) => call === "head")).toHaveLength(1);
+    });
+
+    it.each([
+      ["a made-up value", () => "not-a-token"],
+      ["the token of a finished turn", (seen: string[]) => seen[0] ?? "none"],
+    ])("still queues a request carrying %s", async (_name, token) => {
+      store.replace(databaseBytes());
+      const sync = newSync();
+      const seen: string[] = [];
+      const events: string[] = [];
+      await start(async (req, res) => {
+        const header = req.headers[turnHeader];
+        if (typeof header === "string") seen.push(header);
+        events.push(`start ${req.url}`);
+        if (req.url === "/slow") await new Promise((resolve) => setTimeout(resolve, 100));
+        events.push(`end ${req.url}`);
+        res.end("ok");
+      }, sync);
+      await fetch(`${url}/first`);
+
+      const slow = fetch(`${url}/slow`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await fetch(`${url}/probe`, { headers: { [turnHeader]: token(seen) } });
+      await slow;
+
+      expect(events.slice(2)).toEqual(["start /slow", "end /slow", "start /probe", "end /probe"]);
+    });
+
+    it("never sends the token to the client", async () => {
+      store.replace(databaseBytes());
+      const sync = newSync();
+      await start((req, res) => {
+        res.end(String(req.headers[turnHeader]));
+      }, sync);
+
+      const response = await fetch(url);
+
+      expect(response.headers.has(turnHeader)).toBe(false);
+    });
   });
 
   it("answers 500 when the app throws, still saving what it changed", async () => {
