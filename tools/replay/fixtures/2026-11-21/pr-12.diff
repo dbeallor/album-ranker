@@ -1,0 +1,7 @@
+diff --git a/.gitignore b/.gitignore
+index 8919082..90a25da 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1 +1,2 @@
+ .agent-team/
++screen_recordings/

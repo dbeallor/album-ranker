@@ -1,0 +1,194 @@
+{
+  "paused": false,
+  "tickets": {
+    "ALBUM-10": {
+      "stage": "build",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Ae64d526c-f511-40db-842f-58fdd8de3b3d",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Ae64d526c-f511-40db-842f-58fdd8de3b3d",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "build since 2026-11-21 5:46 am UTC: spec approved; building the spreadsheet import. Risk: High (touches data, migration 002, new dependency).",
+      "branch": "feat/album-10-spreadsheet-import",
+      "title": "Import the existing spreadsheet",
+      "specPath": "docs/superpowers/specs/2026-11-21-album-10-spreadsheet-import.md",
+      "specSha": "9c013854c5d72dab98ee1ac79c813ea3d9af7bb9",
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T05:46:06Z",
+      "lastPosition": 0,
+      "resumeStage": null,
+      "pendingRelay": null,
+      "approvalItemId": null,
+      "queuedAt": null,
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T05:46:45Z"
+    },
+    "ALBUM-19": {
+      "stage": "build-queued",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Ad76ed26e-e427-4eb1-82e8-96162533d6a5",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Ad76ed26e-e427-4eb1-82e8-96162533d6a5",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "build-queued since 2026-11-21 5:51 am UTC: spec approved, waiting for a build slot (builds running: ALBUM-7, ALBUM-10). Risk: Medium (new test tooling and dev dependency).",
+      "branch": "feat/album-19-frontend-event-tracking",
+      "title": "Add frontend event tracking for replaying browser tests",
+      "specPath": "docs/superpowers/specs/2026-11-21-album-19-browser-event-log.md",
+      "specSha": "ad4400ff3f44fd5138142c134e724668f3028640",
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T05:51:30Z",
+      "lastPosition": 0,
+      "resumeStage": null,
+      "pendingRelay": "CHIEF OF STAFF: the user approved the spec: \"approve 19\". Continue to the build stage.\nApproval in thread: a478e957-2ce2-46a3-858b-1c35811e0444",
+      "approvalItemId": "turn-item:message:e0cc8529-dbbb-4572-926f-9ef088df7bb3",
+      "queuedAt": "2026-11-21T05:51:55Z",
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T05:51:55Z"
+    },
+    "ALBUM-20": {
+      "stage": "build",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A45c16c15-86b2-4097-81cf-9cdb93bc995a",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A45c16c15-86b2-4097-81cf-9cdb93bc995a",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "build since 2026-11-21 5:55 am UTC: spec approved; building local preview environments. Risk: High (touches data files, edits docs/agents/project.md).",
+      "branch": "feat/album-20-local-previews",
+      "title": "Add local preview environments for main and per-ticket branches",
+      "specPath": "docs/superpowers/specs/2026-11-21-album-20-local-previews.md",
+      "specSha": "12964009e32a7eed8c41b3f9ecf3abc27621f4f2",
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T05:51:01Z",
+      "lastPosition": 0,
+      "resumeStage": null,
+      "pendingRelay": null,
+      "approvalItemId": null,
+      "queuedAt": null,
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T05:55:10Z"
+    },
+    "ALBUM-6": {
+      "stage": "build-queued",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Aa175e1dc-fb60-44b2-819f-440d7d46dbf6",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3Aa175e1dc-fb60-44b2-819f-440d7d46dbf6",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "build-queued since 2026-11-21 6:01 am UTC: spec approved, waiting for a build slot (builds running: ALBUM-10, ALBUM-20; ALBUM-19, ALBUM-8 queued first). Risk: High (writes year placements to the data layer, new @dnd-kit dependency, calls that change ranking behaviour).",
+      "branch": "feat/album-6-year-ranking-screen",
+      "title": "Build the per-year ranking screen with drag and drop and covers",
+      "specPath": "docs/superpowers/specs/2026-11-21-album-6-year-ranking-screen.md",
+      "specSha": "a58fba122ff77b3dea533b0ec94aae4b20675cec",
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T05:59:16Z",
+      "lastPosition": 19,
+      "resumeStage": null,
+      "pendingRelay": "CHIEF OF STAFF: the user approved the spec: \"approve 6\". Continue to the build stage.\nApproval in thread: a478e957-2ce2-46a3-858b-1c35811e0444",
+      "approvalItemId": "turn-item:message:f18e228f-0a0c-4b08-bb04-068d3e87c17f",
+      "queuedAt": "2026-11-21T06:01:34Z",
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T06:01:34Z"
+    },
+    "ALBUM-8": {
+      "stage": "build-queued",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A06092efa-53d6-41cd-8b94-264ee8ce89d0",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A06092efa-53d6-41cd-8b94-264ee8ce89d0",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "build-queued since 2026-11-21 6:01 am UTC: spec approved, waiting for a build slot (builds running: ALBUM-10, ALBUM-20; ALBUM-19 queued first). Risk: Medium (two new read-only pages, 5 Builds bullets).",
+      "branch": "feat/album-8-artist-views",
+      "title": "Add artist views by decade and overall",
+      "specPath": "docs/superpowers/specs/2026-11-21-album-8-artist-views.md",
+      "specSha": "00f5d42c361f86ba2abc47f087e6ea5e563f7655",
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T05:58:29Z",
+      "lastPosition": 0,
+      "resumeStage": null,
+      "pendingRelay": "CHIEF OF STAFF: the user approved the spec: \"approve 8\". Continue to the build stage.\nApproval in thread: a478e957-2ce2-46a3-858b-1c35811e0444",
+      "approvalItemId": "turn-item:message:b5611e83-ce6b-40a1-962c-d3e5bb8dc65a",
+      "queuedAt": "2026-11-21T06:01:34Z",
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T06:01:34Z"
+    },
+    "ALBUM-9": {
+      "stage": "spec",
+      "firstTaskId": "node:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A60170b60-573d-49ad-93ad-23978c99fd4a",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A5b883358-fa94-4269-831d-adf11d26ac1e%3Adelegate-task%3A60170b60-573d-49ad-93ad-23978c99fd4a",
+      "parentThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+      "status": "spec since 2026-11-21 6:04 am UTC: writing the spec.",
+      "branch": "feat/album-9-decade-top-25",
+      "title": "Add decade top 25 album lists",
+      "specPath": null,
+      "specSha": null,
+      "pr": null,
+      "headSha": null,
+      "rateLimitResumes": 0,
+      "lastSeenAt": "2026-11-21T06:04:05Z",
+      "lastPosition": 0,
+      "resumeStage": null,
+      "pendingRelay": null,
+      "approvalItemId": null,
+      "queuedAt": null,
+      "restarts": {
+        "spec": 0
+      },
+      "note": "",
+      "stageAt": "2026-11-21T06:04:05Z"
+    }
+  },
+  "merged": {
+    "ALBUM-2": {
+      "pr": 13,
+      "at": "2026-11-20T23:54:06Z"
+    },
+    "ALBUM-3": {
+      "pr": 16,
+      "at": "2026-11-21T05:16:53Z"
+    },
+    "ALBUM-5": {
+      "pr": 17,
+      "at": "2026-11-21T05:33:35Z"
+    },
+    "ALBUM-4": {
+      "pr": 18,
+      "at": "2026-11-21T05:39:46Z"
+    },
+    "ALBUM-7": {
+      "pr": 21,
+      "at": "2026-11-21T05:55:28Z"
+    }
+  },
+  "pm": {},
+  "chiefThreadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+  "chiefProvider": {
+    "threadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+    "provider": "claudeAgent"
+  },
+  "skillCommit": "926d21827db1229439e7d9cd094920005f77fdf8",
+  "chiefSessionId": "d600851e-eda2-42bc-b9cb-ed367af59289",
+  "lastRelayAt": "2026-11-21T06:04:05Z",
+  "reset": null,
+  "takeover": null,
+  "lastResetAt": "2026-11-21T05:59:00Z",
+  "ganttPluginVersion": "0.1.14",
+  "takeoverContext": {
+    "threadId": "a478e957-2ce2-46a3-858b-1c35811e0444",
+    "tokens": 227751
+  }
+}

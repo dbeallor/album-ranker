@@ -1,0 +1,1150 @@
+diff --git a/.gitignore b/.gitignore
+index 8f23eda..cb8a691 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,6 +6,7 @@ next-env.d.ts
+ .env*
+ !.env.example
+ data/
++.preview/
+ *.db
+ *.sqlite*
+ *.db-*
+diff --git a/README.md b/README.md
+index b1ba4fa..d56f6ae 100644
+--- a/README.md
++++ b/README.md
+@@ -10,6 +10,26 @@ Personal Favorite Album Ranker
+ 5. `npm run dev`
+ 6. Open <http://localhost:3000>.
+ 
++## Preview branches
++
++Run `main` and any ticket's worktree side by side, each on its own port and its own SQLite file.
++
++| Command | What it does |
++|---|---|
++| `npm run preview -- main` | Builds the root checkout (on `main`) and serves it on <http://localhost:4000> |
++| `npm run preview -- 20` | Runs the worktree whose branch contains `album-20-` on <http://localhost:4020> |
++| `npm run preview -- feat/album-20-local-previews` | Same, found by branch name |
++| `npm run preview -- list` | Shows each running preview: target, port, URL, pid, commit |
++| `npm run preview -- stop 20` | Stops one preview (`stop main` and `stop all` work too) |
++
++Any checkout can run these. Previews run in the background; the pid file and log are in `.preview/` in the checkout being served (gitignored).
++
++- **Ports:** main is 4000, a ticket is `4000 + N` (1 to 999). A branch without a ticket number, or a number of 1000 or more, needs `--port <p>` (1024 to 65535). Plain `npm run dev` stays on 3000. A taken port fails with the preview that holds it, or an `lsof` hint.
++- **Data:** main uses the root checkout's `data/album-ranker.db`, the same file `npm run dev` there uses. A ticket preview uses `data/preview.db` in its own worktree, so migrations and test data never reach main. It keeps that file between runs. `--empty` deletes it first; `--copy-main-data` replaces it with a copy of main's file.
++- **Setup:** the script runs `npm install` in the checkout when `node_modules` is missing or `package-lock.json` is newer, and copies `.env.example` to `.env` when `.env` is missing.
++- **Refresh after a merge:** run `npm run preview -- main` again. It stops the running main preview, rebuilds and starts it. If the root checkout is behind `origin/main`, it warns and prints the `git pull --ff-only` command; it never pulls.
++- **Stop:** `npm run preview -- stop <main|N|branch|all>`.
++
+ ## Search albums
+ 
+ Open <http://localhost:3000/search> and type an album or artist. Results come from MusicBrainz, one per album, with cover art from the Cover Art Archive.
+diff --git a/docs/agents/project.md b/docs/agents/project.md
+index 46de328..53af12c 100644
+--- a/docs/agents/project.md
++++ b/docs/agents/project.md
+@@ -108,7 +108,10 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
+ 
+ ## Environments and deploy
+ 
+-- none yet
++- Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)). Deploy: none yet (#14).
++  - Main preview: `npm run preview -- main` builds the root checkout and serves it on <http://localhost:4000>, using the root's `data/album-ranker.db`.
++  - Ticket preview: `npm run preview -- <N>` serves that ticket's worktree on port `4000 + N` (ticket 20 is <http://localhost:4020>), using `data/preview.db` in the worktree. A branch with no ticket number needs `--port <p>`.
++  - `npm run preview -- list` shows running previews; `npm run preview -- stop <main|N|all>` stops them. Point the user at the preview URL after a UI change.
+ 
+ ## Models
+ 
+diff --git a/docs/superpowers/plans/2026-11-21-album-20-local-previews.md b/docs/superpowers/plans/2026-11-21-album-20-local-previews.md
+new file mode 100644
+index 0000000..816ab81
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-21-album-20-local-previews.md
+@@ -0,0 +1,31 @@
++# ALBUM-20 local previews: plan
++
++**Spec:** [2026-11-21-album-20-local-previews.md](../specs/2026-11-21-album-20-local-previews.md)
++
++Run `npm install` first. Scripts run as Node type-stripped TypeScript like `scripts/migrate.ts` (relative imports end in `.ts`; no enums or parameter properties). Tests are picked up by `**/*.test.ts` in vitest.
++
++## Task 1: pure rules (`scripts/preview/rules.ts` + `rules.test.ts`)
++- `parseArgs(argv)`: `main` | `<N>` | `<branch>` start targets; `list`; `stop <target|all>`; flags `--port <p>`, `--empty`, `--copy-main-data`. Returns a typed command or a clear error string. `--empty` with `--copy-main-data` is an error. Flags apply to ticket starts only (error on main).
++- `ticketPort(n, override?)`: `4000 + n` for 1..999, else error asking for `--port`; override must be 1024..65535. `MAIN_PORT = 4000`.
++- `parseWorktrees(porcelainText)`: `{path, branch|null, head}[]`; first entry is the root checkout.
++- `findWorktree(worktrees, target)`: ticket number matches branch containing `album-<N>-` (case-insensitive, `N` exact so 2 does not match 20); branch name exact; zero or many matches return an error listing the worktrees.
++- `checkRootOnMain(worktrees)`.
++- One table-driven test per function.
++
++## Task 2: runtime (`scripts/preview/index.ts`, `scripts/preview.ts` entry)
++- Thin I/O layer over Task 1: `git worktree list --porcelain`, setup (`npm install` when `node_modules` missing or `package-lock.json` newer than `node_modules/.package-lock.json`; copy `.env.example` to `.env` when missing), port check by binding with `node:net`, spawn detached with `DATABASE_PATH` and `PORT` in env, log to `.preview/<name>.log`, pid file `.preview/<name>.json` (`pid`, `port`, `target`, `branch`, `startedAt`) in the served checkout, wait for HTTP 200 on the port (timeouts 3 min main, 1 min ticket; on failure print the last 20 log lines, kill the process, exit 1).
++- main: stop running main preview, warn if root behind `origin/main` after `git fetch` (print `git -C <root> pull --ff-only`, never pull), `next build` then `next start --port 4000`; `DATABASE_PATH` is not set (default root data file).
++- ticket: `next dev --port <port>` with `DATABASE_PATH=<worktree>/data/preview.db`; `--empty` deletes db, `-wal`, `-shm`; `--copy-main-data` uses `DatabaseSync` backup (`node:sqlite` `backup`) from root `data/album-ranker.db`, error if missing.
++- Port in use: `Port <p> is in use.` plus the owning preview and its stop command when a pid file matches, else `lsof -i :<p>` hint.
++- `list`: reads pid files from all worktrees, drops stale ones; prints target, port, URL, pid, commit.
++- `stop <target|all>`: `process.kill(-pid, 'SIGTERM')`, wait up to 10 s then SIGKILL, remove pid file.
++- `package.json`: `"preview": "node scripts/preview.ts"`.
++
++## Task 3: docs and ignore
++- `.gitignore`: `.preview/`.
++- README "Preview branches" section after "Run the app" (commands, port rule, data files, refresh after merge, stop).
++- `docs/agents/project.md` § Environments and deploy: replace `none yet` with main port 4000, ticket port `4000 + N`, the command, data file locations.
++- Spec status to `Shipped` and `**Shipped:**` line are closeout docs, done by open-pr.
++
++## Verify
++`npm test`, `npm run lint`, `npm run typecheck`, `npm run build`. Then by hand, recording in the PR Proof: start `main` and this ticket (`npm run preview -- 20`) at once, curl both, write in the ticket preview and confirm main's data is unchanged (compare `data/` files), `list`, taken-port failure, `stop 20`, `stop main`, main refresh. Never commit `.env`, `.preview/`, `data/` or SQLite files.
+diff --git a/docs/superpowers/specs/2026-11-21-album-20-local-previews.md b/docs/superpowers/specs/2026-11-21-album-20-local-previews.md
+new file mode 100644
+index 0000000..f7480a9
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-21-album-20-local-previews.md
+@@ -0,0 +1,94 @@
++# Local preview environments
++
++**Status:** Shipped
++**Date:** 2026-11-21
++**Shipped:** in PR #23, as specified
++**Ticket:** [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)
++**Follows:** [stack and scaffold](2026-11-20-album-3-stack-scaffold.md), [data model and storage](2026-11-21-album-4-data-model-storage.md) § Storage
++
++## Goal
++
++One command runs the app from `main`, and one command per ticket runs the app from that ticket's worktree on its own port, side by side. Each preview has its own SQLite file, so a branch's migrations or test data never reach the main preview.
++
++## Commands
++
++One script, `scripts/preview.ts`, run with Node 24 the way `scripts/migrate.ts` is, behind one npm script:
++
++| Command | What it does |
++|---|---|
++| `npm run preview -- main` | Builds and starts the root checkout (on `main`) on port 4000 |
++| `npm run preview -- 20` | Starts the worktree of ticket 20 on port 4020 |
++| `npm run preview -- feat/album-20-local-previews` | Same, found by branch name |
++| `npm run preview -- list` | Shows each running preview: target, port, URL, pid, commit |
++| `npm run preview -- stop 20` | Stops one preview (`stop main`, `stop all` too) |
++
++Any checkout can run any of these: the script finds the root checkout and the worktrees through `git worktree list --porcelain`.
++
++Previews run in the background. Each writes its process id, port and log under `.preview/` in the checkout it serves (gitignored). `start` waits until the page answers, then prints the URL and the log path. If the app doesn't answer within the time limit (3 minutes for main, which builds first; 1 minute for a ticket), it prints the last lines of the log and exits non-zero.
++
++## Main preview
++
++- Runs from the root checkout, which is the first entry in `git worktree list`. Refuses to start if that checkout is not on `main`.
++- Runs `next build` then `next start --port 4000`: a production build of what is merged, without the dev overlay.
++- Uses the root checkout's own data file, `data/album-ranker.db`, the same one `npm run dev` there uses. That is the user's real data.
++- **Refresh after a merge:** run `npm run preview -- main` again. It stops the running main preview, rebuilds and starts again. `merge_pr.py` already fast-forwards the root checkout, so no pull is needed. The script runs `git fetch` and, if the root checkout is behind `origin/main` (for example after a merge in the GitHub web page), warns with the `git -C <root> pull --ff-only` command to run. It does not pull by itself.
++
++## Ticket preview
++
++- `<N>` matches the worktree whose branch contains `album-<N>-` (any head, case-insensitive). A branch name matches exactly. No match, or more than one, is an error that lists the worktrees.
++- Runs `next dev --port <port>` in that worktree, so edits from the agent working there show up without a restart.
++- Port rule: `4000 + N`, so ticket 20 is 4020. A branch with no ticket number needs `--port <p>`. Ticket numbers 1 to 999 fit in 4001 to 4999; a number of 1000 or more needs `--port`.
++- Data file: `data/preview.db` in that worktree, set through `DATABASE_PATH`. It is a different file in a different folder from the main preview's.
++  - Default: reuse the file if it exists, otherwise start empty (migrations create it on first open).
++  - `--copy-main-data`: replace it with a copy of the root checkout's `data/album-ranker.db`, made with SQLite's backup API so a running main preview doesn't give a torn copy. Fails clearly if the main file doesn't exist.
++  - `--empty`: delete it (and its `-wal` and `-shm` files) before starting.
++
++## Setup per checkout
++
++Before starting, in the checkout being previewed:
++
++- Run `npm install` when `node_modules` is missing or `package-lock.json` is newer than `node_modules/.package-lock.json`.
++- Copy `.env.example` to `.env` when `.env` is missing. The script passes `DATABASE_PATH` and `PORT` in the environment, which Next.js does not override from `.env`, so a `.env` copied from the example can't point a preview at the wrong file.
++
++## Ports and errors
++
++- Before starting, the script checks the port by binding to it. A taken port fails with `Port 4020 is in use.` and, when the port belongs to a preview the script started, names it and the `stop` command. Otherwise it suggests `lsof -i :4020`.
++- Starting a target that is already running stops it first (this is how refresh works).
++- A pid file whose process is gone counts as stopped and is cleaned up.
++- `stop` kills the preview's whole process group (`next` starts child processes), waits for it to exit, and removes the pid file.
++- Plain `npm run dev` keeps port 3000, outside the preview range.
++
++## Docs
++
++- README: a "Preview branches" section after "Run the app" with the commands, port rule, data files and how to stop and refresh.
++- `docs/agents/project.md` § Environments and deploy: the main preview port, the ticket port rule and the command, so agents can point the user at a preview URL.
++- `.gitignore`: add `.preview/`. `data/` is already ignored.
++
++## Tests
++
++Table-driven unit tests (`AGENTS.md` § Testing sizing) for the parts with rules:
++
++- argument parsing (targets, flags, bad input),
++- the port rule (ticket number, `--port`, out of range),
++- finding a worktree from `git worktree list --porcelain` output (ticket number, branch name, no match, two matches, root not on `main`).
++
++Starting and stopping real servers is checked by hand and recorded in the PR's Proof: main preview and a ticket preview running at once, a write in the ticket preview not showing in main, stop, and refresh.
++
++## Out of scope
++
++- Deploying anywhere (#14), browser test runs and event capture (#19), shared or hosted preview URLs, CI preview builds.
++- Creating worktrees. The script previews worktrees that exist; it does not make one for a ticket that has none.
++- Windows. The script uses process groups and `lsof` hints; the user is on macOS.
++
++## Calls I made
++
++Surprising first.
++
++- **The main preview uses the root checkout's real data file**, `data/album-ranker.db`, shared with `npm run dev` there, not a separate preview file. Main is merged code, so it's safe to run against real data, and the preview then shows what the user actually has. Ticket previews never touch that file except to read it for `--copy-main-data`.
++- **The main preview is a production build** (`next build` + `next start`) and ticket previews run `next dev`. Main should look like what ships; a ticket preview should pick up edits while an agent works.
++- **The script doesn't pull `main`.** It warns when the root checkout is behind `origin/main` and prints the pull command. Pulling would write to the root checkout from a preview command.
++- **Previews run in the background** with a pid file and log, and stop through `npm run preview -- stop`, rather than in the foreground with Ctrl-C. Several previews at once in one terminal needs that.
++- **Port 4000 for main, 4000 + N for tickets.** Simple to work out in your head; 3000 stays for plain `npm run dev`.
++- **A ticket preview keeps its data between runs** unless `--empty` or `--copy-main-data` is passed.
++- **One Node TypeScript script** rather than a shell script, to match `scripts/migrate.ts` and to unit test the rules.
++- **The ticket match is on `album-<N>-` in the branch name**, the repo's branch pattern, not on the worktree folder name, since T3's folders are random ids.
+diff --git a/package.json b/package.json
+index 38ea258..e6d0481 100644
+--- a/package.json
++++ b/package.json
+@@ -12,7 +12,8 @@
+     "test": "vitest run",
+     "lint": "eslint .",
+     "typecheck": "tsc --noEmit",
+-    "db:migrate": "node scripts/migrate.ts"
++    "db:migrate": "node scripts/migrate.ts",
++    "preview": "node scripts/preview.ts"
+   },
+   "dependencies": {
+     "next": "^16.4.6",
+diff --git a/scripts/preview.ts b/scripts/preview.ts
+new file mode 100644
+index 0000000..9c05297
+--- /dev/null
++++ b/scripts/preview.ts
+@@ -0,0 +1,8 @@
++import { main } from "./preview/index.ts";
++
++try {
++  await main(process.argv.slice(2));
++} catch (error) {
++  console.error(error instanceof Error ? error.message : error);
++  process.exit(1);
++}
+diff --git a/scripts/preview/index.ts b/scripts/preview/index.ts
+new file mode 100644
+index 0000000..28a37fe
+--- /dev/null
++++ b/scripts/preview/index.ts
+@@ -0,0 +1,467 @@
++import { execFileSync, spawn, spawnSync } from "node:child_process";
++import {
++  closeSync,
++  copyFileSync,
++  existsSync,
++  mkdirSync,
++  openSync,
++  readFileSync,
++  readdirSync,
++  rmSync,
++  statSync,
++  writeFileSync,
++} from "node:fs";
++import net from "node:net";
++import { join } from "node:path";
++import { DatabaseSync, backup } from "node:sqlite";
++import {
++  MAIN_PORT,
++  checkRootOnMain,
++  findWorktree,
++  parseArgs,
++  parseWorktrees,
++  ticketNumberOf,
++  ticketPort,
++  type Command,
++  type Result,
++  type Target,
++  type Worktree,
++} from "./rules.ts";
++
++type PreviewRecord = {
++  pid: number;
++  port: number;
++  target: string;
++  branch: string | null;
++  startedAt: string;
++};
++
++type StartCommand = Extract<Command, { kind: "start" }>;
++
++const MAIN_TIMEOUT_MS = 3 * 60_000;
++const TICKET_TIMEOUT_MS = 60_000;
++const STOP_WAIT_MS = 10_000;
++
++function unwrap<T>(result: Result<T>): T {
++  if (!result.ok) {
++    throw new Error(result.error);
++  }
++  return result.value;
++}
++
++const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
++
++function listWorktrees(): Worktree[] {
++  const text = execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" });
++  return parseWorktrees(text);
++}
++
++function previewDir(checkout: string): string {
++  return join(checkout, ".preview");
++}
++
++function recordFiles(checkout: string): string[] {
++  const dir = previewDir(checkout);
++  if (!existsSync(dir)) {
++    return [];
++  }
++  return readdirSync(dir)
++    .filter((name) => name.endsWith(".json"))
++    .map((name) => join(dir, name));
++}
++
++function readRecord(file: string): PreviewRecord | null {
++  try {
++    return JSON.parse(readFileSync(file, "utf8")) as PreviewRecord;
++  } catch {
++    return null;
++  }
++}
++
++function groupAlive(pid: number): boolean {
++  try {
++    process.kill(-pid, 0);
++    return true;
++  } catch (error) {
++    return (error as NodeJS.ErrnoException).code === "EPERM";
++  }
++}
++
++async function waitUntil(done: () => boolean, ms: number): Promise<boolean> {
++  const deadline = Date.now() + ms;
++  while (Date.now() < deadline) {
++    if (done()) {
++      return true;
++    }
++    await sleep(100);
++  }
++  return done();
++}
++
++/** Stops the process group: SIGTERM, then SIGKILL after 10 seconds. */
++async function stopGroup(pid: number, gone: () => boolean = () => !groupAlive(pid)): Promise<void> {
++  if (gone()) {
++    return;
++  }
++  try {
++    process.kill(-pid, "SIGTERM");
++  } catch {
++    return;
++  }
++  if (await waitUntil(gone, STOP_WAIT_MS)) {
++    return;
++  }
++  try {
++    process.kill(-pid, "SIGKILL");
++  } catch {
++    return;
++  }
++  await waitUntil(gone, STOP_WAIT_MS);
++}
++
++/** Stops every preview recorded in a checkout and cleans up stale records. Returns the targets it stopped. */
++async function stopCheckout(checkout: string): Promise<string[]> {
++  const stopped: string[] = [];
++  for (const file of recordFiles(checkout)) {
++    const record = readRecord(file);
++    if (record && groupAlive(record.pid)) {
++      await stopGroup(record.pid);
++      stopped.push(record.target);
++    }
++    rmSync(file, { force: true });
++  }
++  return stopped;
++}
++
++/** True when nothing listens on the port. On macOS a listener on one address doesn't block binding another, so probe each one. */
++async function portFree(port: number): Promise<boolean> {
++  for (const host of ["::", "0.0.0.0", "127.0.0.1", "::1"]) {
++    const code = await new Promise<string>((resolve) => {
++      const server = net.createServer();
++      server.once("error", (error: NodeJS.ErrnoException) => resolve(error.code ?? "error"));
++      server.listen(port, host, () => server.close(() => resolve("free")));
++    });
++    if (code === "EADDRINUSE") {
++      return false;
++    }
++  }
++  return true;
++}
++
++async function requirePortFree(port: number, worktrees: Worktree[]): Promise<void> {
++  if (await portFree(port)) {
++    return;
++  }
++  for (const worktree of worktrees) {
++    for (const file of recordFiles(worktree.path)) {
++      const record = readRecord(file);
++      if (record && record.port === port && groupAlive(record.pid)) {
++        throw new Error(
++          `Port ${port} is in use by the preview of ${record.target} (pid ${record.pid}).\n` +
++            `Stop it with: npm run preview -- stop ${record.target}`,
++        );
++      }
++    }
++  }
++  throw new Error(`Port ${port} is in use.\nSee what holds it with: lsof -i :${port}`);
++}
++
++function setupCheckout(checkout: string): void {
++  const modules = join(checkout, "node_modules");
++  const marker = join(modules, ".package-lock.json");
++  const lock = join(checkout, "package-lock.json");
++  const stale =
++    !existsSync(modules) ||
++    !existsSync(marker) ||
++    (existsSync(lock) && statSync(lock).mtimeMs > statSync(marker).mtimeMs);
++
++  if (stale) {
++    console.log(`Running npm install in ${checkout}`);
++    const result = spawnSync("npm", ["install"], { cwd: checkout, stdio: "inherit" });
++    if (result.status !== 0) {
++      throw new Error(`npm install failed in ${checkout}.`);
++    }
++  }
++
++  const env = join(checkout, ".env");
++  const example = join(checkout, ".env.example");
++  if (!existsSync(env) && existsSync(example)) {
++    copyFileSync(example, env);
++    console.log(`Copied .env.example to ${env}`);
++  }
++}
++
++function removeDatabase(file: string): void {
++  for (const suffix of ["", "-wal", "-shm"]) {
++    rmSync(file + suffix, { force: true });
++  }
++}
++
++async function prepareTicketData(
++  command: StartCommand,
++  root: Worktree,
++  checkout: string,
++): Promise<string> {
++  const databasePath = join(checkout, "data", "preview.db");
++  mkdirSync(join(checkout, "data"), { recursive: true });
++
++  if (command.empty) {
++    removeDatabase(databasePath);
++    console.log(`Removed ${databasePath}; the preview starts empty.`);
++  }
++  if (command.copyMainData) {
++    const source = join(root.path, "data", "album-ranker.db");
++    if (!existsSync(source)) {
++      throw new Error(`--copy-main-data needs ${source}, which does not exist.`);
++    }
++    removeDatabase(databasePath);
++    const sourceDb = new DatabaseSync(source);
++    try {
++      await backup(sourceDb, databasePath);
++    } finally {
++      sourceDb.close();
++    }
++    console.log(`Copied ${source} to ${databasePath}`);
++  }
++  return databasePath;
++}
++
++function warnIfRootBehind(root: Worktree): void {
++  try {
++    execFileSync("git", ["-C", root.path, "fetch", "--quiet", "origin"], { stdio: "pipe" });
++    const behind = execFileSync(
++      "git",
++      ["-C", root.path, "rev-list", "--count", "main..origin/main"],
++      { encoding: "utf8" },
++    ).trim();
++    if (behind !== "0") {
++      console.warn(
++        `Warning: ${root.path} is ${behind} commit(s) behind origin/main. Update it with:\n` +
++          `  git -C ${root.path} pull --ff-only`,
++      );
++    }
++  } catch {
++    console.warn("Warning: could not check origin/main (offline?). Previewing what is checked out.");
++  }
++}
++
++function tailLog(logFile: string): string {
++  try {
++    return readFileSync(logFile, "utf8").trimEnd().split("\n").slice(-20).join("\n");
++  } catch {
++    return "(no log)";
++  }
++}
++
++async function answers(port: number): Promise<boolean> {
++  try {
++    const response = await fetch(`http://localhost:${port}/`, {
++      signal: AbortSignal.timeout(5_000),
++    });
++    return response.status === 200;
++  } catch {
++    return false;
++  }
++}
++
++type Launch = {
++  checkout: string;
++  label: string;
++  branch: string | null;
++  port: number;
++  env: NodeJS.ProcessEnv;
++  timeoutMs: number;
++  /** Command and arguments; the first is run with `cwd` set to the checkout. */
++  argv: string[];
++};
++
++async function launch(spec: Launch): Promise<void> {
++  const dir = previewDir(spec.checkout);
++  mkdirSync(dir, { recursive: true });
++  const name = spec.label.replace(/[^A-Za-z0-9._-]/g, "-");
++  const logFile = join(dir, `${name}.log`);
++  const recordFile = join(dir, `${name}.json`);
++
++  const logFd = openSync(logFile, "w");
++  const child = spawn(spec.argv[0], spec.argv.slice(1), {
++    cwd: spec.checkout,
++    env: spec.env,
++    detached: true,
++    stdio: ["ignore", logFd, logFd],
++  });
++  closeSync(logFd);
++  child.unref();
++
++  let exited = false;
++  child.once("exit", () => {
++    exited = true;
++  });
++  if (child.pid === undefined) {
++    throw new Error(`Could not start ${spec.argv[0]}.`);
++  }
++  const pid = child.pid;
++
++  const record: PreviewRecord = {
++    pid,
++    port: spec.port,
++    target: spec.label,
++    branch: spec.branch,
++    startedAt: new Date().toISOString(),
++  };
++  writeFileSync(recordFile, `${JSON.stringify(record, null, 2)}\n`);
++
++  const deadline = Date.now() + spec.timeoutMs;
++  let up = false;
++  while (!exited && Date.now() < deadline) {
++    if (await answers(spec.port)) {
++      up = true;
++      break;
++    }
++    await sleep(500);
++  }
++
++  if (!up) {
++    const reason = exited
++      ? "The process exited before the page answered."
++      : `The page did not answer within ${spec.timeoutMs / 1000} seconds.`;
++    console.error(`${reason} Last log lines (${logFile}):\n${tailLog(logFile)}`);
++    await stopGroup(pid, () => exited);
++    rmSync(recordFile, { force: true });
++    process.exit(1);
++  }
++
++  console.log(`Preview of ${spec.label} is up: http://localhost:${spec.port}`);
++  console.log(`Log: ${logFile}`);
++}
++
++async function start(command: StartCommand): Promise<void> {
++  const worktrees = listWorktrees();
++  const root = unwrap(checkRootOnMain(worktrees));
++  const nextBin = (checkout: string) => join(checkout, "node_modules", ".bin", "next");
++
++  if (command.target.kind === "main") {
++    await stopCheckout(root.path);
++    await requirePortFree(MAIN_PORT, worktrees);
++    warnIfRootBehind(root);
++    setupCheckout(root.path);
++
++    const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(MAIN_PORT) };
++    delete env.DATABASE_PATH;
++    console.log("Building and starting main; the build can take a few minutes.");
++    await launch({
++      checkout: root.path,
++      label: "main",
++      branch: "main",
++      port: MAIN_PORT,
++      env,
++      timeoutMs: MAIN_TIMEOUT_MS,
++      argv: [
++        "sh",
++        "-c",
++        '"$0" build && exec "$0" start --port "$1"',
++        nextBin(root.path),
++        String(MAIN_PORT),
++      ],
++    });
++    return;
++  }
++
++  const found = unwrap(findWorktree(worktrees, command.target as Exclude<Target, { kind: "main" }>));
++  if (found.path === root.path) {
++    throw new Error(`${found.path} is the root checkout; use "main" to preview it.`);
++  }
++  const branch = found.branch as string;
++  const ticket = ticketNumberOf(branch);
++  const port = unwrap(ticketPort(ticket, command.port));
++  const label = ticket === null ? branch : String(ticket);
++
++  await stopCheckout(found.path);
++  await requirePortFree(port, worktrees);
++  setupCheckout(found.path);
++  const databasePath = await prepareTicketData(command, root, found.path);
++
++  console.log(`Starting ${branch} on port ${port} with data in ${databasePath}`);
++  await launch({
++    checkout: found.path,
++    label,
++    branch,
++    port,
++    env: { ...process.env, PORT: String(port), DATABASE_PATH: databasePath },
++    timeoutMs: TICKET_TIMEOUT_MS,
++    argv: [nextBin(found.path), "dev", "--port", String(port)],
++  });
++}
++
++function commitOf(checkout: string): string {
++  try {
++    return execFileSync("git", ["-C", checkout, "rev-parse", "--short", "HEAD"], {
++      encoding: "utf8",
++    }).trim();
++  } catch {
++    return "?";
++  }
++}
++
++function list(): void {
++  const rows: string[][] = [];
++  for (const worktree of listWorktrees()) {
++    for (const file of recordFiles(worktree.path)) {
++      const record = readRecord(file);
++      if (!record || !groupAlive(record.pid)) {
++        rmSync(file, { force: true });
++        continue;
++      }
++      rows.push([
++        record.target,
++        String(record.port),
++        `http://localhost:${record.port}`,
++        String(record.pid),
++        commitOf(worktree.path),
++      ]);
++    }
++  }
++  if (rows.length === 0) {
++    console.log("No previews running.");
++    return;
++  }
++  const table = [["TARGET", "PORT", "URL", "PID", "COMMIT"], ...rows];
++  const widths = table[0].map((_, column) => Math.max(...table.map((row) => row[column].length)));
++  for (const row of table) {
++    console.log(row.map((cell, column) => cell.padEnd(widths[column])).join("  ").trimEnd());
++  }
++}
++
++async function stop(command: Extract<Command, { kind: "stop" }>): Promise<void> {
++  const worktrees = listWorktrees();
++  let checkouts: Worktree[];
++
++  if (command.target.kind === "all") {
++    checkouts = worktrees;
++  } else if (command.target.kind === "main") {
++    checkouts = [worktrees[0]];
++  } else {
++    checkouts = [unwrap(findWorktree(worktrees, command.target))];
++  }
++
++  let count = 0;
++  for (const checkout of checkouts) {
++    for (const target of await stopCheckout(checkout.path)) {
++      console.log(`Stopped the preview of ${target}.`);
++      count++;
++    }
++  }
++  if (count === 0) {
++    console.log("No matching preview was running.");
++  }
++}
++
++export async function main(argv: string[]): Promise<void> {
++  const command = unwrap(parseArgs(argv));
++  if (command.kind === "start") {
++    await start(command);
++  } else if (command.kind === "list") {
++    list();
++  } else {
++    await stop(command);
++  }
++}
+diff --git a/scripts/preview/rules.test.ts b/scripts/preview/rules.test.ts
+new file mode 100644
+index 0000000..45256a4
+--- /dev/null
++++ b/scripts/preview/rules.test.ts
+@@ -0,0 +1,255 @@
++import { describe, expect, it } from "vitest";
++import {
++  MAIN_PORT,
++  checkRootOnMain,
++  findWorktree,
++  parseArgs,
++  parseWorktrees,
++  ticketNumberOf,
++  ticketPort,
++  type Worktree,
++} from "./rules.ts";
++
++const ROOT: Worktree = { path: "/repo", branch: "main", head: "aaa111" };
++const T20: Worktree = {
++  path: "/wt/a",
++  branch: "feat/album-20-local-previews",
++  head: "bbb222",
++};
++const T2: Worktree = { path: "/wt/b", branch: "feat/album-2-spec", head: "ccc333" };
++const DETACHED: Worktree = { path: "/wt/c", branch: null, head: "ddd444" };
++const UPPER: Worktree = { path: "/wt/d", branch: "feat/ALBUM-7-elo", head: "eee555" };
++const DUP: Worktree = { path: "/wt/e", branch: "infra/album-20-other", head: "fff666" };
++
++describe("parseArgs", () => {
++  const ok = (command: unknown) => ({ ok: true, value: command });
++  const start = (
++    target: unknown,
++    extra: { port?: number; empty?: boolean; copyMainData?: boolean } = {},
++  ) =>
++    ok({
++      kind: "start",
++      target,
++      port: extra.port,
++      empty: extra.empty ?? false,
++      copyMainData: extra.copyMainData ?? false,
++    });
++
++  const cases: [string, string[], unknown][] = [
++    ["main", ["main"], start({ kind: "main" })],
++    ["ticket number", ["20"], start({ kind: "ticket", ticket: 20 })],
++    [
++      "branch name",
++      ["feat/album-20-local-previews"],
++      start({ kind: "branch", branch: "feat/album-20-local-previews" }),
++    ],
++    ["list", ["list"], ok({ kind: "list" })],
++    ["stop ticket", ["stop", "20"], ok({ kind: "stop", target: { kind: "ticket", ticket: 20 } })],
++    ["stop main", ["stop", "main"], ok({ kind: "stop", target: { kind: "main" } })],
++    ["stop all", ["stop", "all"], ok({ kind: "stop", target: { kind: "all" } })],
++    [
++      "stop branch",
++      ["stop", "feat/x"],
++      ok({ kind: "stop", target: { kind: "branch", branch: "feat/x" } }),
++    ],
++    [
++      "port flag",
++      ["20", "--port", "4500"],
++      start({ kind: "ticket", ticket: 20 }, { port: 4500 }),
++    ],
++    [
++      "port flag before target",
++      ["--port", "4500", "feat/x"],
++      start({ kind: "branch", branch: "feat/x" }, { port: 4500 }),
++    ],
++    ["port flag with equals", ["20", "--port=4500"], start({ kind: "ticket", ticket: 20 }, { port: 4500 })],
++    ["empty flag", ["20", "--empty"], start({ kind: "ticket", ticket: 20 }, { empty: true })],
++    [
++      "copy flag",
++      ["20", "--copy-main-data"],
++      start({ kind: "ticket", ticket: 20 }, { copyMainData: true }),
++    ],
++    ["no args", [], { ok: false, error: /target|usage/i }],
++    ["port without value", ["20", "--port"], { ok: false, error: /--port needs/ }],
++    ["port not a number", ["20", "--port", "abc"], { ok: false, error: /--port.*number/ }],
++    ["port not an integer", ["20", "--port", "40.5"], { ok: false, error: /--port.*number/ }],
++    ["empty with copy", ["20", "--empty", "--copy-main-data"], { ok: false, error: /cannot be used together/ }],
++    ["flags on main", ["main", "--empty"], { ok: false, error: /main/ }],
++    ["port on main", ["main", "--port", "4100"], { ok: false, error: /main/ }],
++    ["unknown flag", ["20", "--nope"], { ok: false, error: /--nope/ }],
++    ["two targets", ["20", "21"], { ok: false, error: /one target/ }],
++    ["stop without target", ["stop"], { ok: false, error: /stop needs/ }],
++    ["stop with flag", ["stop", "20", "--empty"], { ok: false, error: /stop/ }],
++    ["list with extra", ["list", "20"], { ok: false, error: /list/ }],
++  ];
++
++  it.each(cases)("%s", (_name, argv, expected) => {
++    const result = parseArgs(argv);
++    const want = expected as { ok: boolean; error?: RegExp; value?: unknown };
++    if (want.ok) {
++      expect(result).toEqual(want);
++    } else {
++      expect(result.ok).toBe(false);
++      if (!result.ok) {
++        expect(result.error).toMatch(want.error as RegExp);
++      }
++    }
++  });
++});
++
++describe("ticketPort", () => {
++  it("main port is 4000", () => {
++    expect(MAIN_PORT).toBe(4000);
++  });
++
++  const cases: [string, number | null, number | undefined, unknown][] = [
++    ["ticket 20", 20, undefined, { ok: true, value: 4020 }],
++    ["ticket 1", 1, undefined, { ok: true, value: 4001 }],
++    ["ticket 999", 999, undefined, { ok: true, value: 4999 }],
++    ["ticket 0", 0, undefined, { ok: false, error: /--port/ }],
++    ["ticket 1000", 1000, undefined, { ok: false, error: /--port/ }],
++    ["no ticket number", null, undefined, { ok: false, error: /--port/ }],
++    ["override wins", 20, 5000, { ok: true, value: 5000 }],
++    ["override without ticket", null, 5000, { ok: true, value: 5000 }],
++    ["override lower bound", 20, 1024, { ok: true, value: 1024 }],
++    ["override upper bound", 20, 65535, { ok: true, value: 65535 }],
++    ["override too low", 20, 1023, { ok: false, error: /1024/ }],
++    ["override too high", 20, 65536, { ok: false, error: /65535/ }],
++  ];
++
++  it.each(cases)("%s", (_name, n, override, expected) => {
++    const result = ticketPort(n, override);
++    const want = expected as { ok: boolean; value?: number; error?: RegExp };
++    if (want.ok) {
++      expect(result).toEqual(want);
++    } else {
++      expect(result.ok).toBe(false);
++      if (!result.ok) {
++        expect(result.error).toMatch(want.error as RegExp);
++      }
++    }
++  });
++});
++
++describe("ticketNumberOf", () => {
++  const cases: [string, string, number | null][] = [
++    ["feature branch", "feat/album-20-local-previews", 20],
++    ["infra branch", "infra/album-3-x", 3],
++    ["upper case", "feat/ALBUM-7-elo", 7],
++    ["no number", "feat/something", null],
++    ["no trailing title", "feat/album-9", null],
++    ["main", "main", null],
++  ];
++
++  it.each(cases)("%s", (_name, branch, expected) => {
++    expect(ticketNumberOf(branch)).toBe(expected);
++  });
++});
++
++describe("parseWorktrees", () => {
++  const cases: [string, string, Worktree[]][] = [
++    [
++      "branch and detached entries",
++      [
++        "worktree /repo",
++        "HEAD aaa111",
++        "branch refs/heads/main",
++        "",
++        "worktree /wt/a",
++        "HEAD bbb222",
++        "branch refs/heads/feat/album-20-local-previews",
++        "",
++        "worktree /wt/c",
++        "HEAD ddd444",
++        "detached",
++        "",
++      ].join("\n"),
++      [ROOT, T20, DETACHED],
++    ],
++    [
++      "path with spaces and extra markers",
++      [
++        "worktree /my repo/wt",
++        "HEAD abc",
++        "branch refs/heads/feat/x",
++        "locked",
++        "prunable gitdir file points to non-existent location",
++      ].join("\n"),
++      [{ path: "/my repo/wt", branch: "feat/x", head: "abc" }],
++    ],
++    ["empty output", "", []],
++  ];
++
++  it.each(cases)("%s", (_name, text, expected) => {
++    expect(parseWorktrees(text)).toEqual(expected);
++  });
++});
++
++describe("findWorktree", () => {
++  const all = [ROOT, T20, T2, DETACHED, UPPER];
++
++  const cases: [string, Worktree[], Parameters<typeof findWorktree>[1], unknown][] = [
++    ["ticket number", all, { kind: "ticket", ticket: 20 }, { ok: true, value: T20 }],
++    ["ticket 2 does not match 20", all, { kind: "ticket", ticket: 2 }, { ok: true, value: T2 }],
++    ["ticket case-insensitive", all, { kind: "ticket", ticket: 7 }, { ok: true, value: UPPER }],
++    [
++      "exact branch",
++      all,
++      { kind: "branch", branch: "feat/album-20-local-previews" },
++      { ok: true, value: T20 },
++    ],
++    ["ticket with no match", all, { kind: "ticket", ticket: 99 }, { ok: false, error: /No worktree.*album-99-/ }],
++    ["branch with no match", all, { kind: "branch", branch: "feat/nope" }, { ok: false, error: /No worktree.*feat\/nope/ }],
++    ["branch partial is not a match", all, { kind: "branch", branch: "album-20" }, { ok: false, error: /No worktree/ }],
++    [
++      "two matches",
++      [...all, DUP],
++      { kind: "ticket", ticket: 20 },
++      { ok: false, error: /More than one.*feat\/album-20-local-previews.*infra\/album-20-other/s },
++    ],
++  ];
++
++  it.each(cases)("%s", (_name, worktrees, target, expected) => {
++    const result = findWorktree(worktrees, target);
++    const want = expected as { ok: boolean; error?: RegExp };
++    if (want.ok) {
++      expect(result).toEqual(expected);
++    } else {
++      expect(result.ok).toBe(false);
++      if (!result.ok) {
++        expect(result.error).toMatch(want.error as RegExp);
++        expect(result.error).toContain("/wt/a");
++      }
++    }
++  });
++});
++
++describe("checkRootOnMain", () => {
++  const cases: [string, Worktree[], unknown][] = [
++    ["root on main", [ROOT, T20], { ok: true, value: ROOT }],
++    [
++      "root on another branch",
++      [{ ...ROOT, branch: "feat/x" }, T20],
++      { ok: false, error: /feat\/x.*must stay on main/s },
++    ],
++    [
++      "root detached",
++      [{ ...ROOT, branch: null }, T20],
++      { ok: false, error: /detached.*must stay on main/s },
++    ],
++    ["no worktrees", [], { ok: false, error: /root checkout/ }],
++  ];
++
++  it.each(cases)("%s", (_name, worktrees, expected) => {
++    const result = checkRootOnMain(worktrees);
++    const want = expected as { ok: boolean; error?: RegExp };
++    if (want.ok) {
++      expect(result).toEqual(expected);
++    } else {
++      expect(result.ok).toBe(false);
++      if (!result.ok) {
++        expect(result.error).toMatch(want.error as RegExp);
++      }
++    }
++  });
++});
+diff --git a/scripts/preview/rules.ts b/scripts/preview/rules.ts
+new file mode 100644
+index 0000000..04d1570
+--- /dev/null
++++ b/scripts/preview/rules.ts
+@@ -0,0 +1,186 @@
++export const MAIN_PORT = 4000;
++
++export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
++
++export type Worktree = { path: string; branch: string | null; head: string };
++
++export type Target =
++  | { kind: "main" }
++  | { kind: "ticket"; ticket: number }
++  | { kind: "branch"; branch: string };
++
++export type StopTarget = Target | { kind: "all" };
++
++export type Command =
++  | {
++      kind: "start";
++      target: Target;
++      port: number | undefined;
++      empty: boolean;
++      copyMainData: boolean;
++    }
++  | { kind: "list" }
++  | { kind: "stop"; target: StopTarget };
++
++export const USAGE = [
++  "Usage:",
++  "  npm run preview -- main",
++  "  npm run preview -- <ticket number | branch> [--port <p>] [--empty | --copy-main-data]",
++  "  npm run preview -- list",
++  "  npm run preview -- stop <main | ticket number | branch | all>",
++].join("\n");
++
++const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
++
++function toTarget(word: string): Target {
++  if (word === "main") {
++    return { kind: "main" };
++  }
++  if (/^\d+$/.test(word)) {
++    return { kind: "ticket", ticket: Number(word) };
++  }
++  return { kind: "branch", branch: word };
++}
++
++export function parseArgs(argv: string[]): Result<Command> {
++  const words: string[] = [];
++  let port: number | undefined;
++  let empty = false;
++  let copyMainData = false;
++
++  for (let i = 0; i < argv.length; i++) {
++    const arg = argv[i];
++    if (arg === "--empty") {
++      empty = true;
++    } else if (arg === "--copy-main-data") {
++      copyMainData = true;
++    } else if (arg === "--port" || arg.startsWith("--port=")) {
++      const raw = arg === "--port" ? argv[++i] : arg.slice("--port=".length);
++      if (raw === undefined || raw.startsWith("--")) {
++        return fail("--port needs a port number, for example --port 4100.");
++      }
++      if (!/^\d+$/.test(raw)) {
++        return fail(`--port needs a whole number, got "${raw}".`);
++      }
++      port = Number(raw);
++    } else if (arg.startsWith("--")) {
++      return fail(`Unknown flag ${arg}.\n${USAGE}`);
++    } else {
++      words.push(arg);
++    }
++  }
++
++  const hasFlags = port !== undefined || empty || copyMainData;
++
++  if (empty && copyMainData) {
++    return fail("--empty and --copy-main-data cannot be used together.");
++  }
++  if (words.length === 0) {
++    return fail(`Missing target.\n${USAGE}`);
++  }
++
++  if (words[0] === "list") {
++    if (words.length > 1 || hasFlags) {
++      return fail("list takes no target and no flags.");
++    }
++    return { ok: true, value: { kind: "list" } };
++  }
++
++  if (words[0] === "stop") {
++    if (words.length < 2) {
++      return fail(`stop needs a target: main, a ticket number, a branch or all.\n${USAGE}`);
++    }
++    if (words.length > 2 || hasFlags) {
++      return fail("stop takes one target and no flags.");
++    }
++    const target: StopTarget = words[1] === "all" ? { kind: "all" } : toTarget(words[1]);
++    return { ok: true, value: { kind: "stop", target } };
++  }
++
++  if (words.length > 1) {
++    return fail(`Give one target, got ${words.length}: ${words.join(" ")}.`);
++  }
++
++  const target = toTarget(words[0]);
++  if (target.kind === "main" && hasFlags) {
++    return fail("--port, --empty and --copy-main-data apply to ticket previews, not main.");
++  }
++  return { ok: true, value: { kind: "start", target, port, empty, copyMainData } };
++}
++
++export function ticketNumberOf(branch: string): number | null {
++  const match = /album-(\d+)-/i.exec(branch);
++  return match ? Number(match[1]) : null;
++}
++
++export function ticketPort(ticket: number | null, override?: number): Result<number> {
++  if (override !== undefined) {
++    if (!Number.isInteger(override) || override < 1024 || override > 65535) {
++      return fail(`--port must be a whole number from 1024 to 65535, got ${override}.`);
++    }
++    return { ok: true, value: override };
++  }
++  if (ticket === null) {
++    return fail("This branch has no ticket number, so pass a port with --port <p>.");
++  }
++  if (!Number.isInteger(ticket) || ticket < 1 || ticket > 999) {
++    return fail(`Ticket ${ticket} is outside 1 to 999, so pass a port with --port <p>.`);
++  }
++  return { ok: true, value: MAIN_PORT + ticket };
++}
++
++export function parseWorktrees(porcelain: string): Worktree[] {
++  const worktrees: Worktree[] = [];
++  let current: Worktree | null = null;
++
++  for (const line of porcelain.split("\n")) {
++    if (line.startsWith("worktree ")) {
++      current = { path: line.slice("worktree ".length), branch: null, head: "" };
++      worktrees.push(current);
++    } else if (current && line.startsWith("HEAD ")) {
++      current.head = line.slice("HEAD ".length);
++    } else if (current && line.startsWith("branch ")) {
++      current.branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
++    }
++  }
++  return worktrees;
++}
++
++function listWorktrees(worktrees: Worktree[]): string {
++  return worktrees.map((w) => `  ${w.branch ?? "(detached)"}  ${w.path}`).join("\n");
++}
++
++export function findWorktree(
++  worktrees: Worktree[],
++  target: Exclude<Target, { kind: "main" }>,
++): Result<Worktree> {
++  const wanted = target.kind === "ticket" ? `album-${target.ticket}-` : target.branch;
++  const matches = worktrees.filter((w) => {
++    if (w.branch === null) {
++      return false;
++    }
++    return target.kind === "ticket"
++      ? w.branch.toLowerCase().includes(wanted)
++      : w.branch === wanted;
++  });
++
++  if (matches.length === 1) {
++    return { ok: true, value: matches[0] };
++  }
++  const what = target.kind === "ticket" ? `a branch containing ${wanted}` : `the branch ${wanted}`;
++  const problem = matches.length === 0 ? `No worktree has ${what}.` : `More than one worktree has ${what}.`;
++  return fail(`${problem} Worktrees:\n${listWorktrees(matches.length === 0 ? worktrees : matches)}`);
++}
++
++export function checkRootOnMain(worktrees: Worktree[]): Result<Worktree> {
++  const root = worktrees[0];
++  if (!root) {
++    return fail("Could not find the root checkout in git worktree list.");
++  }
++  if (root.branch !== "main") {
++    return fail(
++      `The root checkout ${root.path} is on ${root.branch ?? "a detached head"}; it must stay on main.`,
++    );
++  }
++  return { ok: true, value: root };
++}
