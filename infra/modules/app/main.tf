@@ -357,6 +357,8 @@ resource "aws_cloudwatch_log_group" "events" {
 resource "aws_iam_role" "events" {
   name               = "${local.name}-events"
   assume_role_policy = data.aws_iam_policy_document.assume.json
+
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 # Writes to its own log group and nothing else: no S3, no database.

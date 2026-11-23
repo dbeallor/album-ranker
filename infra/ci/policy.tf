@@ -9,8 +9,8 @@ locals {
   staging_buckets = "arn:aws:s3:::${local.staging_name}-*"
   assets_objects  = "arn:aws:s3:::${local.staging_name}-assets-*/*"
   state_key       = "album-ranker/staging.tfstate"
-  function_arn    = "arn:aws:lambda:${local.region}:${local.account_id}:function:${local.staging_name}"
-  log_group_arn   = "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws/lambda/${local.staging_name}"
+  function_arns   = [for n in local.function_names : "arn:aws:lambda:${local.region}:${local.account_id}:function:${n}"]
+  log_group_arns  = [for n in local.function_names : "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws/lambda/${n}"]
   cloudfront_arn  = "arn:aws:cloudfront::${local.account_id}"
   zone_arn        = "arn:aws:route53:::hostedzone/${var.zone_id}"
 }
@@ -119,7 +119,7 @@ data "aws_iam_policy_document" "deploy" {
       "lambda:AddPermission",
       "lambda:RemovePermission",
     ]
-    resources = [local.function_arn]
+    resources = local.function_arns
   }
 
   statement {
@@ -131,7 +131,7 @@ data "aws_iam_policy_document" "deploy" {
       "lambda:ListVersionsByFunction",
       "lambda:ListTags",
     ]
-    resources = [local.function_arn]
+    resources = local.function_arns
   }
 
   # Attaching a layer needs read access to the layer version, which lives in AWS's account (Lambda Web Adapter).
@@ -141,10 +141,10 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["arn:aws:lambda:${local.region}:753240598075:layer:LambdaAdapterLayerArm64:*"]
   }
 
-  # ------------------------------------------------ IAM: the function's role only
+  # ------------------------------------------------ IAM: the two function roles only (app and events)
 
-  # Anything that changes what the role may do needs the boundary: set on create, and still on the role when a policy
-  # changes. So the function's role can never be given more than the boundary allows.
+  # Anything that changes what a role may do needs the boundary: set on create, and still on the role when a policy
+  # changes. So neither function's role can ever be given more than the boundary allows.
   statement {
     sid = "FunctionRoleGrant"
     actions = [
@@ -154,7 +154,7 @@ data "aws_iam_policy_document" "deploy" {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
     ]
-    resources = [local.role_arn]
+    resources = local.role_arns
 
     condition {
       test     = "StringEquals"
@@ -165,11 +165,11 @@ data "aws_iam_policy_document" "deploy" {
 
   # Kept out of the statement above: iam:PermissionsBoundary is a condition of the actions that set or change the boundary
   # and the policies, and IAM probably doesn't evaluate it for this one, which would make the call fail every time. Whoever
-  # the trust policy lets assume the role is still capped by the boundary.
+  # the trust policy lets assume a role is still capped by the boundary.
   statement {
     sid       = "FunctionRoleTrust"
     actions   = ["iam:UpdateAssumeRolePolicy"]
-    resources = [local.role_arn]
+    resources = local.role_arns
   }
 
   # These grant nothing: delete, tags, description and session length, plus the reads the provider makes on refresh.
@@ -188,13 +188,13 @@ data "aws_iam_policy_document" "deploy" {
       "iam:ListInstanceProfilesForRole",
       "iam:ListRoleTags",
     ]
-    resources = [local.role_arn]
+    resources = local.role_arns
   }
 
   statement {
     sid       = "PassFunctionRole"
     actions   = ["iam:PassRole"]
-    resources = [local.role_arn]
+    resources = local.role_arns
 
     condition {
       test     = "StringEquals"
@@ -260,7 +260,7 @@ data "aws_iam_policy_document" "deploy" {
       "logs:UntagResource",
       "logs:ListTagsForResource",
     ]
-    resources = [local.log_group_arn, "${local.log_group_arn}:*"]
+    resources = flatten([for arn in local.log_group_arns : [arn, "${arn}:*"]])
   }
 
   # DescribeLogGroups is how the provider finds a group by name, and IAM can only scope it to the group ARN pattern, not to a

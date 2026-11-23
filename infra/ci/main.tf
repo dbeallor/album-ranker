@@ -36,9 +36,12 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
 
-  # Fixed names: the app module builds the same ones (infra/modules/app: album-ranker-<environment>).
-  staging_name = "album-ranker-staging"
-  role_arn     = "arn:aws:iam::${local.account_id}:role/${local.staging_name}"
+  # Fixed names: the app module builds the same ones (infra/modules/app: album-ranker-<environment>, and that name with
+  # -events for the events function). The function, role and log group of each share a name. Exactly these two, never a
+  # wildcard on the prefix, so a third function or a production-named one is not covered.
+  staging_name   = "album-ranker-staging"
+  function_names = [local.staging_name, "${local.staging_name}-events"]
+  role_arns      = [for n in local.function_names : "arn:aws:iam::${local.account_id}:role/${n}"]
 
   # Built from the names, the way infra/envs/staging builds the boundary's ARN, so the policies below don't wait on the
   # resources to read them.
@@ -109,10 +112,12 @@ resource "aws_iam_role_policy" "deploy" {
   policy = data.aws_iam_policy_document.deploy.json
 }
 
-# ---------------------------------------------------------------- permissions boundary of the function role
+# ---------------------------------------------------------------- permissions boundary of the function roles
 
-# The most the staging function's role may ever do. The deploy role can create and change that role only while this is its
-# boundary, so it can't hand the function (and itself, by running as it) anything beyond this, such as production's data.
+# The most either staging function's role (the app's and the events function's) may ever do. The deploy role can create and
+# change those roles only while this is their boundary, so it can't hand either function (and itself, by running as it)
+# anything beyond this, such as production's data. The events role gets no S3 access from its own policy, so the boundary's
+# S3 statements change nothing for it; the log statement below is what lets it write its log group.
 data "aws_iam_policy_document" "boundary" {
   statement {
     sid       = "ReadWriteDatabase"
@@ -129,13 +134,13 @@ data "aws_iam_policy_document" "boundary" {
   statement {
     sid       = "WriteLogs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-    resources = ["arn:aws:logs:${var.region}:${local.account_id}:log-group:/aws/lambda/${local.staging_name}:*"]
+    resources = [for arn in local.log_group_arns : "${arn}:*"]
   }
 }
 
 resource "aws_iam_policy" "boundary" {
   name        = local.boundary_name
-  description = "Permissions boundary of the staging function's role (infra/modules/app)"
+  description = "Permissions boundary of the staging functions' roles (infra/modules/app)"
   policy      = data.aws_iam_policy_document.boundary.json
 }
 

@@ -91,7 +91,7 @@ variable "client_events_retention_days" {
 }
 
 variable "permissions_boundary_arn" {
-  description = "Permissions boundary for the function's IAM role. Staging sets one so the CI deploy role can't grant that role more than the boundary allows; null for none."
+  description = "Permissions boundary for the IAM roles of both functions (the app's and the events function's). Staging sets one so the CI deploy role can't grant either role more than the boundary allows; null for none."
   type        = string
   default     = null
 }
