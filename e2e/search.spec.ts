@@ -2,6 +2,7 @@ import { expect, test } from "./fixtures";
 import { goViaNav } from "./nav";
 
 const QUERY = "getz gilberto";
+const STUB_PORT = Number(process.env.CATALOG_STUB_PORT ?? 3101);
 
 test.describe("search page", () => {
 test("search for an album", async ({ page, recorded }) => {
@@ -45,5 +46,20 @@ test("search for an album", async ({ page, recorded }) => {
   expect(events.map((event) => event.seq)).toEqual(events.map((_, index) => index));
   const times = events.map((event) => event.t);
   expect(times).toEqual([...times].sort((a, b) => a - b));
+});
+
+// A query no other test uses: the app caches search answers for 24 hours, so "getz gilberto" is already cached by
+// flow.spec.ts and would not reach the stub at all.
+test("results show while typing, without pressing Search, and typing makes one catalog request", async ({ page, request }) => {
+  const count = async () => Number(await (await request.get(`http://127.0.0.1:${STUB_PORT}/__count`)).text());
+  const before = await count();
+
+  await page.goto("/search");
+  await page.getByRole("searchbox", { name: "Album or artist" }).click();
+  await page.keyboard.type("stan getz");
+
+  await expect(page).toHaveURL(/\/search\?q=stan\+getz$/);
+  await expect(page.locator("li strong").first()).toBeVisible();
+  expect(await count()).toBe(before + 1);
 });
 });
