@@ -11,6 +11,9 @@ const REQUEST_SPACING_MS = 1100;
 const MAX_QUEUE_WAIT_MS = 5000;
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_NAME_LENGTH = 300;
+const MAX_ATTEMPTS = 4;
+const MIN_RETRY_WAIT_MS = 1000;
+const MAX_RETRY_WAIT_MS = 3000;
 
 export type CatalogErrorKind = "busy" | "unreachable";
 
@@ -183,6 +186,15 @@ function isTimeout(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError";
 }
 
+/** Seconds from a whole-number Retry-After header, clamped to 1..3 s; 1 s when it is missing or not a whole number. */
+function retryWaitMs(response: Response): number {
+  const header = response.headers.get("Retry-After")?.trim() ?? "";
+  if (!/^\d+$/.test(header)) {
+    return MIN_RETRY_WAIT_MS;
+  }
+  return Math.min(Math.max(Number(header) * 1000, MIN_RETRY_WAIT_MS), MAX_RETRY_WAIT_MS);
+}
+
 export function createMusicBrainzClient(deps: MusicBrainzDeps) {
   // Earliest time the next request may start. Each request reserves the next slot.
   let nextSlot = 0;
@@ -211,25 +223,33 @@ export function createMusicBrainzClient(deps: MusicBrainzDeps) {
       limit: String(RESULT_LIMIT),
     });
 
-    await waitForSlot();
-
     let response: Response;
-    try {
-      response = await deps.fetch(`${deps.baseUrl()}${SEARCH_PATH}?${params}`, {
-        headers: { "User-Agent": deps.userAgent(), Accept: "application/json" },
-        redirect: "error",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-    } catch (error) {
-      if (isTimeout(error)) {
-        throw new CatalogError("busy", `no answer within ${REQUEST_TIMEOUT_MS} ms`, { cause: error });
+    for (let attempt = 1; ; attempt++) {
+      await waitForSlot();
+      try {
+        response = await deps.fetch(`${deps.baseUrl()}${SEARCH_PATH}?${params}`, {
+          headers: { "User-Agent": deps.userAgent(), Accept: "application/json" },
+          redirect: "error",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+      } catch (error) {
+        if (isTimeout(error)) {
+          throw new CatalogError("busy", `no answer within ${REQUEST_TIMEOUT_MS} ms`, { cause: error });
+        }
+        throw new CatalogError("unreachable", "network failure", { cause: error });
       }
-      throw new CatalogError("unreachable", "network failure", { cause: error });
+
+      if (response.status !== 503) {
+        break;
+      }
+      if (attempt >= MAX_ATTEMPTS) {
+        throw new CatalogError("busy", `MusicBrainz answered 503 ${MAX_ATTEMPTS} times`);
+      }
+      // MusicBrainz sheds load across all clients; the next try usually gets through.
+      await response.body?.cancel();
+      await deps.sleep(retryWaitMs(response));
     }
 
-    if (response.status === 503) {
-      throw new CatalogError("busy", "MusicBrainz answered 503");
-    }
     if (!response.ok) {
       throw new CatalogError("unreachable", `MusicBrainz answered ${response.status}`);
     }
