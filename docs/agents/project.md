@@ -114,6 +114,7 @@ Read by the documenter subagent ([documenter.md](~/.collective-wisdom/docs/agent
   - Build once: `npm ci && npm run build:lambda` (writes `dist/`).
   - Staging: `terraform -chdir=infra/envs/staging init -backend-config=backend.hcl`, then `terraform -chdir=infra/envs/staging apply`. Outputs: `url`, `cloudfront_url`, `password` (`output -raw password`), `data_bucket`. The first apply waits for the certificate to validate (rerun `apply` after a timeout).
   - Production: the same two commands in `infra/envs/production`, with the same `dist/`.
+  - Front-end events ([ALBUM-85](https://github.com/dbeallor/album-ranker/issues/85)): a separate events function (`album-ranker-<env>-events`, `lambda/events.ts`, built into `dist/events` by `build:lambda`) behind CloudFront `/events`, writing to its own log group (output `events_log_group`, 30-day retention). On by default; `client_events = false` in `terraform.tfvars` switches it off. Read with `aws logs tail <group> --follow` or Logs Insights (README, Front-end events).
   - Agents don't run `terraform apply` or `destroy` without the user's say-so (billable, and it touches their AWS account). `terraform fmt -check` and `terraform validate` are fine.
 - Local previews (`npm run preview`, [ALBUM-20](https://github.com/dbeallor/album-ranker/issues/20)).
   - Main preview: `npm run preview -- main` builds the root checkout and serves it on <http://localhost:4000>, using the root's `data/album-ranker.db`.

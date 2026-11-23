@@ -83,6 +83,27 @@ Production is <https://album-ranker.com>, with its own `url`, `password` and `da
 
 `terraform -chdir=infra/envs/staging apply -replace=module.app.random_password.app` makes a new one (read it with `output -raw password`). Everyone is signed out, and the old password stops working. Do the same in `infra/envs/production` for production.
 
+### Front-end events
+
+Staging and production report what happens in the browser to a log group in your own AWS account: which pages were opened, which buttons and links were used, and front-end errors and failed requests. Nothing goes to a third party, and the Content-Security-Policy does not change (the browser posts to `/events` on the same address). Events start after login, not on the login page.
+
+- **Captured:** pathnames (no query string or hash), the tag and the `data-event`, `aria-label`, `name` or `id` of what was clicked or submitted, viewport width, error messages and stacks (clipped, with the page's origin removed), the method, pathname and status of a failed same-origin request, and a random id per browser tab that groups one visit.
+- **Never captured:** the password, the session cookie or any cookie, field values or typed text, query strings and hashes, visible page text, headers, bodies, IP address, user agent.
+- **When it is on:** by default, in both environments. `npm run build:lambda` is the only build that includes the capture code, so `npm run dev`, `npm run preview`, `npm test` and the browser tests never send anything, and no events function exists locally.
+- **Switch it off:** set `client_events = false` in that environment's `terraform.tfvars` and `terraform apply`. The events function then answers 404 and logs nothing. Browsers built with capture keep sending until the next deploy, and those requests are cheap and dropped. Events already logged stay until retention expires.
+- **Read it:** `aws logs tail $(terraform -chdir=infra/envs/staging output -raw events_log_group) --follow` (the group is `/aws/lambda/album-ranker-<env>-events`). In CloudWatch Logs Insights on that group:
+  ```
+  fields @timestamp, @message | filter @message like "[client-event]" | sort @timestamp desc
+  ```
+  and, to read one visit, group by the tab's `session` id:
+  ```
+  fields @timestamp, @message | filter @message like "[client-event]" | parse @message '"session":"*"' as session | sort session, @timestamp asc
+  ```
+  Requests the function refused log one `[client-event-refused]` line with a status and reason, and no request data.
+- **Retention:** 30 days, set by `client_events_retention_days` (a value CloudWatch Logs accepts, such as 7, 14, 30 or 90).
+
+It is its own small function, not part of the app, because the app takes one request at a time and a batch of events would collide with a page load. Idle cost is essentially unchanged: the function and its log group cost pennies a month at this volume.
+
 ### Back up, restore, undo a restore
 
 Set `BUCKET` to the environment's `data_bucket` (`BUCKET=$(terraform -chdir=infra/envs/production output -raw data_bucket)`). The database is the object `album-ranker.db`. S3 keeps every replaced version for 30 days, so there is always a recent copy.
