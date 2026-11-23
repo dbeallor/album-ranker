@@ -1,0 +1,92 @@
+# Deploys staging from main. AWS access is GitHub OIDC into a role that only this repository's main branch can assume and
+# that can change staging only (infra/ci). Production stays a manual deploy. Setup: README, "Set up the CI deploy (once)".
+name: Deploy staging
+
+on:
+  push:
+    branches: [main]
+  # A re-run of main without a new merge. The role's trust policy refuses any other ref.
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+# One deploy at a time, and a queued one waits instead of cancelling a deploy half way. The S3 lock file is the second guard.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TF_IN_AUTOMATION: "true"
+      # The same variable as the backend region below, so the two can't drift.
+      TF_VAR_region: ${{ vars.AWS_REGION }}
+      TF_VAR_zone_id: ${{ vars.ZONE_ID }}
+      # Both hold an email address, so they are secrets and stay out of logs.
+      TF_VAR_musicbrainz_user_agent: ${{ secrets.MUSICBRAINZ_USER_AGENT }}
+      TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
+    steps:
+      # Third-party actions are pinned to a full commit SHA; the version is in the comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          # The wrapper adds output to stdout, which breaks `terraform output -raw`.
+          terraform_wrapper: false
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build:lambda
+
+      # Signed in only once the build is done, so the build gets no AWS keys in its environment. The job still has id-token: write,
+      # so a compromised dependency could ask for the OIDC token itself; a separate build job would be needed to contain that.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform init
+        working-directory: infra/envs/staging
+        env:
+          STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          STATE_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="region=$STATE_REGION"
+
+      # A failing plan stops the run before anything changes.
+      - name: Terraform plan
+        working-directory: infra/envs/staging
+        run: terraform plan -input=false -lock-timeout=5m -out=tfplan
+
+      - name: Terraform apply
+        working-directory: infra/envs/staging
+        run: terraform apply -input=false -lock-timeout=5m tfplan
+
+      # Never print `password`.
+      - name: Check what is deployed
+        working-directory: infra/envs/staging
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          deployed="$(terraform output -raw deployed_commit)"
+          echo "url: $(terraform output -raw url)"
+          echo "deployed_commit: $deployed"
+          if [ "$deployed" != "$EXPECTED_COMMIT" ]; then
+            echo "::error::staging runs $deployed, expected $EXPECTED_COMMIT"
+            exit 1
+          fi

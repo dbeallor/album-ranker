@@ -48,6 +48,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 module "app" {
   source = "../../modules/app"
 
@@ -63,4 +65,7 @@ module "app" {
   musicbrainz_user_agent = var.musicbrainz_user_agent
   budget_email           = var.budget_email
   reserved_concurrency   = var.reserved_concurrency
+
+  # Created by infra/ci. Caps what the CI deploy role can give the function's role.
+  permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/album-ranker-staging-function-boundary"
 }
