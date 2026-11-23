@@ -39,7 +39,13 @@ locals {
   # Fixed names: the app module builds the same ones (infra/modules/app: album-ranker-<environment>).
   staging_name = "album-ranker-staging"
   role_arn     = "arn:aws:iam::${local.account_id}:role/${local.staging_name}"
-  boundary_arn = aws_iam_policy.boundary.arn
+
+  # Built from the names, the way infra/envs/staging builds the boundary's ARN, so the policies below don't wait on the
+  # resources to read them.
+  deploy_role_name = "album-ranker-ci-staging-deploy"
+  deploy_role_arn  = "arn:aws:iam::${local.account_id}:role/${local.deploy_role_name}"
+  boundary_name    = "${local.staging_name}-function-boundary"
+  boundary_arn     = "arn:aws:iam::${local.account_id}:policy/${local.boundary_name}"
 
   oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 }
@@ -89,7 +95,7 @@ data "aws_iam_policy_document" "trust" {
 }
 
 resource "aws_iam_role" "deploy" {
-  name                 = "album-ranker-ci-staging-deploy"
+  name                 = local.deploy_role_name
   description          = "Assumed by GitHub Actions on main to apply infra/envs/staging"
   assume_role_policy   = data.aws_iam_policy_document.trust.json
   max_session_duration = 3600
@@ -128,7 +134,7 @@ data "aws_iam_policy_document" "boundary" {
 }
 
 resource "aws_iam_policy" "boundary" {
-  name        = "${local.staging_name}-function-boundary"
+  name        = local.boundary_name
   description = "Permissions boundary of the staging function's role (infra/modules/app)"
   policy      = data.aws_iam_policy_document.boundary.json
 }

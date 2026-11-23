@@ -228,7 +228,7 @@ data "aws_iam_policy_document" "deploy" {
       "iam:TagRole",
       "iam:UntagRole",
     ]
-    resources = [aws_iam_role.deploy.arn]
+    resources = [local.deploy_role_arn]
   }
 
   # ------------------------------------------------ CloudWatch Logs
